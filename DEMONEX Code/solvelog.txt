@@ -1,0 +1,5 @@
+Mon 05/09/2011  7:03:11.64 Start of task 
+ECHO is on.
+     Starting ASCAM Control Script Mon 05/09/2011  7:03:11.66 
+ECHO is on.
+Mon 05/09/2011  7:03:12.88 End of task 

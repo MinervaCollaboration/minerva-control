@@ -1,0 +1,487 @@
+Const ForReading = 1
+Const ForWriting = 2
+Const ForAppending = 8
+
+'SExtractor inventory constants:
+Const cdInventoryX=0
+Const cdInventoryY=1
+Const cdInventoryMagnitude=2
+Const cdInventoryClass=3
+Const cdInventoryFWHM=4
+Const cdInventoryMajorAxis=5
+Const cdInventoryMinorAxis=6
+Const cdInventoryTheta=7
+Const cdInventoryEllipticity=8
+
+On Error Resume Next
+
+'Global Variables
+dim objCam, objTel, objTheSky, objCCDSoft, objTheSky6, Utils
+
+'Camera Event variables
+dim AcquireObject, Calibrate, MeridianFlip, strFileName, adNow, AcquireGuideStar, RestartGuider
+GuideBoxSize = 32
+
+'position to move the stars to in the stamp 
+'start at center, changes according to analysis of science images
+ToX = GuideboxSize/2
+ToY = GuideboxSize/2
+
+TargetX = 1024 'X pixel to place the object
+TargetY = 1024 'Y pixel to place the object
+
+Const SunAltRoofClosed = 5
+
+dim NotAligned, RAOffset, DECOffset  
+NotEmailed = True
+NotEmailedDaemon = True
+NotEmailedRainWise = True
+NotEmailedOmega = True
+NotEmailedDPM = True
+RoofMovingTime = 0
+Centered = False
+UseGuider = False
+'UseGuider = True
+TimeSet = False
+MovePending = 0
+
+BadPoint = 0
+nHomeFail = 0
+dim NTaken
+
+TLastFocus = Now
+
+'Contacts
+PIEmail = "gaudi@astronomy.ohio-state.edu"
+CuratorEmail = "winer.obs@gmail.com,pat.trueblood@gmail.com,mtrueblood@noao.edu"
+StudentEmail = "jdeast@astronomy.ohio-state.edu"
+EmergencyTxt = "6178403045@txt.att.net"
+
+Set ObjWS = WScript.CreateObject("WScript.Shell")
+BadGuideCounter = 0
+
+'Include functions
+Set objFSO = CreateObject("Scripting.fileSystemObject")
+Set objFile = objFSO.OpenTextFile("CenterObject.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("Centroid.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("CheckCam.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("CheckPos.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("CheckTel.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("CheckTime.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("ConnectAll.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("DisconnectAll.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("DiskCheck.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("DoBias.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("DoDark.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("DoObject.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("DoSkyFlat.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("Email.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("EndNight.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("FindGuideStar.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("Focus.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("GetIndex.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("GetWeather.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("HomeScope.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("imstat.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("jd.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("LX200Cancel.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("MyCamera_CameraEvent.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("PowerControl.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("PrepNight.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("RebootScope.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("Reverse.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("RoofOpen.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("ScopeOff.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("ScopeOn.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("SetCamTemp.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("SlewScope.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("SolveField.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("SunAlt.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("SyncScope.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("SyncTime.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("SyncTime2.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("TalkToDevice.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("TalkToLX200.vbs", ForReading)
+Execute objFile.ReadAll()
+Set objFile = objFSO.OpenTextFile("WriteLog.vbs", ForReading)
+Execute objFile.ReadAll()
+
+'If started between midnight and noon, use the yesterday's date
+If Hour(Now) < 12 Then
+  night = Right(string(4,"0") & Year(Now-1), 4) &_
+  Right(string(2,"0") & Month(Now-1), 2) &_
+  Right(string(2,"0") & Day(Now-1), 2)
+Else 
+  night = Right(string(4,"0") & Year(Now), 4) &_
+    Right(string(2,"0") & Month(Now), 2) &_
+    Right(string(2,"0") & Day(Now), 2)
+End If
+
+'Catch syntax errors and email
+If Err.Number <> 0 Then
+  strTo = StudentEmail
+  strSubject = "DEMONEX Error n" & night
+  strBody = "DEMONEX encountered an error at the beginning of the script and cannot continue. Syntax error likely. " & Err.Description
+  Call Email(strTo,strSubject,strBody,"","","")
+  WScript.Quit
+End If
+On Error goto 0
+
+'Set up and check the directories
+'DataDrive must be shared for Astrometry.net to succeed!
+DataDrive = "E"
+BackupDrive = "I"
+'DiskCheck
+tgtdir  = "C:\demonex\targets\"
+datadir = DataDrive & ":\demonex\data\n" & night & "\"
+logdir  = "C:\demonex\logs\"
+tgtdir  = "C:\demonex\targets\"
+
+PrepNight(night)
+
+'Open log and engineering files
+strLogFile = logdir & "n" & night & ".log"
+strEngFile = logdir & "n" & night & ".eng"
+strTargetList = tgtdir & "n" & night & ".tgt"
+Set objLogFile = objFSO.OpenTextFile(strLogFile, ForAppending)
+Set objEngFile = objFSO.OpenTextFile(strEngFile, ForAppending)
+
+'If the target list doesn't exist, email and exit
+If Not objFSO.FileExists(strTargetList) Then
+  strTo = StudentEmail
+  strSubject = "DEMONEX Error n" & night
+  strBody = "No target list available"
+  Call Email(strTo,strSubject,strBody,"","","")   
+  WScript.Quit
+End If
+
+'Read the current status (in case of ungraceful exit)
+Set statusFile = objFSO.OpenTextFile("status.txt", ForReading)
+status = statusFile.Readline
+statusFile.Close
+
+'Last Night had ungraceful exit
+If Hour(Now) >= 12 and Hour(Now) < 17 Then
+  status = "Done" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close  
+End If
+
+If status = "Done" Then
+
+' Done via Cron Job now (much more robust)
+'  'SSH into the linux machine and start making the movie
+'  objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Beginning Movie")
+'  ObjWS.Run "mkmovie.bat", 0, False
+
+
+  DisconnectAll
+  ScopeOff
+  Wscript.Sleep 30000
+  ScopeOn
+  ConnectAll
+  CheckTel
+  CheckCam
+  HomeScope
+
+  'Set the current Status
+  status = "ScopeOn" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close  
+
+End If
+
+CheckTel
+CheckCam
+CheckTime
+
+'The first line in the target file is for calibrations
+'Nbias NDark DarkExpTime NFlat Filter1... FilterN
+Set objTargetList = objFSO.OpenTextFile(strTargetList, ForReading)
+strNextLine = objTargetList.Readline
+arrScriptPar = Split(strNextLine)
+Nbias = Cdbl(arrScriptPar(0))
+NDark = Cdbl(arrscriptPar(1))
+DarkExpTime = Cdbl(arrScriptPar(2))
+NFlatEvening = Cdbl(arrScriptPar(3))
+NFlatMorning = Cdbl(arrScriptPar(4))
+NFilters = Ubound(arrScriptPar) - 5
+ReDim arrFlatFilters(NFilters)
+For i=0 to NFilters
+  arrFlatFilters(i) = arrScriptPar(5+i)
+Next  
+
+'Turn Tracking off (just in case)
+objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Making sure tracking is off")
+Call objTel.SetTracking(0, 0, 0, 0)
+
+If status = "ScopeOn" Then
+
+  SetCamTemp
+
+  'Set the current Status
+  status = "CameraTemp" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close  
+
+End If
+
+' for the Email at the end of the night
+strbody = "Tonight I took the following images: " & vbCrLf & vbCrLf 
+
+If status = "CameraTemp" Then
+
+  'DO I WANT TO POINT AT A SPECIFIC PLACE FOR DARKS/BIASES??
+  Calibrate = True
+  'Do the calibrations
+  If Nbias > 0 Then
+    objName = "bias"
+    objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Taking " & NBias & " biases")
+    Call DoBias(Nbias)
+  End If
+
+  'Set the current Status
+  status = "Biases" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close  
+
+  strBody = strBody & "Biases: " & Nbias & vbCrLf
+
+End If
+ 
+If status = "Biases" Then
+
+  If NDark > 0 Then
+    objName = "dark"
+    objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Taking " & NDark & " " & DarkExpTime & " second darks")
+    Call DoDark(Ndark,DarkExpTime)
+  End If
+
+  'Set the current Status
+  status = "Darks" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close    
+
+  strBody = strBody & "Darks:  " & Ndark & vbCrLf
+End If
+
+If status = "Darks" Then
+
+  'Do NFlat Evening Sky Flats for each filter
+  If NFlatEvening > 0 Then
+    objName = "SkyFlat"
+    objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Taking " & NFlatEvening & " evening flats")
+    Call DoSkyFlat(arrFlatFilters,NFlatEvening)
+  End If
+  Calibrate = False
+
+  'Set the current Status
+  status = "EveningFlats" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close      
+
+End If
+
+If status = "EveningFlats" Then
+
+  HomeScope
+
+  'Set the current Status
+  status = "Aligned" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close     
+
+End If 
+
+If status = "Aligned" Then
+
+  Do Until objTargetList.AtEndOfStream
+ 
+    strNextLine = objTargetList.Readline
+    arrScriptPar = Split(strNextLine)
+    'create a dynamic array for the filters
+    NFilters = Ubound(arrScriptPar) - 7
+    ReDim arrFilters(NFilters)
+    objName = arrScriptPar(0)
+    RA = Cdbl(arrScriptPar(1))
+    DEC = Cdbl(arrScriptPar(2))
+    JDStart = Cdbl(arrScriptPar(3))
+    JDEnd = Cdbl(arrScriptPar(4))
+    ExpTime = Cdbl(arrScriptPar(5))
+    NImages = Cdbl(arrScriptPar(6))
+
+    For i=0 to NFilters
+      arrFilters(i) = Cdbl(arrScriptPar(7+i))
+    Next
+
+    Call DoObject(objName,RA,Dec,JDStart,JDEnd,night,arrFilters,ExpTime,NImages)
+
+    strBody = strBody & objName & ": " & NTaken & vbCrLf & vbCrLf
+
+  Loop
+  objTargetList.Close
+  
+  'Set the current Status
+  status = "DoneObserving" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close     
+
+End If
+
+If status = "DoneObserving" Then
+
+  Calibrate = True
+  'Do NFlatMorning Sky Flats for each filter in reverse order
+  If NFlatMorning > 0 Then
+    objName = skyflat
+    objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Taking " & NFlatMorning & " morning flats")
+
+    arrReverseFlatFilters = Reverse(arrFlatFilters)
+
+    Call DoSkyFlat(arrReverseFlatFilters,NFlatMorning)
+  End If
+  Calibrate = False
+
+  'Set the current Status
+  status = "MorningFlats" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close   
+
+End If  
+
+If status = "MorningFlats" Then
+
+  'Send home and set tracking rate to zero (park?)
+  objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Homing Scope")
+  HomeScope
+
+  'Set the current Status
+  status = "EndNight" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close    
+
+End If
+
+If status = "EndNight" Then
+
+  objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Turning off Scope")
+  DisconnectAll
+  ScopeOff
+
+  Call EndNight(DataDrive,BackupDrive)
+
+  'SSH into the linux machine and start the reductions
+  objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Beginning Reductions")
+  ObjWS.Run "reductions.bat", 0, False
+
+  'After 15 minutes of being in state "CLOSING", it will report "STUCK", but the page is only updated every 5 minutes. 
+  'Need to wait 25 minutes after roof is supposed to close (SunAlt=-1) to make sure it's not stuck
+  'RoofOpen will email Mark if the roof is stuck
+  objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Making sure roof closes")
+On Error Resume Next
+  Set objTheSky = WScript.CreateObject("TheSky6.RASCOMTheSky")
+  objTheSky.Connect()
+
+  'Wait for roof to start closing 
+  Do While RoofOpen and SunAlt < SunAltRoofClosed
+    WScript.sleep 300000
+  Loop
+
+  'Wait for roof to go from "CLOSING" to "CLOSED"
+  If SunAlt < SunAltRoofClosed Then
+    WScript.sleep 1500000
+  End If
+
+  If RoofOpen Then 
+    Call Email(CuratorEmail & "," & StudentEmail,"Roof still open",_
+               "Mark and Pat," & vbCrLf & vbCrLf & "The roof is still open and the sun is at " &_
+               SunAlt & " degrees. Can you please check it out for me?" &_
+               vbCrLf & vbCrLf & "Love," & vbCrLf & "DEMONEX","","","")
+  End If
+
+  objTheSky.Disconnect
+  objTheSky.Quit()
+
+  WScript.Sleep 1000
+  'Kill all remaining processes
+  strComputer = "."
+  Set objWMIService = GetObject("winmgmts:" _
+      & "{impersonationLevel=impersonate}!\\" & strComputer & "\root\cimv2")
+  Set colProcessList = objWMIService.ExecQuery _
+      ("SELECT * FROM Win32_Process WHERE Name = 'CCDSoft.exe' or Name = 'TP.exe' or Name = 'TheSky6.exe' or Name = 'Orch.exe' or Name = 'my_imstat.exe'")
+  For Each objProcess in colProcessList
+      objProcess.Terminate()
+  Next
+  WScript.Sleep 1000
+On Error Goto 0
+
+  strTo = StudentEmail & "," & PIEmail
+  strSubject = "DEMONEX Log n" & night
+  strBody = strBody & "Tonight's (tab delimited) log, the engineering log, and the target file are attached." & vbCrLf & vbCrLf & "Love," & vbCrLf & "DEMONEX"            
+  objEngFile.WriteLine("DoNight (" & FormatDateTime(Now,3) & "): Sending Email: " & vbCrLf &_
+		       strsubject & vbCrLf &_
+                       strbody & vbCrLf & vbCrLf &_
+                       "With these attachments:" & vbCrLf &_
+                       strLogFile & vbCrLf &_
+                       strEngFile & vbCrLf &_ 
+                       strTargetList)
+  objLogFile.Close
+  objEngFile.Close
+  Call Email(strTo,strSubject,strBody,strLogFile,strEngFile,strTargetList)
+
+  'Set the current Status
+  status = "Done" 
+  Set statusFile = objFSO.OpenTextFile("status.txt", ForWriting)
+  statusFile.WriteLine(status)
+  statusFile.Close    
+
+End If
