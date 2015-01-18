@@ -1,7 +1,9 @@
 import urllib2, datetime
-import socket
+import telnetlib
 import time
 import threading
+
+Observing = True
 
 def getWeather():
 
@@ -37,34 +39,47 @@ def getWeather():
 
 def aqawanCommunicate(message):
 
-    messages = ['HEARTBEAT','STOP','OPEN_SHUTTERS','CLOSE_SHUTTERS','CLOSE_SEQUENTIAL','OPEN_SHUTTER_1','CLOSE_SHUTTER_1','OPEN_SHUTTER_2','CLOSE_SHUTTER_2','LIGHTS_ON','LIGHTS_OFF','ENC_FANS_HI','ENC_FANS_MED','ENC_FANS_LOW','ENC_FANS_OFF','PANEL_LED_GREEN','PANEL_LED_YELLOW','PANEL_LED_RED','PANEL_LED_OFF','DOOR_LED_GREEN','DOOR_LED_YELLOW','DOOR_LED_RED','DOOR_LED_OFF','SON_ALERT_ON','SON_ALERT_OFF','LED_STEADY','LED_BLINK','MCB_RESET_POLE_FANS','MCB_RESET_TAIL_FANS','MCB_RESET_OTA_BLOWER','MCB_RESET_PANEL_FANS','MCB_TRIP_POLE_FANS','MCB_TRIP_TAIL_FANS','MCB_TRIP_PANEL_FANS','STATUS','GET_ERRORS','GET_FAULTS','CLEAR_ERRORS','CLEAR_FAULTS','RESET_PAC']
+    messages = ['HEARTBEAT','STOP','OPEN_SHUTTERS','CLOSE_SHUTTERS',
+                'CLOSE_SEQUENTIAL','OPEN_SHUTTER_1','CLOSE_SHUTTER_1',
+                'OPEN_SHUTTER_2','CLOSE_SHUTTER_2','LIGHTS_ON','LIGHTS_OFF',
+                'ENC_FANS_HI','ENC_FANS_MED','ENC_FANS_LOW','ENC_FANS_OFF',
+                'PANEL_LED_GREEN','PANEL_LED_YELLOW','PANEL_LED_RED',
+                'PANEL_LED_OFF','DOOR_LED_GREEN','DOOR_LED_YELLOW',
+                'DOOR_LED_RED','DOOR_LED_OFF','SON_ALERT_ON',
+                'SON_ALERT_OFF','LED_STEADY','LED_BLINK',
+                'MCB_RESET_POLE_FANS','MCB_RESET_TAIL_FANS',
+                'MCB_RESET_OTA_BLOWER','MCB_RESET_PANEL_FANS',
+                'MCB_TRIP_POLE_FANS','MCB_TRIP_TAIL_FANS',
+                'MCB_TRIP_PANEL_FANS','STATUS','GET_ERRORS','GET_FAULTS',
+                'CLEAR_ERRORS','CLEAR_FAULTS','RESET_PAC']
 
     # not an allowed message
     if not message in messages:
         return -1
 
-    TCP_IP = '127.0.0.1'
-    TCP_PORT = 23
-    BUFFER_SIZE = 1024
-    
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((TCP_IP, TCP_PORT))
-    s.send(message)
-    data = s.recv(BUFFER_SIZE)
-    s.close()
-    return data
+    IP = '192.168.1.14'
+    port = 22004
+    tn = telnetlib.Telnet(IP,port,1)
+
+    tn.write("vt100\r\n")
+    tn.write(message + "\r\n")
+
+    response = tn.read_until(b"/r/n/r/n#>",0.5)
+    return response
+
+    return response.split("=")[1].split()[0]
+    return tn.read_all()
+
+    time.sleep(2)
 
 # should do this asychronously and continuously
 def aqawan():
 
-    while True:            
-#        aqawanCommunicate('HEARTBEAT')
+    while Observing:            
+        print aqawanCommunicate('HEARTBEAT')
         if not oktoopen():
-#            aqawanCommunicate('CLOSE_SEQUENTIAL')
-            print 'ldjf'
-        time.sleep(5)
-        return
-
+            print aqawanCommunicate('CLOSE_SEQUENTIAL')
+        time.sleep(15)
         
 def oktoopen():
     # define the safe limits [min,max] for each weather parameter
@@ -95,15 +110,13 @@ def oktoopen():
 if __name__ == '__main__':
     
     # run the aqawan heartbeat and weather checking asynchronously
-    aqawanthread = threading.Thread(target=aqawan, args=(), kwargs={})
-    aqawanthread.start()
+    aqawanThread = threading.Thread(target=aqawan, args=(), kwargs={})
+    aqawanThread.start()
 
-
-
+    # Do some other stuff
     print 'hello asynchronous world!'
-    time.sleep(10)
+    time.sleep(30)
     print 'why hello!'
-    
 
-    
-    
+    # Stop the aqawan thread
+    Observing = False
