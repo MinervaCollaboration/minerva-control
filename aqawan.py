@@ -65,6 +65,7 @@ def aqawanCommunicate(message):
     tn.write(message + "\r\n")
 
     response = tn.read_until(b"/r/n/r/n#>",0.5)
+    tn.close()
     return response
 
     return response.split("=")[1].split()[0]
