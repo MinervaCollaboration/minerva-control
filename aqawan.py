@@ -1,17 +1,266 @@
-import urllib2, datetime, time
-import telnetlib, socket, os
+import urllib, urllib2, datetime, time
+import telnetlib, socket, os, glob, ipdb
 import threading, sys, logging
 from win32com.client import Dispatch
-import ephem
+import ephem, math
 from xml.etree import ElementTree
 import pyfits
 
 Observing = True
 
-night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
-datapath = prepNight(night)
-logging.basicConfig(filename=datapath + night + '.log', format="%(asctime)s %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S", level=logging.DEBUG)
-logging.Formatter.converter = time.gmtime
+# reset the night at local 9 am
+today = datetime.datetime.utcnow()
+
+if datetime.datetime.now().hour > 9 and datetime.datetime.now().hour < 17:
+    today = today + datetime.timedelta(days=1)
+night = 'n' + today.strftime('%Y%m%d')
+
+# Telescope communications
+HOST = "127.0.0.1" # Localhost
+PORT = 44444
+
+######################################################################
+
+def makeUrl(**kwargs):
+    """
+    Utility function that takes a set of keyword=value arguments
+    and converts them into a properly formatted URL to send to PWI.
+    For example, calling the function as:
+      makeUrl(device="mount", cmd="move", ra2000="10 20 30", dec2000="20 30 40")
+    will return the string:
+      http://127.0.0.1:8080/?device=mount&cmd=move&dec=20+30+40&ra=10+20+30
+
+    Note that spaces have been URL-encoded to "+" characters.
+    """
+
+    url = "http://" + HOST + ":" + str(PORT) + "/?"
+    url = url + urllib.urlencode(kwargs.items())
+    return url
+
+def pwiRequest(**kwargs):
+    """
+    Issue a request to PWI using the keyword=value parameters
+    supplied to the function, and return the response received from
+    PWI.
+
+    For example:
+      makeUrl(device="mount", cmd="move", ra2000="10 20 30", dec2000="20 30 40")
+    will request a slew to J2000 coordinates 10:20:30, 20:30:40, and will
+    (under normal circumstances) return the status of the telescope as an
+    XML string.
+    """
+
+    url = makeUrl(**kwargs)
+    return urllib.urlopen(url).read()
+
+def pwiRequestAndParse(**kwargs):
+    """
+    Works like pwiRequest(), except returns a parsed XML object rather
+    than XML text
+    """
+
+    return parseXml(pwiRequest(**kwargs))
+
+def parseXml(xml):
+    """
+    Convert the XML into a smart structure that can be navigated via
+    the tree of tag names; e.g. "status.mount.ra"
+    """
+
+    return elementTreeToObject(ElementTree.fromstring(xml))
+
+### Status wrappers #####################################
+
+def getStatusXml():
+    """
+    Return a string containing the XML text representing the status of the telescope
+    """
+
+    return pwiRequest(cmd="getsystem")
+
+def getStatus():
+    """
+    Return a status object representing the tree structure of the XML text.
+    Example: getStatus().mount.tracking --> "False"
+    """
+
+    return parseXml(getStatusXml())
+
+### High-level command wrappers begin here ##############
+
+### FOCUSER ###
+
+def focuserConnect(port=1):
+    """
+    Connect to the focuser on the specified Nasmyth port (1 or 2).
+    """
+
+    return pwiRequestAndParse(device="focuser"+str(port), cmd="connect")
+
+def focuserDisconnect(port=1):
+    """
+    Disconnect from the focuser on the specified Nasmyth port (1 or 2).
+    """
+
+    return pwiRequestAndParse(device="focuser"+str(port), cmd="disconnect")
+
+def focuserMove(position, port=1):
+    """
+    Move the focuser to the specified position in microns
+    """
+
+    return pwiRequestAndParse(device="focuser"+str(port), cmd="move", position=position)
+
+def focuserIncrement(offset, port=1):
+    """
+    Offset the focuser by the specified amount, in microns
+    """
+
+    return pwiRequestAndParse(device="focuser"+str(port), cmd="move", increment=offset)
+
+def focuserStop(port=1):
+    """
+    Halt any motion on the focuser
+    """
+
+    return pwiRequestAndParse(device="focuser"+str(port), cmd="stop")
+
+def startAutoFocus():
+    """
+    Begin an AutoFocus sequence for the currently active focuser
+    """
+
+    return pwiRequestAndParse(device="focuser", cmd="startautofocus")
+
+### ROTATOR ###
+
+def rotatorMove(position, port=1):
+    return pwiRequestAndParse(device="rotator"+str(port), cmd="move", position=position)
+
+def rotatorIncrement(offset, port=1):
+    return pwiRequestAndParse(device="rotator"+str(port), cmd="move", increment=offset)
+
+def rotatorStop(port=1):
+    return pwiRequestAndParse(device="rotator"+str(port), cmd="stop")
+
+def rotatorStartDerotating(port=1):
+    return pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestart")
+
+def rotatorStopDerotating(port=1):
+    return pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestop")
+
+### MOUNT ###
+
+def mountConnect():
+    return pwiRequestAndParse(device="mount", cmd="connect")
+
+def mountDisconnect():
+    return pwiRequestAndParse(device="mount", cmd="disconnect")
+
+def mountEnableMotors():
+    return pwiRequestAndParse(device="mount", cmd="enable")
+
+def mountDisableMotors():
+    return pwiRequestAndParse(device="mount", cmd="disable")
+
+def mountOffsetRaDec(deltaRaArcseconds, deltaDecArcseconds):
+    return pwiRequestAndParse(device="mount", cmd="move", incrementra=deltaRaArcseconds, incrementdec=deltaDecArcseconds)
+
+def mountOffsetAltAz(deltaAltArcseconds, deltaAzArcseconds):
+    return pwiRequestAndParse(device="mount", cmd="move", incrementazm=deltaAzArcseconds, incrementalt=deltaAltArcseconds)
+
+def mountGotoRaDecApparent(raAppHours, decAppDegs):
+    """
+    Begin slewing the telescope to a particular RA and Dec in Apparent (current
+    epoch and equinox, topocentric) coordinates.
+
+    raAppHours may be a number in decimal hours, or a string in "HH MM SS" format
+    decAppDegs may be a number in decimal degrees, or a string in "DD MM SS" format
+    """
+
+    return pwiRequestAndParse(device="mount", cmd="move", ra=raAppHours, dec=decAppDegs)
+
+def mountGotoRaDecJ2000(ra2000Hours, dec2000Degs):
+    """
+    Begin slewing the telescope to a particular J2000 RA and Dec.
+    ra2000Hours may be a number in decimal hours, or a string in "HH MM SS" format
+    dec2000Degs may be a number in decimal degrees, or a string in "DD MM SS" format
+    """
+    return pwiRequestAndParse(device="mount", cmd="move", ra2000=ra2000Hours, dec2000=dec2000Degs)
+
+def mountGotoAltAz(altDegs, azmDegs):
+    return pwiRequestAndParse(device="mount", cmd="move", alt=altDegs, azm=azmDegs)
+
+def mountStop():
+    return pwiRequestAndParse(device="mount", cmd="stop")
+
+def mountTrackingOn():
+    return pwiRequestAndParse(device="mount", cmd="trackingon")
+
+def mountTrackingOff():
+    return pwiRequestAndParse(device="mount", cmd="trackingoff")
+
+def mountSetTracking(trackingOn):
+    if trackingOn:
+        mountTrackingOn()
+    else:
+        mountTrackingOff()
+
+def mountSetTrackingRateOffsets(raArcsecPerSec, decArcsecPerSec):
+    """
+    Set the tracking rates of the mount, represented as offsets from normal
+    sidereal tracking in arcseconds per second in RA and Dec.
+    """
+    return pwiRequestAndParse(device="mount", cmd="trackingrates", rarate=raArcsecPerSec, decrate=decArcsecPerSec)
+
+def mountSetPointingModel(filename):
+    return pwiRequestAndParse(device="mount", cmd="setmodel", filename=filename)
+
+### M3 ###
+
+def m3SelectPort(port):
+    return pwiRequestAndParse(device="m3", cmd="select", port=port)
+
+def m3Stop():
+    return pwiRequestAndParse(device="m3", cmd="stop")
+
+
+
+### XML Parsing Utilities ##################################
+
+class Status: 
+    """
+    Contains a node (and possible sub-nodes) in the parsed XML status tree.
+    Properties are added to the class by the elementTreeToObject function.
+    """
+
+    def __str__(self):
+        result = ""
+        for k,v in self.__dict__.items():
+            result += "%s: %s\n" % (k, str(v))
+
+        return result
+
+def elementTreeToObject(elementTreeNode):
+    """
+    Recursively convert an ElementTree node to a hierarchy of objects that allow for
+    easy navigation of the XML document. For example, after parsing:
+      <tag1><tag2>data</tag2><tag1> 
+    You could say:
+      xml.tag1.tag2   # evaluates to "data"
+    """
+
+    if len(elementTreeNode) == 0:
+        return elementTreeNode.text
+
+    result = Status()
+    for childNode in elementTreeNode:
+        setattr(result, childNode.tag, elementTreeToObject(childNode))
+
+    result.value = elementTreeNode.text
+
+    return result
+
 
 def getWeather():
 
@@ -21,7 +270,12 @@ def getWeather():
     # read the webpage
     logging.info('Requesting URL: ' + url)
     request = urllib2.Request(url)
-    response =  urllib2.urlopen(request)
+    try:
+        response = urllib2.urlopen(request)
+    except:
+        logging.error('Error reading the weather page: ' + sys.exc_info()[0])
+        return -1
+    
     data = response.read().split('\n')
     
     # convert the date into a datetime object
@@ -31,19 +285,23 @@ def getWeather():
     # populate the weather dictionary from the webpage
     for parameter in data[1:-1]:
         weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
-        logging.info(parameter)
+#        logging.info(parameter)
 
     weather['sunAltitude'] = sunAltitude()
 
     # make sure all required keys are present
+    pageError = False
     requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
                     'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
                     'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude']
     for key in requiredKeys:
         if not key in weather.keys():
             # if not, return an error
-            logging.error('Weather page does not have all required keys')
-            return -1
+            logging.error('Weather page does not have all required keys (' + key + ')')
+            pageError = True
+
+    if pageError: return -1
+
 
     # if everything checks out, return the weather
     return weather
@@ -74,15 +332,19 @@ def aqawanCommunicate(message):
     IP = '192.168.1.14'
     port = 22004
     try:
-        tn = telnetlib.Telnet(IP,port,1)
+        tn = telnetlib.Telnet(IP,port,5)
     except socket.timeout:
         logging.error('Timeout attempting to connect to the aqawan')
         return -1
 
     tn.write("vt100\r\n")
-    tn.write(message + "\r\n")
 
-    response = tn.read_until(b"/r/n/r/n#>",0.5)
+    response = ''
+    while response == '':    
+        tn.write(message + "\r\n")
+        response = tn.read_until(b"/r/n/r/n#>",5)
+
+    logging.info('Response from command ' + message + ': ' + response)
     tn.close()
     return response
 
@@ -115,22 +377,89 @@ def sunAltitude():
     obs.date = datetime.datetime.utcnow()
     sun = ephem.Sun()
     sun.compute(obs)
-    return sun.alt
+    return float(sun.alt)*180.0/math.pi
 
-# TODO: open sequentially with status feedback; test carefully!
+def aqawanStatus():
+
+    response = aqawanCommunicate('STATUS').split(',')
+    status = {}
+    for entry in response:
+        if '=' in entry:
+            status[(entry.split('='))[0].strip()] = (entry.split('='))[1].strip()
+
+#    if status['ERROR'] == 'TRUE':
+#        logging.warning('Error condition exists in the PAC')
+#        logging.warning(aqawanCommunicate('GET_ERRORS'))
+#    if status['FAULT'] == 'TRUE':
+#        logging.warning('Fault condition exists in the PAC')
+#        logging.warning(aqawanCommunicate('GET_FAULTS'))
+
+    return status
+
 # sound alarm before opening?
 def openAqawan():
-    return -1
+#    return -1
     if oktoopen():
-        logging.info(aqawanCommunicate('OPEN_SHUTTERS'))
-#        logging.info(aqawanCommunicate('OPEN_SHUTTER_1'))
-#        logging.info(aqawanCommunicate('OPEN_SHUTTER_2'))
 
+        status = aqawanStatus()
+        timeout = 180.0
+        start = datetime.datetime.utcnow()
+        elapsedTime = 0.0
+
+        # Open Shutter 1
+        if status['Shutter1'] == 'OPEN':
+            logging.info('Shutter 1 already open')
+        else:
+            parkScope()
+            response = aqawanCommunicate('OPEN_SHUTTER_1')                
+            logging.info(response)
+            if not 'Success=TRUE' in response:
+                logging.warning('Failed to open shutter 1: ' + response)
+                ipdb.set_trace()
+                # need to reset the PAC? ("Enclosure not in AUTO"?)
+            
+            while status['Shutter1'] == 'OPENING' and elapsedTime < timeout:
+                status = aqawanStatus()
+                elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
+            if status['Shutter1'] <> 'OPEN':
+                logging.error('Error opening Shutter1')
+            else:
+                logging.info('Shutter1 open')
+
+        # Open Shutter 2
+        start = datetime.datetime.utcnow()
+        elapsedTime = 0.0
+        if status['Shutter2'] == 'OPEN':
+            logging.info('Shutter 2 already open')
+        else:
+            parkScope()
+            response = aqawanCommunicate('OPEN_SHUTTER_2')
+            logging.info(response)
+            if not 'Success=TRUE' in response:
+                logging.warning('Failed to open shutter 2: ' + response)
+                # need to reset the PAC? ("Enclosure not in AUTO"?)
+            
+            while status['Shutter2'] == 'OPENING' and elapsedTime < timeout:
+                status = aqawanStatus()
+                elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
+            if status['Shutter2'] <> 'OPEN':
+                logging.error('Error opening Shutter1')
+            else:
+                logging.info('Shutter2 open')
 
 # TODO: check to make sure it's not closed, then close, error handling
 def closeAqawan():
-    
-    logging.info(aqawanCommunicate('CLOSE_SEQUENTIAL'))       
+
+    status = aqawanStatus()
+    if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
+        logging.info('Both shutters already closed')
+    else:
+        response = aqawanCommunicate('CLOSE_SEQUENTIAL')
+        if not 'Success=TRUE' in response:
+            logging.error('Aqawan failed to close!')
+            # need to send alerts, attempt other stuff
+#            email('Aqawan failed to close!')
+        else: logging.info(response)       
 
 def oktoopen():
     retval = True    
@@ -152,12 +481,15 @@ def oktoopen():
 
     # get the current weather, timestamp, and Sun's position
     weather = getWeather()
+    while weather == -1:
+        time.sleep(1)
+        weather = getWeather()
 
     # make sure each parameter is within the limits for safe observing
     for key in weatherLimits:
         if weather[key] < weatherLimits[key][0] or weather[key] > weatherLimits[key][1]:
             # will this screw up the asynchronous-ness?
-            logging.info('Not OK to open: ' + key + '=' + str(weather[key]) + '; Limits are ' + weatherLimits[key][0], weatherLimits[key][1])
+            logging.info('Not OK to open: ' + key + '=' + str(weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
             retval = False
 
     return retval
@@ -187,7 +519,7 @@ def connectCamera():
 
     # If we were responsible for launching Maxim, this prevents
     # Maxim from closing when our application exits
-    logging.info('Preventing maxim from cloing upon exit')
+    logging.info('Preventing maxim from closing upon exit')
     maxim = Dispatch("MaxIm.Application")
     maxim.LockApp = True
 
@@ -240,7 +572,8 @@ def connectCamera():
 
 def prepNight():
 
-    dirname = "C:/minerva/data/" + night + "/"
+    dirname = "E:/" + night + "/"
+    
     if not os.path.exists(dirname):
         os.makedirs(dirname)
 
@@ -248,7 +581,9 @@ def prepNight():
 
 # Returns the next file number given an image directory
 def getIndex(dirname):
-    files = os.listdir(dirname)
+    files = glob.glob(dirname + "/*.fits")
+
+    return str(len(files)+1).zfill(4)
 
     if len(files) == 0:
         return '0001'
@@ -275,18 +610,19 @@ def doDark(cam, exptime=60, num=11):
 
     # Take num Dark frames
     for x in range(num):
+        logging.info('Taking ' + objectName + ' ' + str(x) + ' of ' + str(num) + ' (exptime = ' + str(exptime) + ')')
         cam.Expose(exptime, DARK)
         while not cam.ImageReady:
             time.sleep(0.1)     
         filename = datapath + "/" + night + ".T3." + objectName + "." + getIndex(datapath) + ".fits"
+        logging.info('Saving image: ' + filename)
         cam.SaveImage(filename)
 
-def doSkyFlat(cam):
+def doSkyFlat(cam, filters, morning=False):
 
     minSunAlt = -12
-    maxSunAlt = -3
+    maxSunAlt = 0
 
-    dither = 3 # arcminutes
     biasLevel = 3200
     targetCounts = 20000
     saturation = 45000
@@ -296,52 +632,43 @@ def doSkyFlat(cam):
     obs = setObserver()
     sun = ephem.Sun()
    
-    # Chase the Sun
     if datetime.datetime.now().hour > 12:
-        sunsetting = True
-        obs.horizon = maxSunAlt
+        # Sun setting (evening)
+        if morning:
+            logging.info('Sun setting and morning flats requested; skipping')
+            return
+        obs.horizon = str(maxSunAlt)
         flatStartTime = obs.next_setting(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
-        secondsUntilSunset = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
+        secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
     else:
-        # Sun rising
-        sunsetting = False
-        obs.horizon = minSunAlt
+        # Sun rising (morning)
+        if not morning:
+            logging.info('Sun rising and evening flats requested; skipping')
+            return
+        obs.horizon = str(minSunAlt)
         flatStartTime = obs.next_rising(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
-        secondsUntilSunrise = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
+        secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
 
-    # Wait for twilight
-    sunAlt = sunAltitude()
-    if sunAlt < minSunAlt:
-        if sunSetting:
-            logging.info('Sun (' + str(sunAlt) + ') below horizon (' + str(minSunAlt) + ') and setting; skipping skyflats')
-            return
-        else:
-            time.sleep(secondsUntilSunrise)
-    else if sunAlt > maxSunAlt:
-        if not sunSetting:
-            logging.info('Sun (' + str(sunAlt) + ') above horizon (' + str(maxSunAlt) + ') and rising; skipping skyflats')
-            return
-        else:
-            time.sleep(secondsUntilSunset)
+    if secondsUntilTwilight > 0:
+        logging.info('Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
+        time.sleep(secondsUntilTwilight)
 
     # Now it's within 5 minutes of twilight flats
     logging.info('Beginning twilight flats')
 
     # Open aqawan
-#    openAqawan()
+    openAqawan()
 
     # Slew to the optimally flat part of the sky
-    # See Chromey and Hasselbacher, 1996
+    # See Chromey & Hasselbacher, 1996
     Alt = 75 # degrees (somewhat site dependent)
     Az = SunAz + 180.0 # degrees
-    if Az > 360.0:
-        Az = Az - 360.0
-
+    if Az > 360.0: Az = Az - 360.0
+    
     mountGotoAltAz(alt,az)
     mountTrackingOn()
 
     exptime = minExpTime
-
         
     # Take flat fields
     cam.Expose(exptime, FLAT)
@@ -358,7 +685,7 @@ def doSkyFlat(cam):
         logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
                      "; exptime=" + str(exptime) + '; filter = ' + filter)
         os.remove(filename)
-    else if mode < 2.0*biaslevel:
+    elif mode < 2.0*biaslevel:
         # Too little signal
         logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
                      "; exptime=" + str(exptime) + '; filter = ' + filter)
@@ -380,7 +707,9 @@ def doSkyFlat(cam):
 def doScience(cam, target):
 
     LIGHT = 1
+    logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
     mountGotoRaDecJ2000(target['ra'], target['dec'])
+    logging.info("Finished slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
 
     filters = {
         'B' : 0,
@@ -393,29 +722,44 @@ def doScience(cam, target):
     }   
 
     while datetime.datetime.utcnow() < target['endtime']:
+        logging.info('Beginning ' + str(target['exptime']) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'] + ' band')       
         cam.Expose(target['exptime'], LIGHT, filters[target['filter']])
         while not cam.ImageReady:
             time.sleep(0.1)     
         filename = datapath + "/" + night + ".T3." + target['name'] + "." + getIndex(datapath) + ".fits"
+        logging.info("Saving image: " + filename)
+
         cam.SaveImage(filename)
+
+def parkScope():
+    # park the scope
+    parkAlt = 45.0
+    parkAz = 180.0
+    mountGotoAltAz(parkAlt, parkAz)
+    mountTrackingOff()
     
 def endNight():
 
     # park the scope
-    parkAlt = 60.0
-    parkAz = 0.0
-    mountGotoAltAz(parkAlt, parkAz)
-    mountTrackingOff()
+    parkScope()
 
+    # Close the aqawan
+    closeAqawan()
+    
     #TODO: Compress the data
 
     #TODO: Back up the data
     
 
+
 if __name__ == '__main__':
     
     # Prepare for the night (define data directories, etc)
     datapath = prepNight()
+
+    # Start a logger
+    logging.basicConfig(filename=datapath + night + '.log', format="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S", level=logging.DEBUG)  
+    logging.Formatter.converter = time.gmtime
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=aqawan, args=(), kwargs={})
@@ -423,26 +767,31 @@ if __name__ == '__main__':
 
     # Connect to the Camera
     cam = connectCamera()
+    mountConnect()
 
     # Take biases and darks
-    doBias(cam)
-    doDark(cam)
+#    doBias(cam)
+#    doDark(cam)
+
+    openAqawan()
 
     # Take Evening Sky flats
-    doSkyFlat(cam)
+    doSkyFlat(cam, ['V'])
 
     obs = setObserver()
-    obs.horizon = -6
+    obs.horizon = '-6.0'
     sun = ephem.Sun()
     sunrise = obs.next_rising(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
 
+    # Should be replaced by a function getTarget() that calls
+    # Sam's scheduler
     target = {
         'name' : 'AlphaCom',
-        'ra' : 13.166466, # hours
-        'dec' : 17.529431, # degrees
+        'ra' : 13.166466, # J2000 hours
+        'dec' : 17.529431, # J2000 degrees
         'exptime' : 10,
         'filter' : 'V',
-        'starttime' : datetime.datetime(2015,1,20,5,52,30),
+        'starttime' : datetime.datetime(2015,1,21,5,52,30), # UTC
         'endtime' : sunrise,
         }
     
@@ -450,7 +799,7 @@ if __name__ == '__main__':
     doScience(cam, target)
 
     # Take Morning Sky flats
-    doSkyFlat(cam)
+    doSkyFlat(cam, morning=True)
 
     # Take biases and darks
     doDark(cam)
