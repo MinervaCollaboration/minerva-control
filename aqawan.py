@@ -379,6 +379,14 @@ def sunAltitude():
     sun.compute(obs)
     return float(sun.alt)*180.0/math.pi
 
+def sunAzimuth():
+
+    obs = setObserver()
+    obs.date = datetime.datetime.utcnow()
+    sun = ephem.Sun()
+    sun.compute(obs)
+    return float(sun.az)*180.0/math.pi
+
 def aqawanStatus():
 
     response = aqawanCommunicate('STATUS').split(',')
@@ -396,60 +404,65 @@ def aqawanStatus():
 
     return status
 
-# sound alarm before opening?
+# Open a shutter of the aqawan
+def openShutter(shutter):
+
+    # make sure this is an allowed shutter
+    if shutter not in [1,2]:
+        logging.info('Invalid shutter specified (' + str(shutter) + ')')
+        return, -1
+
+    status = aqawanStatus()
+    timeout = 180.0
+    elapsedTime = 0.0
+
+    # if it's already open, return
+    if status['Shutter' + str(shutter)] == 'OPEN':
+        logging.info('Shutter' + str(shutter) + ' already open')
+        return
+
+    # park the telescopes to make sure they're safe from falling debris
+    parkScope()
+
+    # open the shutter
+    start = datetime.datetime.utcnow()
+    response = aqawanCommunicate('OPEN_SHUTTER_' + str(shutter))                
+    logging.info(response)
+    if not 'Success=TRUE' in response:
+        # did the command fail?
+        logging.warning('Failed to open shutter ' + str(shutter) + ': ' + response)
+        ipdb.set_trace()
+        # need to reset the PAC? ("Enclosure not in AUTO"?)
+            
+    # Wait for it to open
+    status = aqawanStatus()
+    while status['Shutter' + str(shutter)] == 'OPENING' and elapsedTime < timeout:
+        status = aqawanStatus()
+        elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
+
+    # Did it fail to open?
+    if status['Shutter' + str(shutter)] <> 'OPEN':
+        logging.error('Error opening Shutter ' + str(shutter) )
+        return -1
+
+    logging.info('Shutter ' + str(shutter) + ' open')
+
+# Open the aqawan shutters sequentially
 def openAqawan():
-#    return -1
+
     if oktoopen():
 
-        status = aqawanStatus()
-        timeout = 180.0
-        start = datetime.datetime.utcnow()
-        elapsedTime = 0.0
-
         # Open Shutter 1
-        if status['Shutter1'] == 'OPEN':
-            logging.info('Shutter 1 already open')
-        else:
-            parkScope()
-            response = aqawanCommunicate('OPEN_SHUTTER_1')                
-            logging.info(response)
-            if not 'Success=TRUE' in response:
-                logging.warning('Failed to open shutter 1: ' + response)
-                ipdb.set_trace()
-                # need to reset the PAC? ("Enclosure not in AUTO"?)
-            
-            while status['Shutter1'] == 'OPENING' and elapsedTime < timeout:
-                status = aqawanStatus()
-                elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
-            if status['Shutter1'] <> 'OPEN':
-                logging.error('Error opening Shutter1')
-            else:
-                logging.info('Shutter1 open')
+        openShutter(1)
 
         # Open Shutter 2
-        start = datetime.datetime.utcnow()
-        elapsedTime = 0.0
-        if status['Shutter2'] == 'OPEN':
-            logging.info('Shutter 2 already open')
-        else:
-            parkScope()
-            response = aqawanCommunicate('OPEN_SHUTTER_2')
-            logging.info(response)
-            if not 'Success=TRUE' in response:
-                logging.warning('Failed to open shutter 2: ' + response)
-                # need to reset the PAC? ("Enclosure not in AUTO"?)
-            
-            while status['Shutter2'] == 'OPENING' and elapsedTime < timeout:
-                status = aqawanStatus()
-                elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
-            if status['Shutter2'] <> 'OPEN':
-                logging.error('Error opening Shutter1')
-            else:
-                logging.info('Shutter2 open')
+        openShutter(2)
 
 # TODO: check to make sure it's not closed, then close, error handling
 def closeAqawan():
 
+    timeout = 500
+    elapsedTime = 0
     status = aqawanStatus()
     if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
         logging.info('Both shutters already closed')
@@ -459,8 +472,16 @@ def closeAqawan():
             logging.error('Aqawan failed to close!')
             # need to send alerts, attempt other stuff
 #            email('Aqawan failed to close!')
-        else: logging.info(response)       
-
+        else:
+            logging.info(response)    
+            start = datetime.datetime.utcnow()
+            while status['Shutter1'] <> "CLOSED" and status['Shutter2'] <> "CLOSED" and elapsedTime < timeout:
+                elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+                status = aqawanStatus()
+            if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
+                logging.error('Aqawan failed to close!')
+                # need to send alerts, attempt other stuff
+                
 def oktoopen():
     retval = True    
 
@@ -602,7 +623,6 @@ def doBias(cam, num=11):
 def doDark(cam, exptime=60, num=11):
 
     DARK = 0
-
     if exptime == 0:
         objectName = 'Bias'
     else:
@@ -611,12 +631,7 @@ def doDark(cam, exptime=60, num=11):
     # Take num Dark frames
     for x in range(num):
         logging.info('Taking ' + objectName + ' ' + str(x) + ' of ' + str(num) + ' (exptime = ' + str(exptime) + ')')
-        cam.Expose(exptime, DARK)
-        while not cam.ImageReady:
-            time.sleep(0.1)     
-        filename = datapath + "/" + night + ".T3." + objectName + "." + getIndex(datapath) + ".fits"
-        logging.info('Saving image: ' + filename)
-        cam.SaveImage(filename)
+        takeImage(cam,exptime,'V',objectName)
 
 def doSkyFlat(cam, filters, morning=False):
 
@@ -632,6 +647,7 @@ def doSkyFlat(cam, filters, morning=False):
     obs = setObserver()
     sun = ephem.Sun()
    
+    # can we actually do flats right now?
     if datetime.datetime.now().hour > 12:
         # Sun setting (evening)
         if morning:
@@ -649,6 +665,7 @@ def doSkyFlat(cam, filters, morning=False):
         flatStartTime = obs.next_rising(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
         secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
 
+    # wait for twilight
     if secondsUntilTwilight > 0:
         logging.info('Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
         time.sleep(secondsUntilTwilight)
@@ -656,60 +673,78 @@ def doSkyFlat(cam, filters, morning=False):
     # Now it's within 5 minutes of twilight flats
     logging.info('Beginning twilight flats')
 
-    # Open aqawan
-    openAqawan()
-
-    # Slew to the optimally flat part of the sky
-    # See Chromey & Hasselbacher, 1996
-    Alt = 75 # degrees (somewhat site dependent)
-    Az = SunAz + 180.0 # degrees
-    if Az > 360.0: Az = Az - 360.0
+    # make sure the telescope/dome is ready for obs
+    initializeScope()
     
-    mountGotoAltAz(alt,az)
-    mountTrackingOn()
+    # start off with the extreme exposure times
+    if morning: exptime = maxExpTime
+    else: exptime = minExpTime
+  
+    # filters ordered from least transmissive to most transmissive
+    # flats will be taken in this order (or reverse order in the evening)
+    masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
+    if not morning: masterfilters = masterfilters.reverse()
 
-    exptime = minExpTime
+    for filterInd in masterfilters:
+        if filterInd in filters:
         
-    # Take flat fields
-    cam.Expose(exptime, FLAT)
-    while not cam.ImageReady:
-        time.sleep(0.1)    
-    filename = datapath + "/" + night + ".T3.SkyFlat." + getIndex(datapath) + ".fits"
-    cam.SaveImage(filename)
+            for i in range(num):
 
-    # determine the mode of the image (mode requires scipy, use mean for now...)
-    mode = getMean(filename)
+                # Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
+                Alt = 75.0 # degrees (somewhat site dependent)
+                Az = sunAzimuth() + 180.0 # degrees
+                if Az > 360.0: Az = Az - 360.0
+            
+                # keep slewing to the optimally flat part of the sky (dithers too)
+                logging.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
+                mountGotoAltAz(alt,az)
+            
+                # Take flat fields
+                filename = takeImage(cam, exptime, filterInd, 'SkyFlat')
+                
+                # determine the mode of the image (mode requires scipy, use mean for now...)
+                mode = getMean(filename)
 
-    if mode > Saturation:
-        # Too much signal
-        logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
-                     "; exptime=" + str(exptime) + '; filter = ' + filter)
-        os.remove(filename)
-    elif mode < 2.0*biaslevel:
-        # Too little signal
-        logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
-                     "; exptime=" + str(exptime) + '; filter = ' + filter)
-        os.remove(filename)
-#    else:
-        # just right...
+                if mode > Saturation:
+                    # Too much signal
+                    logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
+                                 "; exptime=" + str(exptime) + '; filter = ' + filter)
+                    os.remove(filename)
+                    if exptime == minExpTime and morning:
+                        logging.info("Exposure time at minimum, image saturated, and getting brighter; skipping remaining exposures in filter " + filterInd)
+                        break
+                elif mode < 2.0*biaslevel:
+                    # Too little signal
+                    logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
+                                 "; exptime=" + str(exptime) + '; filter = ' + filter)
+                    os.remove(filename)
+                    if exptime == maxExpTime and not morning:
+                        logging.info("Exposure time at maximum, not enough counts, and getting darker; skipping remaining exposures in filter " + filterInd)
+                        break
+ #              else:
+ #                  just right...
         
-    # Scale exptime to get a mode of targetCounts in next exposure
-    if mode-biaslevel <= 0:
-        exptime = maxExpTime
-    else:
-        exptime = exptime*(targetCounts-biasLevel)/(mode-biasLevel)
-        # do not exceed limits
-        exptime = max([minexptime,exptime])
-        exptime = min([maxexptime,exptime])
+                # Scale exptime to get a mode of targetCounts in next exposure
+                if mode-biaslevel <= 0:
+                    exptime = maxExpTime
+                else:
+                    exptime = exptime*(targetCounts-biasLevel)/(mode-biasLevel)
+                    # do not exceed limits
+                    exptime = max([minexptime,exptime])
+                    exptime = min([maxexptime,exptime])
+                    logging.info("Scaling exptime to " + str(exptime))
 
-    logging.info("Scaling exptime to " + str(exptime))
+def takeImage(cam, exptime, filterInd, objname):
 
-def doScience(cam, target):
+    exptypes = {
+        'Dark' : 0,
+        'Bias' : 0,
+        'SkyFlat' : 1,
+        }
 
-    LIGHT = 1
-    logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
-    mountGotoRaDecJ2000(target['ra'], target['dec'])
-    logging.info("Finished slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
+    if objname in exptypes.keys():
+        exptype = exptypes[objname]
+    else: exptype = 1 # science exposure
 
     filters = {
         'B' : 0,
@@ -719,24 +754,101 @@ def doScience(cam, target):
         'ip' : 4,
         'zp' : 5,
         'air' : 6,
-    }   
+        }   
+   
+    # Take flat fields
+    cam.Expose(exptime, exptype, filters[filterInd])
+    while not cam.ImageReady:
+        time.sleep(0.1)    
+
+    # Save the image
+    filename = datapath + "/" + night + ".T3." + objname + "." + getIndex(datapath) + ".fits"
+    logging.info('Saving image: ' + filename)
+    cam.SaveImage(filename)
+
+    return filename
+
+def initializeScope():
+    # Open aqawan
+    logging.info('Opening Aqawan')
+    openAqawan()
+
+    # turning on mount tracking
+    logging.info('Turning mount tracking on')
+    mountTrackingOn()
+    
+    # turning on rotator tracking
+    logging.info('Turning rotator tracking on')
+    rotatorStartDerotating()
+
+def doScience(cam, target):
+
+    initializeScope():
+
+    logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
+    mountGotoRaDecJ2000(target['ra'], target['dec'])
+    logging.info("Finished slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
 
     while datetime.datetime.utcnow() < target['endtime']:
-        logging.info('Beginning ' + str(target['exptime']) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'] + ' band')       
-        cam.Expose(target['exptime'], LIGHT, filters[target['filter']])
-        while not cam.ImageReady:
-            time.sleep(0.1)     
-        filename = datapath + "/" + night + ".T3." + target['name'] + "." + getIndex(datapath) + ".fits"
-        logging.info("Saving image: " + filename)
+        logging.info('Beginning ' + str(target['exptime']) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'] + ' band') 
+        takeImage(cam, target['exptime'], target['filter'], target['name'])
 
-        cam.SaveImage(filename)
+def doPretty(cam, target, RequestedFilters=['B','V','rp'], num=5):
+
+    # Wait until the start time
+    timeUntilStart = (target['starttime'] - datetime.datetime.utcnow()).total_seconds()
+    if timeUntilStart > 0:
+        logging.info("Started before start time; waiting " + str(timeUntilStart) + ' seconds')
+        time.sleep(timeUntilStart)
+
+    # definition of "Light" exposure for maxim
+    LIGHT = 1 
+
+    # Slew the telescope to the target
+    logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
+    mountGotoRaDecJ2000(target['ra'], target['dec'])
+    logging.info("Finished slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
+
+    # Static definition of the filters (is there a function to query these?)
+    filters = {
+        'B'   : 0,
+        'V'   : 1,
+        'gp'  : 2,
+        'rp'  : 3,
+        'ip'  : 4,
+        'zp'  : 5,
+        'air' : 6,
+    }
+
+    # Check to make sure the requested filter is available
+    if not target['filter'] in filters.keys():
+        logging.error("Requested filter (" + target['filter'] + " not available")
+        return -1
+
+    for filterInd in RequestedFilters:
+        for i in range(num):
+            logging.info('Beginning ' + str(target['exptime']) + ' second exposure of ' + target['name'] + ' in the ' + filterInd + ' band')       
+            cam.Expose(target['exptime'], LIGHT, filters[filterInd])
+            while not cam.ImageReady:
+                time.sleep(0.1)     
+            filename = datapath + "/" + night + ".T3." + target['name'] + "." + filterInd + "." + getIndex(datapath) + ".fits"
+            # Save the image
+            logging.info("Saving image: " + filename)
+            cam.SaveImage(filename)
 
 def parkScope():
     # park the scope
     parkAlt = 45.0
     parkAz = 180.0
+
+    logging.info('Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
     mountGotoAltAz(parkAlt, parkAz)
+
+    logging.info('Turning mount tracking off')
     mountTrackingOff()
+    
+    logging.info('Turning rotator tracking off')
+    rotatorStopDerotating()
     
 def endNight():
 
@@ -770,13 +882,15 @@ if __name__ == '__main__':
     mountConnect()
 
     # Take biases and darks
-#    doBias(cam)
-#    doDark(cam)
+    #doBias(cam)
+    #doDark(cam)
 
     openAqawan()
 
+    #ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
+
     # Take Evening Sky flats
-    doSkyFlat(cam, ['V'])
+    #doSkyFlat(cam, ['V'])
 
     obs = setObserver()
     obs.horizon = '-6.0'
@@ -794,16 +908,36 @@ if __name__ == '__main__':
         'starttime' : datetime.datetime(2015,1,21,5,52,30), # UTC
         'endtime' : sunrise,
         }
+
+    target = {
+        'name' : 'M77',
+        'ra' : 2.7113, # J2000 hours
+        'dec' : -0.01333, # J2000 degrees
+        'exptime' : 60,
+        'filter' : 'V',
+        'starttime' : datetime.datetime(2015,1,22,2,40,30), # UTC
+        'endtime' : datetime.datetime(2015,1,22,3,15,30),
+        }
     
     # Start Science Obs
     doScience(cam, target)
 
+    # Take pretty pictures
+    RequestedFilters = ['B','V','rp']
+    num = 3
+    
+    #focuserConnect()
+    #focuserMove(25500) # To get close to reasonable. Probably not a good general postion
+    #startAutoFocus()
+
+    #doPretty(cam, target, RequestedFilters=RequestedFilters, num=num)
+
     # Take Morning Sky flats
-    doSkyFlat(cam, morning=True)
+    #doSkyFlat(cam, ['V'], morning=True)
 
     # Take biases and darks
-    doDark(cam)
-    doBias(cam)
+    #doDark(cam)
+    #doBias(cam)
 
     endNight()
     
