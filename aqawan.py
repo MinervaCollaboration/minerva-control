@@ -780,6 +780,18 @@ def initializeScope():
     # turning on rotator tracking
     logging.info('Turning rotator tracking on')
     rotatorStartDerotating()
+    
+def parseTargetLine(line):
+    desc = ['name','ra','dec','exptime','filter','starttime','endtime']
+    splitline = line.strip().split(',')
+    splitline[0] = splitline[0].lstrip() # name
+    splitline[1] = float(splitline[1]) # ra
+    splitline[2] = float(splitline[2]) # dec
+    splitline[3] = int(splitline[3]) # exptime
+    splitline[4] = splitline[4].lstrip() # filter
+    splitline[5] = Time(float(splitline[5]), scale='utc', format='jd').datetime # starttime
+    splitline[6] = Time(float(splitline[6]), scale='utc', format='jd').datetime # endtime
+    return dict(zip(desc, splitline))
 
 def doScience(cam, target):
 
@@ -899,28 +911,14 @@ if __name__ == '__main__':
 
     # Should be replaced by a function getTarget() that calls
     # Sam's scheduler
-    target = {
-        'name' : 'AlphaCom',
-        'ra' : 13.166466, # J2000 hours
-        'dec' : 17.529431, # J2000 degrees
-        'exptime' : 10,
-        'filter' : 'V',
-        'starttime' : datetime.datetime(2015,1,21,5,52,30), # UTC
-        'endtime' : sunrise,
-        }
-
-    target = {
-        'name' : 'M77',
-        'ra' : 2.7113, # J2000 hours
-        'dec' : -0.01333, # J2000 degrees
-        'exptime' : 60,
-        'filter' : 'V',
-        'starttime' : datetime.datetime(2015,1,22,2,40,30), # UTC
-        'endtime' : datetime.datetime(2015,1,22,3,15,30),
-        }
-    
-    # Start Science Obs
-    doScience(cam, target)
+    with open('targets.list', 'r') as targetfile:
+    next(targetfile) # skip the header line
+    for line in targetfile:
+        target = parseTargetLine(line)
+        if target['endtime'] > sunrise: # check if the end is after sunrise
+            target['endtime'] = sunrise
+        # Start Science Obs
+        doScience(cam, target)
 
     # Take pretty pictures
     RequestedFilters = ['B','V','rp']
