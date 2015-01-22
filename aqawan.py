@@ -5,6 +5,7 @@ from win32com.client import Dispatch
 import ephem, math
 from xml.etree import ElementTree
 import pyfits
+from astropy.time import Time
 
 Observing = True
 
