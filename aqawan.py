@@ -411,7 +411,7 @@ def openShutter(shutter):
     # make sure this is an allowed shutter
     if shutter not in [1,2]:
         logging.info('Invalid shutter specified (' + str(shutter) + ')')
-        return, -1
+        return -1
 
     status = aqawanStatus()
     timeout = 180.0
@@ -450,14 +450,16 @@ def openShutter(shutter):
 
 # Open the aqawan shutters sequentially
 def openAqawan():
-
     if oktoopen():
-
         # Open Shutter 1
-        openShutter(1)
+        response = openShutter(1)
+        if response == -1: return -1
 
         # Open Shutter 2
-        openShutter(2)
+        response = openShutter(2)
+        if response == -1: return -1
+    else: return -1
+
 
 # TODO: check to make sure it's not closed, then close, error handling
 def closeAqawan():
@@ -631,16 +633,16 @@ def doDark(cam, exptime=60, num=11):
 
     # Take num Dark frames
     for x in range(num):
-        logging.info('Taking ' + objectName + ' ' + str(x) + ' of ' + str(num) + ' (exptime = ' + str(exptime) + ')')
+        logging.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(exptime) + ')')
         takeImage(cam,exptime,'V',objectName)
 
-def doSkyFlat(cam, filters, morning=False):
+def doSkyFlat(cam, filters, morning=False, num=11):
 
     minSunAlt = -12
     maxSunAlt = 0
 
     biasLevel = 3200
-    targetCounts = 20000
+    targetCounts = 10000
     saturation = 45000
     maxExpTime = 60
     minExpTime = 10
@@ -667,7 +669,7 @@ def doSkyFlat(cam, filters, morning=False):
         secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
 
     # wait for twilight
-    if secondsUntilTwilight > 0:
+    if secondsUntilTwilight > 0 and (sunAltitude() < minSunAlt or sunAltitude() > maxSunAlt):
         logging.info('Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
         time.sleep(secondsUntilTwilight)
 
@@ -684,7 +686,8 @@ def doSkyFlat(cam, filters, morning=False):
     # filters ordered from least transmissive to most transmissive
     # flats will be taken in this order (or reverse order in the evening)
     masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
-    if not morning: masterfilters = masterfilters.reverse()
+    masterfilters = ['rp','V','B']
+#    if not morning: masterfilters = masterfilters.reverse()
 
     for filterInd in masterfilters:
         if filterInd in filters:
@@ -698,26 +701,28 @@ def doSkyFlat(cam, filters, morning=False):
             
                 # keep slewing to the optimally flat part of the sky (dithers too)
                 logging.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
-                mountGotoAltAz(alt,az)
+                mountGotoAltAz(Alt,Az)
             
                 # Take flat fields
                 filename = takeImage(cam, exptime, filterInd, 'SkyFlat')
                 
                 # determine the mode of the image (mode requires scipy, use mean for now...)
                 mode = getMean(filename)
-
-                if mode > Saturation:
+                logging.info("image " + str(i) + " of " + str(num) + " in filter " + filterInd + "; " + filename + ": mode = " + str(mode))
+                if mode > saturation:
                     # Too much signal
                     logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
                                  "; exptime=" + str(exptime) + '; filter = ' + filter)
                     os.remove(filename)
+                    i = i-1
                     if exptime == minExpTime and morning:
                         logging.info("Exposure time at minimum, image saturated, and getting brighter; skipping remaining exposures in filter " + filterInd)
                         break
-                elif mode < 2.0*biaslevel:
+                elif mode < 2.0*biasLevel:
                     # Too little signal
-                    logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
-                                 "; exptime=" + str(exptime) + '; filter = ' + filter)
+                    i = i-1
+                    logging.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) + '; sun altitude=' + str(sunAltitude()) +
+                                 "; exptime=" + str(exptime) + '; filter = ' + filterInd)
                     os.remove(filename)
                     if exptime == maxExpTime and not morning:
                         logging.info("Exposure time at maximum, not enough counts, and getting darker; skipping remaining exposures in filter " + filterInd)
@@ -726,13 +731,13 @@ def doSkyFlat(cam, filters, morning=False):
  #                  just right...
         
                 # Scale exptime to get a mode of targetCounts in next exposure
-                if mode-biaslevel <= 0:
+                if mode-biasLevel <= 0:
                     exptime = maxExpTime
                 else:
                     exptime = exptime*(targetCounts-biasLevel)/(mode-biasLevel)
                     # do not exceed limits
-                    exptime = max([minexptime,exptime])
-                    exptime = min([maxexptime,exptime])
+                    exptime = max([minExpTime,exptime])
+                    exptime = min([maxExpTime,exptime])
                     logging.info("Scaling exptime to " + str(exptime))
 
 def takeImage(cam, exptime, filterInd, objname):
@@ -796,7 +801,7 @@ def parseTargetLine(line):
 
 def doScience(cam, target):
 
-    initializeScope():
+    initializeScope()
 
     logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
     mountGotoRaDecJ2000(target['ra'], target['dec'])
@@ -895,15 +900,22 @@ if __name__ == '__main__':
     mountConnect()
 
     # Take biases and darks
-    #doBias(cam)
-    #doDark(cam)
+#    doBias(cam)
+#    doDark(cam)
 
-    openAqawan()
+    # keep trying to open the aqawan every minute
+    # (probably a stupid way of doing this)
+    response = -1
+    while response == -1:
+        response = openAqawan()
+        if response == -1: time.sleep(60)
 
     #ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
     # Take Evening Sky flats
-    #doSkyFlat(cam, ['V'])
+    doSkyFlat(cam, ['B','V','rp'])
+
+    ipdb.set_trace()
 
     obs = setObserver()
     obs.horizon = '-6.0'
