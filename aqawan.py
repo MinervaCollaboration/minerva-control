@@ -482,7 +482,7 @@ def closeAqawan():
                 elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
                 status = aqawanStatus()
             if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
-                logging.error('Aqawan failed to close!')
+                logging.error('Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
                 # need to send alerts, attempt other stuff
                 
 def oktoopen():
@@ -644,7 +644,7 @@ def doSkyFlat(cam, filters, morning=False, num=11):
 
     biasLevel = 3200
     targetCounts = 10000
-    saturation = 45000
+    saturation = 16000
     maxExpTime = 60
     minExpTime = 10
 
@@ -669,9 +669,14 @@ def doSkyFlat(cam, filters, morning=False, num=11):
         flatStartTime = obs.next_rising(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
         secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
 
+    if secondsUntilTwilight > 7200:
+        logging.info('Twilight too far away (' + str(secondsUntilTwilight) + " seconds)")
+        return
+
     # wait for twilight
     if secondsUntilTwilight > 0 and (sunAltitude() < minSunAlt or sunAltitude() > maxSunAlt):
         logging.info('Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
+        ipdb.set_trace()
         time.sleep(secondsUntilTwilight)
 
     # Now it's within 5 minutes of twilight flats
@@ -687,8 +692,7 @@ def doSkyFlat(cam, filters, morning=False, num=11):
     # filters ordered from least transmissive to most transmissive
     # flats will be taken in this order (or reverse order in the evening)
     masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
-    masterfilters = ['rp','V','B']
-#    if not morning: masterfilters = masterfilters.reverse()
+    if not morning: masterfilters.reverse()
 
     for filterInd in masterfilters:
         if filterInd in filters:
@@ -709,11 +713,11 @@ def doSkyFlat(cam, filters, morning=False, num=11):
                 
                 # determine the mode of the image (mode requires scipy, use mean for now...)
                 mode = getMean(filename)
-                logging.info("image " + str(i) + " of " + str(num) + " in filter " + filterInd + "; " + filename + ": mode = " + str(mode))
+                logging.info("image " + str(i+1) + " of " + str(num) + " in filter " + filterInd + "; " + filename + ": mode = " + str(mode) + " exptime = " + str(exptime) + " sunalt = " + str(sunAltitude()))
                 if mode > saturation:
                     # Too much signal
-                    logging.info("Flat deleted: Mode=" + str(mode) + '; sun altitude=' + str(sunalt) +
-                                 "; exptime=" + str(exptime) + '; filter = ' + filter)
+                    logging.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) + '; sun altitude=' + str(sunAltitude()) +
+                                 "; exptime=" + str(exptime) + '; filter = ' + filterInd)
                     os.remove(filename)
                     i = i-1
                     if exptime == minExpTime and morning:
@@ -802,6 +806,9 @@ def parseTargetLine(line):
 
 def doScience(cam, target):
 
+    if datetime.datetime.utcnow() > target['endtime']:
+        logging.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + "); skipping")
+
     initializeScope()
 
     logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
@@ -856,9 +863,9 @@ def doPretty(cam, target, RequestedFilters=['B','V','rp'], num=5):
             cam.SaveImage(filename)
 
 def parkScope():
-    # park the scope
+    # park the scope (no danger of pointing at the sun if opened during the day)
     parkAlt = 45.0
-    parkAz = 180.0
+    parkAz = 0.0 
 
     logging.info('Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
     mountGotoAltAz(parkAlt, parkAz)
@@ -933,6 +940,7 @@ if __name__ == '__main__':
     obs.horizon = '-12.0'
     sun = ephem.Sun()
     sunrise = obs.next_rising(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
+    sunrise = sunrise - datetime.timedelta(days=5)
 
     # Should be replaced by a function getTarget() that calls
     # Sam's scheduler    
@@ -942,7 +950,6 @@ if __name__ == '__main__':
             target = parseTargetLine(line)
             if target['endtime'] > sunrise: # check if the end is after sunrise
                 target['endtime'] = sunrise
-            ipdb.set_trace()
     # Start Science Obs
             doScience(cam, target)
 
@@ -974,6 +981,8 @@ if __name__ == '__main__':
 
     # Take Morning Sky flats
     doSkyFlat(cam, ['V','B','rp'], morning=True)
+
+    closeAqawan()
 
     # Take biases and darks
     doDark(cam)
