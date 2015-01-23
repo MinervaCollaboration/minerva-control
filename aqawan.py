@@ -495,7 +495,7 @@ def oktoopen():
         'barometer':[0,2000], 
         'windGustSpeed':[0.0,30.0], 
         'outsideHumidity':[0.0,75.0], 
-        'outsideDewPt':[-20.0,50.0],
+        'outsideDewPt':[-100.0,100.0],
         'outsideTemp':[-20.0,50.0], 
         'windSpeed':[0.0,30.0], 
         'windDirectionDegrees':[0.0,360.0],
@@ -522,6 +522,7 @@ def connectCamera():
 
     setTemp = -30
     maxCooling = 50
+    maxdiff = 1.0 # maximum allowed difference between setpoint and ccdtemp
     settleTime = 600
     xbin = 1
     ybin = 1
@@ -578,7 +579,7 @@ def connectCamera():
     elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 
     # Wait for temperature to settle (timeout of 10 minutes)
-    while elapsedTime < settleTime and (abs(setTemp - currentTemp) > 0.5):    
+    while elapsedTime < settleTime and (abs(setTemp - currentTemp) > maxdiff):    
         logging.info('Current temperature (' + str(currentTemp) + ') not at setpoint (' + str(setTemp) +
                      '); waiting for CCD Temperature to stabilize (Elapsed time: ' + str(elapsedTime) + ' seconds)')
         time.sleep(10)
@@ -586,7 +587,7 @@ def connectCamera():
         elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 
     # Failed to reach setpoint
-    if (abs(setTemp - currentTemp)) > 0.5:
+    if (abs(setTemp - currentTemp)) > maxdiff:
         logging.error('The camera was unable to reach its setpoint (' + str(setTemp) + ') in the elapsed time (' + str(elapsedTime) + ' seconds)')
         return -1
 
@@ -891,6 +892,16 @@ if __name__ == '__main__':
     logging.basicConfig(filename=datapath + night + '.log', format="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S", level=logging.DEBUG)  
     logging.Formatter.converter = time.gmtime
 
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+#    # set a format which is simpler for console use
+#    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+#    # tell the handler to use this format
+#    console.setFormatter(formatter)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
+
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=aqawan, args=(), kwargs={})
     aqawanThread.start()
@@ -901,7 +912,7 @@ if __name__ == '__main__':
 
     # Take biases and darks
 #    doBias(cam)
-#    doDark(cam)
+#    doDark(cam, exptime=5, num=3)
 
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
@@ -910,28 +921,46 @@ if __name__ == '__main__':
         response = openAqawan()
         if response == -1: time.sleep(60)
 
-    #ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
+#    ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
     # Take Evening Sky flats
-    doSkyFlat(cam, ['B','V','rp'])
+    #doSkyFlat(cam, ['B','V','rp'])
 
-    ipdb.set_trace()
+    #ipdb.set_trace()
 
+    # needs to make sure it's tonight's sunrise!
     obs = setObserver()
-    obs.horizon = '-6.0'
+    obs.horizon = '-12.0'
     sun = ephem.Sun()
     sunrise = obs.next_rising(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
 
     # Should be replaced by a function getTarget() that calls
-    # Sam's scheduler
+    # Sam's scheduler    
     with open('targets.list', 'r') as targetfile:
-    next(targetfile) # skip the header line
-    for line in targetfile:
-        target = parseTargetLine(line)
-        if target['endtime'] > sunrise: # check if the end is after sunrise
-            target['endtime'] = sunrise
-        # Start Science Obs
-        doScience(cam, target)
+        next(targetfile) # skip the header line
+        for line in targetfile:
+            target = parseTargetLine(line)
+            if target['endtime'] > sunrise: # check if the end is after sunrise
+                target['endtime'] = sunrise
+            ipdb.set_trace()
+    # Start Science Obs
+            doScience(cam, target)
+
+
+
+    # reinstituting the dictionary until astropy is installed
+#    target = {
+#        'name'   : 'M77',
+#        'ra'   : 2.7113055, # decimal hours
+#        'dec'  : -0.013333, # deg
+#        'exptime'  : 240, # sec
+#        'filter'  : 'V',
+#        'starttime'  : datetime.datetime(2015,1,20,22,00,00),
+#        'endtime' : datetime.datetime(2015,1,23,4,05,00),
+#    }
+
+#    # Start Science Obs
+#    doScience(cam, target)
 
     # Take pretty pictures
     RequestedFilters = ['B','V','rp']
@@ -944,11 +973,11 @@ if __name__ == '__main__':
     #doPretty(cam, target, RequestedFilters=RequestedFilters, num=num)
 
     # Take Morning Sky flats
-    #doSkyFlat(cam, ['V'], morning=True)
+    doSkyFlat(cam, ['V','B','rp'], morning=True)
 
     # Take biases and darks
-    #doDark(cam)
-    #doBias(cam)
+    doDark(cam)
+    doBias(cam)
 
     endNight()
     
