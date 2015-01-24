@@ -1,5 +1,5 @@
 import urllib, urllib2, datetime, time
-import telnetlib, socket, os, glob, ipdb
+import telnetlib, socket, os, glob, json, ipdb
 import threading, sys, logging
 from win32com.client import Dispatch
 import ephem, math
@@ -9,12 +9,15 @@ from astropy.time import Time
 
 Observing = True
 
-# reset the night at local 9 am
+# reset the night at local 10 am
 today = datetime.datetime.utcnow()
 
-if datetime.datetime.now().hour > 9 and datetime.datetime.now().hour < 17:
+if datetime.datetime.now().hour > 10 and datetime.datetime.now().hour < 17:
     today = today + datetime.timedelta(days=1)
 night = 'n' + today.strftime('%Y%m%d')
+
+# the most recent local 10 am (17:00 UTC)
+startNightTime = datetime.datetime(today.year, today.month, today.day, 17) - datetime.timedelta(days=1)
 
 # Telescope communications
 HOST = "127.0.0.1" # Localhost
@@ -274,7 +277,7 @@ def getWeather():
     try:
         response = urllib2.urlopen(request)
     except:
-        logging.error('Error reading the weather page: ' + sys.exc_info()[0])
+        logging.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
         return -1
     
     data = response.read().split('\n')
@@ -303,11 +306,8 @@ def getWeather():
 
     if pageError: return -1
 
-
     # if everything checks out, return the weather
     return weather
-
-
 
 def aqawanCommunicate(message):
 
@@ -478,7 +478,7 @@ def closeAqawan():
         else:
             logging.info(response)    
             start = datetime.datetime.utcnow()
-            while status['Shutter1'] <> "CLOSED" and status['Shutter2'] <> "CLOSED" and elapsedTime < timeout:
+            while (status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED") and elapsedTime < timeout:
                 elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
                 status = aqawanStatus()
             if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
@@ -565,7 +565,11 @@ def connectCamera():
     cam.NumY = ysize # CENTER_SUBFRAME_HEIGHT
 
     # Set temperature
-    weather = getWeather()
+    weather = -1
+    while weather == -1:
+        weather = getWeather()
+        if weather == -1: time.sleep(1)
+        
     if weather['outsideTemp'] > (setTemp + maxCooling):
         logging.error('The outside temperature (' + str(weather['outsideTemp']) + ' is too warm to achieve the set point (' + str(setTemp) + ')')
         return -1
@@ -644,7 +648,7 @@ def doSkyFlat(cam, filters, morning=False, num=11):
 
     biasLevel = 3200
     targetCounts = 10000
-    saturation = 16000
+    saturation = 15000
     maxExpTime = 60
     minExpTime = 10
 
@@ -657,16 +661,22 @@ def doSkyFlat(cam, filters, morning=False, num=11):
         if morning:
             logging.info('Sun setting and morning flats requested; skipping')
             return
+        if sunAltitude() < minSunAlt:
+            logging.info('Sun setting and already too low; skipping')
+            return               
         obs.horizon = str(maxSunAlt)
-        flatStartTime = obs.next_setting(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
+        flatStartTime = obs.next_setting(sun,start=startNightTime, use_center=True).datetime()
         secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
     else:
         # Sun rising (morning)
         if not morning:
             logging.info('Sun rising and evening flats requested; skipping')
             return
+        if sunAltitude() > maxSunAlt:
+            logging.info('Sun rising and already too high; skipping')
+            return  
         obs.horizon = str(minSunAlt)
-        flatStartTime = obs.next_rising(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
+        flatStartTime = obs.next_rising(sun,start=startNightTime, use_center=True).datetime()
         secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
 
     if secondsUntilTwilight > 7200:
@@ -676,7 +686,6 @@ def doSkyFlat(cam, filters, morning=False, num=11):
     # wait for twilight
     if secondsUntilTwilight > 0 and (sunAltitude() < minSunAlt or sunAltitude() > maxSunAlt):
         logging.info('Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
-        ipdb.set_trace()
         time.sleep(secondsUntilTwilight)
 
     # Now it's within 5 minutes of twilight flats
@@ -696,9 +705,10 @@ def doSkyFlat(cam, filters, morning=False, num=11):
 
     for filterInd in masterfilters:
         if filterInd in filters:
-        
-            for i in range(num):
 
+            i = 0
+            while i < num:
+                
                 # Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
                 Alt = 75.0 # degrees (somewhat site dependent)
                 Az = sunAzimuth() + 180.0 # degrees
@@ -707,6 +717,12 @@ def doSkyFlat(cam, filters, morning=False, num=11):
                 # keep slewing to the optimally flat part of the sky (dithers too)
                 logging.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
                 mountGotoAltAz(Alt,Az)
+
+                if telescopeInPosition():
+                    logging.info("Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+                else:
+                    logging.error("Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+
             
                 # Take flat fields
                 filename = takeImage(cam, exptime, filterInd, 'SkyFlat')
@@ -719,16 +735,17 @@ def doSkyFlat(cam, filters, morning=False, num=11):
                     logging.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) + '; sun altitude=' + str(sunAltitude()) +
                                  "; exptime=" + str(exptime) + '; filter = ' + filterInd)
                     os.remove(filename)
-                    i = i-1
+                    i-=1
                     if exptime == minExpTime and morning:
                         logging.info("Exposure time at minimum, image saturated, and getting brighter; skipping remaining exposures in filter " + filterInd)
                         break
                 elif mode < 2.0*biasLevel:
                     # Too little signal
-                    i = i-1
                     logging.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) + '; sun altitude=' + str(sunAltitude()) +
                                  "; exptime=" + str(exptime) + '; filter = ' + filterInd)
                     os.remove(filename)
+                    i -= 1
+
                     if exptime == maxExpTime and not morning:
                         logging.info("Exposure time at maximum, not enough counts, and getting darker; skipping remaining exposures in filter " + filterInd)
                         break
@@ -744,6 +761,7 @@ def doSkyFlat(cam, filters, morning=False, num=11):
                     exptime = max([minExpTime,exptime])
                     exptime = min([maxExpTime,exptime])
                     logging.info("Scaling exptime to " + str(exptime))
+                i += 1
 
 def takeImage(cam, exptime, filterInd, objname):
 
@@ -791,6 +809,35 @@ def initializeScope():
     # turning on rotator tracking
     logging.info('Turning rotator tracking on')
     rotatorStartDerotating()
+
+def parseTarget(line):
+
+#    # ---- example to create target file ----
+#    target = {
+#        'name' : 'M77',
+#        'ra' : 2.7113055,
+#        'dec':-0.013333,
+#        'exptime':[240.0,240.0,240.0],
+#        'filter':['B','V','rp'],
+#        'num':[5,5,5],
+#        'starttime': '2015-01-23 05:00:00',
+#        'endtime': '2015-01-24 05:00:00',
+#        'selfguide': True,
+#        'guide':False,
+#        'defocus':0.0,
+#        'cycleFilter':True,
+#    }
+#    with open('list.txt','w') as outfile:
+#        json.dump(target,outfile)
+#    # --------------------------------------
+
+    target = json.loads(line)
+
+    # convert strings to datetime objects
+    target['starttime'] = datetime.datetime.strptime(target['starttime'],'%Y-%m-%d %H:%M:%S')
+    target['endtime'] = datetime.datetime.strptime(target['endtime'],'%Y-%m-%d %H:%M:%S')
+
+    return target
     
 def parseTargetLine(line):
     desc = ['name','ra','dec','exptime','filter','starttime','endtime']
@@ -804,20 +851,64 @@ def parseTargetLine(line):
     splitline[6] = Time(float(splitline[6]), scale='utc', format='jd').datetime # endtime
     return dict(zip(desc, splitline))
 
+def telescopeInPosition():
+    # Wait for telescope to complete motion
+    timeout = 60.0
+    start = datetime.datetime.utcnow()
+    elapsedTime = 0
+    telescopeStatus = getStatus()
+    while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout:
+        time.sleep(0.1)
+        elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+        telescopeStatus = getStatus()
+        
+    if telescopeStatus.mount.on_target:
+        return True
+    else: return False
+
 def doScience(cam, target):
 
+    # if after end time, return
     if datetime.datetime.utcnow() > target['endtime']:
         logging.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + "); skipping")
+        return
+
+    # if before start time, wait
+    if datetime.datetime.utcnow() < target['starttime']:
+        waittime = (target['starttime']-datetime.datetime.utcnow()).total_seconds()
+        logging.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
+        time.sleep(waittime)
 
     initializeScope()
-
+    
     logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
     mountGotoRaDecJ2000(target['ra'], target['dec'])
-    logging.info("Finished slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
 
-    while datetime.datetime.utcnow() < target['endtime']:
-        logging.info('Beginning ' + str(target['exptime']) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'] + ' band') 
-        takeImage(cam, target['exptime'], target['filter'], target['name'])
+    if telescopeInPosition():
+        logging.info("Finished slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
+    else:
+        logging.error("Slew failed to J2000 " + str(target['ra']) + ',' + str(target['dec']))
+
+    if target['defocus'] <> 0.0:
+        logging.info("Defocusing Telescope by " + str(target['defocus']) + ' mm')
+        focuserIncrement(target['defocus']*1000.0)
+
+    # take one in each band, then loop over number (e.g., B,V,R,B,V,R,B,V,R)
+    if target['cycleFilter']:
+        for i in range(max(target['num'])):
+            for j in range(len(target['filter'])):
+                if datetime.datetime.utcnow() > target['endtime']: return
+                if i < target['num'][j]:
+                    logging.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
+                    takeImage(cam, target['exptime'][j], target['filter'][j], target['name'])
+    else:
+        # take all in each band, then loop over filters (e.g., B,B,B,V,V,V,R,R,R) 
+        for j in range(len(target['filter'])):
+            # cycle by number
+            for i in range(target['num'][j]):
+                if datetime.datetime.utcnow() > target['endtime']: return
+                logging.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
+                takeImage(cam, target['exptime'][j], target['filter'][j], target['name'])
 
 def doPretty(cam, target, RequestedFilters=['B','V','rp'], num=5):
 
@@ -869,6 +960,7 @@ def parkScope():
 
     logging.info('Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
     mountGotoAltAz(parkAlt, parkAz)
+    telescopeInPosition()
 
     logging.info('Turning mount tracking off')
     mountTrackingOff()
@@ -887,7 +979,25 @@ def endNight():
     #TODO: Compress the data
 
     #TODO: Back up the data
-    
+
+def autoFocus():
+
+    nominalFocus = 25500
+    focuserConnect()
+
+    logging.info('Moving to nominal focus (' + str(nominalFocus) + ')')
+    focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
+    status = getStatus()
+    while status.focuser.moving == 'True':
+        time.sleep(0.3)
+        status = getStatus()
+
+    logging.info('Starting Autofocus')
+    startAutoFocus()
+    status = getStatus()
+    while status.focuser.auto_focus_busy == 'True':
+        time.sleep(1)
+        status = getStatus()
 
 
 if __name__ == '__main__':
@@ -917,9 +1027,11 @@ if __name__ == '__main__':
     cam = connectCamera()
     mountConnect()
 
+    ipdb.set_trace()
+
     # Take biases and darks
 #    doBias(cam)
-#    doDark(cam, exptime=5, num=3)
+#    doDark(cam, exptime=60, num=11)
 
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
@@ -931,54 +1043,33 @@ if __name__ == '__main__':
 #    ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
     # Take Evening Sky flats
-    #doSkyFlat(cam, ['B','V','rp'])
+    doSkyFlat(cam, ['B','V','rp'])
 
-    #ipdb.set_trace()
-
-    # needs to make sure it's tonight's sunrise!
+    # Determine sunrise/sunset times
     obs = setObserver()
     obs.horizon = '-12.0'
     sun = ephem.Sun()
-    sunrise = obs.next_rising(sun,start=datetime.datetime.utcnow(), use_center=True).datetime()
-    sunrise = sunrise - datetime.timedelta(days=5)
+    sunrise = obs.next_rising(sun, start=startNightTime, use_center=True).datetime()
+    sunset = obs.next_setting(sun, start=startNightTime, use_center=True).datetime()
 
-    # Should be replaced by a function getTarget() that calls
-    # Sam's scheduler    
-    with open('targets.list', 'r') as targetfile:
-        next(targetfile) # skip the header line
+    # find the best focus for the night
+    autoFocus()
+
+    # read the target list
+    with open(night + '.txt', 'r') as targetfile:
         for line in targetfile:
-            target = parseTargetLine(line)
-            if target['endtime'] > sunrise: # check if the end is after sunrise
+            target = parseTarget(line)
+            
+            # check if the end is before sunrise
+            if target['endtime'] > sunrise: 
                 target['endtime'] = sunrise
-    # Start Science Obs
+            # check if the start is after sunset
+            if target['starttime'] < sunset: 
+                target['starttime'] = sunset
+
+            # Start Science Obs
             doScience(cam, target)
-
-
-
-    # reinstituting the dictionary until astropy is installed
-#    target = {
-#        'name'   : 'M77',
-#        'ra'   : 2.7113055, # decimal hours
-#        'dec'  : -0.013333, # deg
-#        'exptime'  : 240, # sec
-#        'filter'  : 'V',
-#        'starttime'  : datetime.datetime(2015,1,20,22,00,00),
-#        'endtime' : datetime.datetime(2015,1,23,4,05,00),
-#    }
-
-#    # Start Science Obs
-#    doScience(cam, target)
-
-    # Take pretty pictures
-    RequestedFilters = ['B','V','rp']
-    num = 3
     
-    #focuserConnect()
-    #focuserMove(25500) # To get close to reasonable. Probably not a good general postion
-    #startAutoFocus()
-
-    #doPretty(cam, target, RequestedFilters=RequestedFilters, num=num)
-
     # Take Morning Sky flats
     doSkyFlat(cam, ['V','B','rp'], morning=True)
 
