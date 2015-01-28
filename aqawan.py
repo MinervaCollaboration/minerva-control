@@ -4,6 +4,7 @@ import threading, sys, logging
 from win32com.client import Dispatch
 import ephem, math
 from xml.etree import ElementTree
+from subprocess import call
 import pyfits
 from astropy.time import Time
 
@@ -995,8 +996,14 @@ def parkScope():
     
     logging.info('Turning rotator tracking off')
     rotatorStopDerotating()
-    
-def endNight():
+
+def compressData(dataPath):
+    files = glob.glob(dataPath + "/*.fits")
+    for filename in files:
+        logging.info('Compressing ' + filename)
+        call(['cfitsio/fpack.exe','-D',filename])
+        
+def endNight(dataPath):
 
     # park the scope
     parkScope()
@@ -1004,7 +1011,8 @@ def endNight():
     # Close the aqawan
     closeAqawan()
     
-    #TODO: Compress the data
+    # Compress the data
+    compressData(dataPath)
 
     #TODO: Back up the data
 
@@ -1046,6 +1054,9 @@ if __name__ == '__main__':
 #    console.setFormatter(formatter)
     # add the handler to the root logger
     logging.getLogger('').addHandler(console)
+
+    compressData(datapath)
+    ipdb.set_trace()
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=aqawan, args=(), kwargs={})
