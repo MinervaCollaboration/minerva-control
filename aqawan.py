@@ -8,6 +8,8 @@ import pyfits
 from astropy.time import Time
 
 Observing = True
+sunOverride = False
+cloudOverride = False
 
 # reset the night at local 10 am
 today = datetime.datetime.utcnow()
@@ -281,6 +283,7 @@ def getWeather():
         return -1
     
     data = response.read().split('\n')
+    if data[0] == '': return -1
     
     # convert the date into a datetime object
     weather = {
@@ -291,13 +294,33 @@ def getWeather():
         weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
 #        logging.info(parameter)
 
+    # add in the Sun Altitude
     weather['sunAltitude'] = sunAltitude()
+
+    # add in the cloud monitor
+    url = "http://mearth.sao.arizona.edu/weather/now"
+
+    # read the webpage
+    logging.info('Requesting URL: ' + url)
+    request = urllib2.Request(url)
+    try:
+        response = urllib2.urlopen(request)
+    except:
+        logging.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
+        return -1
+    data = response.read().split()
+    if data[0] == '': return -1    
+    if len(data) <> 14: return -1
+
+    # MJD to datetime
+    weather['cloudDate'] = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
+    weather['relativeSkyTemp'] = float(data[13])
 
     # make sure all required keys are present
     pageError = False
     requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
                     'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
-                    'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude']
+                    'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude', 'cloudDate', 'relativeSkyTemp']
     for key in requiredKeys:
         if not key in weather.keys():
             # if not, return an error
@@ -501,7 +524,12 @@ def oktoopen():
         'windDirectionDegrees':[0.0,360.0],
         'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
         'sunAltitude':[-90,6],
+        'relativeSkyTemp':[-999,-40],
+        'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
         }
+
+    if sunOverride: weatherLimits['sunAltitude'] = [-90,90]
+    if cloudOverride: weahterLimits['ambientSkyTemp'] = [-999,999]
 
     # get the current weather, timestamp, and Sun's position
     weather = getWeather()
@@ -1027,11 +1055,14 @@ if __name__ == '__main__':
     cam = connectCamera()
     mountConnect()
 
-    ipdb.set_trace()
+#    ipdb.set_trace()
 
     # Take biases and darks
-#    doBias(cam)
-#    doDark(cam, exptime=60, num=11)
+    doBias(cam)
+    doDark(cam, exptime=60, num=11)
+
+    ipdb.set_trace()
+
 
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
@@ -1042,8 +1073,10 @@ if __name__ == '__main__':
 
 #    ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
+    flatFilters = ['B','ip']
+
     # Take Evening Sky flats
-    doSkyFlat(cam, ['B','V','rp'])
+    doSkyFlat(cam, flatFilters)
 
     # Determine sunrise/sunset times
     obs = setObserver()
@@ -1052,8 +1085,15 @@ if __name__ == '__main__':
     sunrise = obs.next_rising(sun, start=startNightTime, use_center=True).datetime()
     sunset = obs.next_setting(sun, start=startNightTime, use_center=True).datetime()
 
+    timeUntilSunset = (sunset - datetime.datetime.utcnow()).total_seconds()
+    if timeUntilSunset > 0:
+        logging.info('Waiting for sunset (' + str(timeUntilSunset) + 'seconds)')
+        time.sleep(timeUntilSunset)
+    
     # find the best focus for the night
     autoFocus()
+
+    ipdb.set_trace()
 
     # read the target list
     with open(night + '.txt', 'r') as targetfile:
@@ -1071,7 +1111,7 @@ if __name__ == '__main__':
             doScience(cam, target)
     
     # Take Morning Sky flats
-    doSkyFlat(cam, ['V','B','rp'], morning=True)
+    doSkyFlat(cam, flatFilters, morning=True)
 
     closeAqawan()
 
