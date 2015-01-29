@@ -6,11 +6,19 @@ import ephem, math
 from xml.etree import ElementTree
 from subprocess import call
 import pyfits
-from astropy.time import Time
+#from astropy.time import Time
+import shutil
+
+# google drive dependencies
+import httplib2
+import pprint
+from apiclient.discovery import build
+from apiclient.http import MediaFileUpload
+from oauth2client.client import OAuth2WebServerFlow
 
 Observing = True
 sunOverride = False
-cloudOverride = False
+cloudOverride = True
 
 # reset the night at local 10 am
 today = datetime.datetime.utcnow()
@@ -317,11 +325,17 @@ def getWeather():
     weather['cloudDate'] = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
     weather['relativeSkyTemp'] = float(data[13])
 
+    # Determine the last time the enclosure closed
+    f = open('lastClose.txt','r')
+    weather['lastClose'] = datetime.datetime.strptime(f.readline(),'%Y-%m-%d %H:%M:%S')
+    f.close()
+   
     # make sure all required keys are present
     pageError = False
     requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
                     'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
-                    'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude', 'cloudDate', 'relativeSkyTemp']
+                    'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
+                    'cloudDate', 'relativeSkyTemp','lastClose']
     for key in requiredKeys:
         if not key in weather.keys():
             # if not, return an error
@@ -329,6 +343,15 @@ def getWeather():
             pageError = True
 
     if pageError: return -1
+
+    json_weather = weather
+    json_weather['date'] = str(weather['date'])
+    json_weather['cloudDate'] = str(weather['cloudDate'])
+    json_weather['lastClose'] = str(weather['lastClose'])
+
+    # Write latest telemetry into file for headers
+    with open('weather.txt','w') as outfile:
+        json.dump(json_weather,outfile)
 
     # if everything checks out, return the weather
     return weather
@@ -383,7 +406,7 @@ def aqawan():
 
     while Observing:            
         logging.info(aqawanCommunicate('HEARTBEAT'))
-        if not oktoopen():
+        if not oktoopen(open=True):
             closeAqawan()
         time.sleep(15)
         
@@ -508,16 +531,22 @@ def closeAqawan():
             if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
                 logging.error('Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
                 # need to send alerts, attempt other stuff
+            else:
+                logging.info('Closed both shutters')
+                f = open('lastClose.txt','w')
+                f.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))
+                f.close()
                 
-def oktoopen():
+def oktoopen(open=False):
     retval = True    
 
     # define the safe limits [min,max] for each weather parameter
-    weatherLimits = {
+    # define more conservative limits to open to prevent cycling when borderline conditions
+    openLimits = {
         'totalRain':[0.0,1000.0],
         'wxt510Rain':[0.0,0.0], 
         'barometer':[0,2000], 
-        'windGustSpeed':[0.0,30.0], 
+        'windGustSpeed':[0.0,35.0], 
         'outsideHumidity':[0.0,75.0], 
         'outsideDewPt':[-100.0,100.0],
         'outsideTemp':[-20.0,50.0], 
@@ -525,12 +554,33 @@ def oktoopen():
         'windDirectionDegrees':[0.0,360.0],
         'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
         'sunAltitude':[-90,6],
-        'relativeSkyTemp':[-999,-40],
+        'relativeSkyTemp':[-999,-37],
         'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
+        'lastClose':[datetime.datetime(2000,1,1),datetime.datetime.utcnow()-datetime.timedelta(minutes=20)],
         }
 
+    closeLimits = {
+        'totalRain':[0.0,1000.0],
+        'wxt510Rain':[0.0,0.0], 
+        'barometer':[0,2000], 
+        'windGustSpeed':[0.0,40.0], 
+        'outsideHumidity':[0.0,80.0], 
+        'outsideDewPt':[-100.0,100.0],
+        'outsideTemp':[-30.0,60.0], 
+        'windSpeed':[0.0,35.0], 
+        'windDirectionDegrees':[0.0,360.0],
+        'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
+        'sunAltitude':[-90,6],
+        'relativeSkyTemp':[-999,-40],
+        'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
+        'lastClose':[datetime.datetime(2000,1,1),datetime.datetime(2200,1,1)],
+        }
+
+    if open: weatherLimits = closeLimits
+    else: weatherLimits = openLimits
+
     if sunOverride: weatherLimits['sunAltitude'] = [-90,90]
-    if cloudOverride: weahterLimits['ambientSkyTemp'] = [-999,999]
+    if cloudOverride: weatherLimits['relativeSkyTemp'] = [-999,999]
 
     # get the current weather, timestamp, and Sun's position
     weather = getWeather()
@@ -824,6 +874,62 @@ def takeImage(cam, exptime, filterInd, objname):
     logging.info('Saving image: ' + filename)
     cam.SaveImage(filename)
 
+    # faster way?
+    t0=datetime.datetime.utcnow()
+    f = pyfits.open(filename, mode='update')
+
+    telescopeStatus = getStatus()
+
+    # Site Specific
+    f[0].header['LST'] = (telescopeStatus.status.lst,"Local Sidereal Time")
+
+    # Mount specific
+    f[0].header['TELRA'] = (telescopeStatus.mount.ra_2000,"Telescope RA (J2000)")
+    f[0].header['TELDEC'] = (telescopeStatus.mount.dec_2000,"Telescope Dec (J2000)")
+    f[0].header['RA'] = (telescopeStatus.mount.ra_target, "Target RA (J2000)")
+    f[0].header['DEC'] =  (telescopeStatus.mount.dec_target, "Target Dec (J2000)")
+    f[0].header['PMODEL'] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
+
+    # Focuser Specific
+    f[0].header['FOCPOS'] = (telescopeStatus.focuser.position,"Focus Position (microns)")
+
+    # Rotator Specific
+    f[0].header['ROTPOS'] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
+
+    # M3 Specific
+    f[0].header['PORT'] = (telescopeStatus.m3.port,"Selected port")    
+    
+    # Fans
+    f[0].header['FANON'] = (telescopeStatus.fans.on,"OTA Fans on?")    
+
+    # Telemetry
+    f[0].header['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
+    f[0].header['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
+    f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
+    f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
+    f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
+
+    # Weather
+    w = open('weather.txt')
+    weather = json.load(w)
+    w.close()
+    
+    f[0].header['WJD'] = (weather['date'],"Date of update of weather (UTC)")
+    f[0].header['RAIN'] = (weather['wxt510Rain'],"Current Rain (mm?)")
+    f[0].header['TOTRAIN'] = (weather['totalRain'],"Total Rain (mm?)")
+    f[0].header['OUTTEMP'] = (weather['outsideTemp'],"Outside Temperature (C)")
+    f[0].header['SKYTEMP'] = (weather['relativeSkyTemp'],"Sky - Ambient (C)")
+    f[0].header['DEWPOINT'] = (weather['outsideDewPt'],"Dewpoint (C)")
+    f[0].header['WINDSPD'] = (weather['windSpeed'],"Wind Speed (mph)")
+    f[0].header['WINDGUST'] = (weather['windGustSpeed'],"Wind Gust Speed (mph)")
+    f[0].header['WINDIR'] = (weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
+    f[0].header['PRESSURE'] = (weather['barometer'],"Outside Pressure (mmHg?)")
+    f[0].header['SUNALT'] = (weather['sunAltitude'],"Sun Altitude (deg)")
+
+    f.flush()
+    f.close()
+#    print (datetime.datetime.utcnow()-t0).total_seconds()
+    
     return filename
 
 def initializeScope():
@@ -868,18 +974,6 @@ def parseTarget(line):
 
     return target
     
-def parseTargetLine(line):
-    desc = ['name','ra','dec','exptime','filter','starttime','endtime']
-    splitline = line.strip().split(',')
-    splitline[0] = splitline[0].lstrip() # name
-    splitline[1] = float(splitline[1]) # ra
-    splitline[2] = float(splitline[2]) # dec
-    splitline[3] = int(splitline[3]) # exptime
-    splitline[4] = splitline[4].lstrip() # filter
-    splitline[5] = Time(float(splitline[5]), scale='utc', format='jd').datetime # starttime
-    splitline[6] = Time(float(splitline[6]), scale='utc', format='jd').datetime # endtime
-    return dict(zip(desc, splitline))
-
 def telescopeInPosition():
     # Wait for telescope to complete motion
     timeout = 60.0
@@ -939,49 +1033,6 @@ def doScience(cam, target):
                 logging.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
                 takeImage(cam, target['exptime'][j], target['filter'][j], target['name'])
 
-def doPretty(cam, target, RequestedFilters=['B','V','rp'], num=5):
-
-    # Wait until the start time
-    timeUntilStart = (target['starttime'] - datetime.datetime.utcnow()).total_seconds()
-    if timeUntilStart > 0:
-        logging.info("Started before start time; waiting " + str(timeUntilStart) + ' seconds')
-        time.sleep(timeUntilStart)
-
-    # definition of "Light" exposure for maxim
-    LIGHT = 1 
-
-    # Slew the telescope to the target
-    logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
-    mountGotoRaDecJ2000(target['ra'], target['dec'])
-    logging.info("Finished slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
-
-    # Static definition of the filters (is there a function to query these?)
-    filters = {
-        'B'   : 0,
-        'V'   : 1,
-        'gp'  : 2,
-        'rp'  : 3,
-        'ip'  : 4,
-        'zp'  : 5,
-        'air' : 6,
-    }
-
-    # Check to make sure the requested filter is available
-    if not target['filter'] in filters.keys():
-        logging.error("Requested filter (" + target['filter'] + " not available")
-        return -1
-
-    for filterInd in RequestedFilters:
-        for i in range(num):
-            logging.info('Beginning ' + str(target['exptime']) + ' second exposure of ' + target['name'] + ' in the ' + filterInd + ' band')       
-            cam.Expose(target['exptime'], LIGHT, filters[filterInd])
-            while not cam.ImageReady:
-                time.sleep(0.1)     
-            filename = datapath + "/" + night + ".T3." + target['name'] + "." + filterInd + "." + getIndex(datapath) + ".fits"
-            # Save the image
-            logging.info("Saving image: " + filename)
-            cam.SaveImage(filename)
-
 def parkScope():
     # park the scope (no danger of pointing at the sun if opened during the day)
     parkAlt = 45.0
@@ -1002,6 +1053,73 @@ def compressData(dataPath):
     for filename in files:
         logging.info('Compressing ' + filename)
         call(['cfitsio/fpack.exe','-D',filename])
+
+# upload data to google drive
+def backup():
+
+    return
+
+    # Copy to a locally mounted drive
+    backupPath = "C:/Users/pwi/Google Drive/data/"
+    backupPath = "C:/Users/pwi/data/"
+
+    files = glob.glob("E:/n*/*")
+
+    for filename in files:
+        subdir = os.path.basename(os.path.dirname(filename))
+        backupdir = os.path.join(backupPath, subdir)
+        backupname = os.path.join(backupdir, os.path.basename(filename))
+
+        if not os.path.exists(backupdir):
+            os.makedirs(backupdir)        
+
+        if not os.path.isfile(backupname):
+            logging.info('Backing up ' + filename + ' to ' + backupname)
+            shutil.copy2(filename, backupname)
+        ipdb.set_trace()
+    return
+
+    # Use the google API to upload directly to google drive
+    #***NOT WORKING***
+    
+    # Copy your credentials from the console
+    CLIENT_ID = '297286070394-7ntbvh2bo8tuceot54rnai2m04pv78ba.apps.googleusercontent.com'
+    CLIENT_SECRET = '5LXpf9lDaVwrO8tPPF5eKhZ9'
+
+    # Check https://developers.google.com/drive/scopes for all available scopes
+    OAUTH_SCOPE = 'https://www.googleapis.com/auth/drive'
+
+    # Redirect URI for installed apps
+    REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
+
+    # Run through the OAuth flow and retrieve credentials
+    flow = OAuth2WebServerFlow(CLIENT_ID, CLIENT_SECRET, OAUTH_SCOPE,
+                               redirect_uri=REDIRECT_URI)
+    authorize_url = flow.step1_get_authorize_url()
+    print 'Go to the following link in your browser: ' + authorize_url
+    code = raw_input('Enter verification code: ').strip()
+    credentials = flow.step2_exchange(code)
+
+    # Create an httplib2.Http object and authorize it with our credentials
+    http = httplib2.Http()
+    http = credentials.authorize(http)
+
+    drive_service = build('drive', 'v2', http=http)
+
+    files = glob.glob(dataPath + "*.fz")
+    for filename in files:
+                        
+        # Insert a file
+        media_body = MediaFileUpload(filename, resumable=True)
+        body={'name':filename}
+
+        file = drive_service.files().insert(body=body, media_body=media_body).execute()
+        logging.info('Uploaded ' + filename + ' to the google drive')
+
+    return
+
+
+                        
         
 def endNight(dataPath):
 
@@ -1015,6 +1133,7 @@ def endNight(dataPath):
     compressData(dataPath)
 
     #TODO: Back up the data
+#    backup(dataPath)
 
 def autoFocus():
 
@@ -1055,7 +1174,9 @@ if __name__ == '__main__':
     # add the handler to the root logger
     logging.getLogger('').addHandler(console)
 
-    compressData(datapath)
+#    backup()
+    cam = connectCamera()
+    takeImage(cam,0,'B','Bias')
     ipdb.set_trace()
 
     # run the aqawan heartbeat and weather checking asynchronously
@@ -1070,9 +1191,9 @@ if __name__ == '__main__':
 
     # Take biases and darks
     doBias(cam)
-    doDark(cam, exptime=60, num=11)
+    doDark(cam)
 
-    ipdb.set_trace()
+    #ipdb.set_trace()
 
 
     # keep trying to open the aqawan every minute
@@ -1082,9 +1203,9 @@ if __name__ == '__main__':
         response = openAqawan()
         if response == -1: time.sleep(60)
 
-#    ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
+   # ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
-    flatFilters = ['B','ip']
+    flatFilters = ['V']
 
     # Take Evening Sky flats
     doSkyFlat(cam, flatFilters)
@@ -1104,7 +1225,7 @@ if __name__ == '__main__':
     # find the best focus for the night
     autoFocus()
 
-    ipdb.set_trace()
+    #ipdb.set_trace()
 
     # read the target list
     with open(night + '.txt', 'r') as targetfile:
@@ -1122,15 +1243,15 @@ if __name__ == '__main__':
             doScience(cam, target)
     
     # Take Morning Sky flats
-    doSkyFlat(cam, flatFilters, morning=True)
+#    doSkyFlat(cam, flatFilters, morning=True)
 
-    closeAqawan()
+    #closeAqawan() # This is in endNight now, it looks like
 
     # Take biases and darks
-    doDark(cam)
-    doBias(cam)
+#    doDark(cam)
+#    doBias(cam)
 
-    endNight()
+    endNight(datapath)
     
     # Stop the aqawan thread
     Observing = False
