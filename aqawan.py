@@ -397,6 +397,13 @@ def aqawanCommunicate(message):
 
     time.sleep(2)
 
+# much faster than querying the PAC
+def enclosureOpen():
+    with open("enclosureOpen.txt",'r') as f:
+        isOpen = f.read()
+        if isOpen == 'True': return True
+        return False
+        
 # should do this asychronously and continuously
 def aqawan():
 
@@ -501,6 +508,10 @@ def openAqawan():
         # Open Shutter 2
         response = openShutter(2)
         if response == -1: return -1
+
+        with open("enclosureOpen.txt",'w') as f: f.write("True")
+        return response
+
     else: return -1
 
 
@@ -512,7 +523,11 @@ def closeAqawan():
     status = aqawanStatus()
     if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
         logging.info('Both shutters already closed')
+        with open("enclosureOpen.txt",'w') as f: f.write("False")
     else:
+        # Park the telescope in a safe position
+        parkScope()
+        
         response = aqawanCommunicate('CLOSE_SEQUENTIAL')
         if not 'Success=TRUE' in response:
             logging.error('Aqawan failed to close!')
@@ -529,9 +544,9 @@ def closeAqawan():
                 # need to send alerts, attempt other stuff
             else:
                 logging.info('Closed both shutters')
-                f = open('lastClose.txt','w')
-                f.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))
-                f.close()
+                with open("lastClose.txt",'w') as f: f.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))
+                with open("enclosureOpen.txt",'w') as f: f.write("False")
+
                 
 def oktoopen(open=False):
     retval = True    
@@ -1015,6 +1030,17 @@ def telescopeInPosition():
         return True
     else: return False
 
+def acquireTarget(ra,dec):
+    initializeScope()
+    
+    logging.info("Starting slew to J2000 " + str(ra) + ',' + str(dec))
+    mountGotoRaDecJ2000(ra,dec)
+
+    if telescopeInPosition():
+        logging.info("Finished slew to J2000 " + str(ra) + ',' + str(dec))
+    else:
+        logging.error("Slew failed to J2000 " + str(ra) + ',' + str(dec))
+
 def doScience(cam, target):
 
     # if after end time, return
@@ -1028,15 +1054,8 @@ def doScience(cam, target):
         logging.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
         time.sleep(waittime)
 
-    initializeScope()
-    
-    logging.info("Starting slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
-    mountGotoRaDecJ2000(target['ra'], target['dec'])
-
-    if telescopeInPosition():
-        logging.info("Finished slew to J2000 " + str(target['ra']) + ',' + str(target['dec']))
-    else:
-        logging.error("Slew failed to J2000 " + str(target['ra']) + ',' + str(target['dec']))
+    # slew to the target
+    acquireTarget(target['ra'],target['dec'])
 
     if target['defocus'] <> 0.0:
         logging.info("Defocusing Telescope by " + str(target['defocus']) + ' mm')
@@ -1046,15 +1065,39 @@ def doScience(cam, target):
     if target['cycleFilter']:
         for i in range(max(target['num'])):
             for j in range(len(target['filter'])):
+
+                # if the enclosure is not open, wait until it is
+                while not enclosureOpen():
+                    response = openAqawan()
+                    if response == -1:
+                        logging.info('Enclosure closed; waiting for conditions to improve') 
+                        time.sleep(60)
+                    if datetime.datetime.utcnow() > target['endtime']: return
+                    # reacquire the target
+                    if enclosureOpen(): acquireTarget(target['ra'],target['dec'])
+
+
                 if datetime.datetime.utcnow() > target['endtime']: return
                 if i < target['num'][j]:
-                    logging.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-                    takeImage(cam, target['exptime'][j], target['filter'][j], target['name'])
+                        logging.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
+                        takeImage(cam, target['exptime'][j], target['filter'][j], target['name'])
+                
     else:
         # take all in each band, then loop over filters (e.g., B,B,B,V,V,V,R,R,R) 
         for j in range(len(target['filter'])):
             # cycle by number
             for i in range(target['num'][j]):
+
+                # if the enclosure is not open, wait until it is
+                while not enclosureOpen():
+                    response = openAqawan()
+                    if response == -1:
+                        logging.info('Enclosure closed; waiting for conditions to improve') 
+                        time.sleep(60)
+                    if datetime.datetime.utcnow() > target['endtime']: return
+                    # reacquire the target
+                    if enclosureOpen(): acquireTarget(target['ra'],target['dec'])
+                
                 if datetime.datetime.utcnow() > target['endtime']: return
                 logging.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
                 takeImage(cam, target['exptime'][j], target['filter'][j], target['name'])
@@ -1203,7 +1246,7 @@ if __name__ == '__main__':
 #    backup()
 #    cam = connectCamera()
 #    takeImage(cam,0,'B','Bias')
-#    ipdb.set_trace()
+    ipdb.set_trace()
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=aqawan, args=(), kwargs={})
@@ -1269,13 +1312,15 @@ if __name__ == '__main__':
             doScience(cam, target)
     
     # Take Morning Sky flats
-#    doSkyFlat(cam, flatFilters, morning=True)
+    doSkyFlat(cam, flatFilters, morning=True)
 
-    #closeAqawan() # This is in endNight now, it looks like
+    # Want to close the aqawan before darks and biases
+    # closeAqawan in endNight just a double check
+    closeAqawan()
 
     # Take biases and darks
-#    doDark(cam)
-#    doBias(cam)
+    doDark(cam)
+    doBias(cam)
 
     endNight(datapath)
     
