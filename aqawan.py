@@ -943,6 +943,22 @@ def takeImage(cam, exptime, filterInd, objname):
     # Rotator Specific
     f[0].header['ROTPOS'] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
 
+    # WCS
+    platescale = 0.61/3600.0*cam.BinX # deg/pix
+    PA = float(telescopeStatus.rotator.position)*math.pi/180.0
+    f[0].header['CTYPE1'] = ("RA---TAN","TAN projection")
+    f[0].header['CTYPE2'] = ("DEC--TAN","TAN projection")
+    f[0].header['CUNIT1'] = ("deg","X pixel scale units")
+    f[0].header['CUNIT2'] = ("deg","Y pixel scale units")
+    f[0].header['CRVAL1'] = (float(telescopeStatus.mount.ra_radian)*180.0/math.pi,"RA of reference point")
+    f[0].header['CRVAL2'] = (float(telescopeStatus.mount.dec_radian)*180.0/math.pi,"DEC of reference point")
+    f[0].header['CRPIX1'] = (cam.CameraXSize/2.0,"X reference pixel")
+    f[0].header['CRPIX2'] = (cam.CameraYSize/2.0,"Y reference pixel")
+    f[0].header['CD1_1'] = -platescale*math.cos(PA)
+    f[0].header['CD1_2'] = platescale*math.sin(PA)
+    f[0].header['CD2_1'] = platescale*math.sin(PA)
+    f[0].header['CD2_2'] = platescale*math.cos(PA)
+
     # M3 Specific
     f[0].header['PORT'] = (telescopeStatus.m3.port,"Selected port")    
     
@@ -1246,7 +1262,7 @@ if __name__ == '__main__':
 #    backup()
 #    cam = connectCamera()
 #    takeImage(cam,0,'B','Bias')
-    ipdb.set_trace()
+#    ipdb.set_trace()
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=aqawan, args=(), kwargs={})
@@ -1263,7 +1279,6 @@ if __name__ == '__main__':
     doDark(cam)
 
     #ipdb.set_trace()
-
 
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
