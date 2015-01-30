@@ -4,7 +4,7 @@ import threading, sys, logging
 from win32com.client import Dispatch
 import ephem, math
 from xml.etree import ElementTree
-from subprocess import call
+import subprocess
 import pyfits
 #from astropy.time import Time
 import shutil
@@ -348,10 +348,6 @@ def getWeather():
     json_weather['date'] = str(weather['date'])
     json_weather['cloudDate'] = str(weather['cloudDate'])
     json_weather['lastClose'] = str(weather['lastClose'])
-
-    # Write latest telemetry into file for headers
-    with open('weather.txt','w') as outfile:
-        json.dump(json_weather,outfile)
 
     # if everything checks out, return the weather
     return weather
@@ -866,8 +862,17 @@ def takeImage(cam, exptime, filterInd, objname):
    
     # Take flat fields
     cam.Expose(exptime, exptype, filters[filterInd])
-    while not cam.ImageReady:
-        time.sleep(0.1)    
+
+    # Get status info for headers while exposing/reading out
+    # (needs error handling)
+    weather = -1
+    while weather == -1: weather = getWeather()
+    telescopeStatus = getStatus()
+    aqStatus = aqawanStatus()
+    gitNum = subprocess.check_output(["C:/Users/pwi/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe", "rev-list", "HEAD", "--count"]).strip()
+    obs = setObserver()
+
+    while not cam.ImageReady: time.sleep(0.1)
 
     # Save the image
     filename = datapath + "/" + night + ".T3." + objname + "." + getIndex(datapath) + ".fits"
@@ -878,10 +883,37 @@ def takeImage(cam, exptime, filterInd, objname):
     t0=datetime.datetime.utcnow()
     f = pyfits.open(filename, mode='update')
 
-    telescopeStatus = getStatus()
+    # Static Keywords
+    f[0].header['SITELAT'] = str(obs.lat)
+    f[0].header['SITELONG'] = (str(obs.lon),"East Longitude of the imaging location")
+    f[0].header['SITEALT'] = (obs.elevation,"Site Altitude (m)")
+    f[0].header['OBSERVER'] = ('MINERVA Robot',"Observer")
+    f[0].header['TELESCOP'] = "CDK700"
+    f[0].header['OBJECT'] = objname
+    f[0].header['APTDIA'] = 700
+    f[0].header['APTAREA'] = 490000
+    f[0].header['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
 
     # Site Specific
     f[0].header['LST'] = (telescopeStatus.status.lst,"Local Sidereal Time")
+
+    # Enclosure Specific
+    f[0].header['AQSOFTV'] = (aqStatus['SWVersion'],"Aqawan software version number")
+    f[0].header['AQSHUT1'] = (aqStatus['Shutter1'],"Aqawan shutter 1 state")
+    f[0].header['AQSHUT2'] = (aqStatus['Shutter2'],"Aqawan shutter 2 state")
+    f[0].header['INHUMID'] = (aqStatus['EnclHumidity'],"Humidity inside enclosure")
+    f[0].header['DOOR1'] = (aqStatus['EntryDoor1'],"Door 1 into aqawan state")
+    f[0].header['DOOR2'] = (aqStatus['EntryDoor2'],"Door 2 into aqawan state")
+    f[0].header['PANELDR'] = (aqStatus['PanelDoor'],"Aqawan control panel door state")
+    f[0].header['HRTBEAT'] = (aqStatus['Heartbeat'],"Heartbeat timer")
+    f[0].header['AQPACUP'] = (aqStatus['SystemUpTime'],"PAC uptime (seconds)")
+    f[0].header['AQFAULT'] = (aqStatus['Fault'],"Aqawan fault present?")
+    f[0].header['AQERROR'] = (aqStatus['Error'],"Aqawan error present?")
+    f[0].header['PANLTMP'] = (aqStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
+    f[0].header['AQTEMP'] = (aqStatus['EnclTemp'],"Enclosure temperature (C)")
+    f[0].header['AQEXTMP'] = (aqStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
+    f[0].header['AQINTMP'] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
+    f[0].header['AQLITON'] = (aqStatus['LightsOn'],"Aqawan lights on?")
 
     # Mount specific
     f[0].header['TELRA'] = (telescopeStatus.mount.ra_2000,"Telescope RA (J2000)")
@@ -900,7 +932,7 @@ def takeImage(cam, exptime, filterInd, objname):
     f[0].header['PORT'] = (telescopeStatus.m3.port,"Selected port")    
     
     # Fans
-    f[0].header['FANON'] = (telescopeStatus.fans.on,"OTA Fans on?")    
+    f[0].header['OTAFAN'] = (telescopeStatus.fans.on,"OTA Fans on?")    
 
     # Telemetry
     f[0].header['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
@@ -908,13 +940,7 @@ def takeImage(cam, exptime, filterInd, objname):
     f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
     f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
     f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
-
-    # Weather
-    w = open('weather.txt')
-    weather = json.load(w)
-    w.close()
-    
-    f[0].header['WJD'] = (weather['date'],"Date of update of weather (UTC)")
+    f[0].header['WJD'] = (weather['date'],"Last update of weather (UTC)")
     f[0].header['RAIN'] = (weather['wxt510Rain'],"Current Rain (mm?)")
     f[0].header['TOTRAIN'] = (weather['totalRain'],"Total Rain (mm?)")
     f[0].header['OUTTEMP'] = (weather['outsideTemp'],"Outside Temperature (C)")
@@ -928,7 +954,7 @@ def takeImage(cam, exptime, filterInd, objname):
 
     f.flush()
     f.close()
-#    print (datetime.datetime.utcnow()-t0).total_seconds()
+    print (datetime.datetime.utcnow()-t0).total_seconds()
     
     return filename
 
@@ -1052,7 +1078,7 @@ def compressData(dataPath):
     files = glob.glob(dataPath + "/*.fits")
     for filename in files:
         logging.info('Compressing ' + filename)
-        call(['cfitsio/fpack.exe','-D',filename])
+        subprocess.call(['cfitsio/fpack.exe','-D',filename])
 
 # upload data to google drive
 def backup():
@@ -1175,9 +1201,9 @@ if __name__ == '__main__':
     logging.getLogger('').addHandler(console)
 
 #    backup()
-    cam = connectCamera()
-    takeImage(cam,0,'B','Bias')
-    ipdb.set_trace()
+#    cam = connectCamera()
+#    takeImage(cam,0,'B','Bias')
+#    ipdb.set_trace()
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=aqawan, args=(), kwargs={})
