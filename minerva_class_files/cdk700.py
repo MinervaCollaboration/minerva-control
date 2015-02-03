@@ -1,9 +1,7 @@
-import urllib, urllib2, datetime, time
+import urllib, urllib2, datetime, time, logging
 from configobj import ConfigObj
-import os
-import sys
-import ipdb
-import pwihelpers as pwi
+import os, sys, ipdb
+#import pwihelpers as pwi
 from xml.etree import ElementTree
 
 #HELPER CLASSES
@@ -98,7 +96,7 @@ class CDK700:
         url = url + urllib.urlencode(kwargs.items())
         return url
 
-    def pwiRequest(**kwargs):
+    def pwiRequest(self, **kwargs):
         """
         Issue a request to PWI using the keyword=value parameters
         supplied to the function, and return the response received from
@@ -148,83 +146,83 @@ class CDK700:
 
 
     ### FOCUSER ###
-    def focuserConnect(port=1):
+    def focuserConnect(self, port=1):
         """
         Connect to the focuser on the specified Nasmyth port (1 or 2).
         """
 
-        return pwiRequestAndParse(device="focuser"+str(port), cmd="connect")
+        return self.pwiRequestAndParse(device="focuser"+str(port), cmd="connect")
 
-    def focuserDisconnect(port=1):
+    def focuserDisconnect(self, port=1):
         """
         Disconnect from the focuser on the specified Nasmyth port (1 or 2).
         """
 
-        return pwiRequestAndParse(device="focuser"+str(port), cmd="disconnect")
+        return self.pwiRequestAndParse(device="focuser"+str(port), cmd="disconnect")
 
-    def focuserMove(position, port=1):
+    def focuserMove(self, position, port=1):
         """
         Move the focuser to the specified position in microns
         """
 
-        return pwiRequestAndParse(device="focuser"+str(port), cmd="move", position=position)
+        return self.pwiRequestAndParse(device="focuser"+str(port), cmd="move", position=position)
 
-    def focuserIncrement(offset, port=1):
+    def focuserIncrement(self, offset, port=1):
         """
         Offset the focuser by the specified amount, in microns
         """
 
-        return pwiRequestAndParse(device="focuser"+str(port), cmd="move", increment=offset)
+        return self.pwiRequestAndParse(device="focuser"+str(port), cmd="move", increment=offset)
 
-    def focuserStop(port=1):
+    def focuserStop(self, port=1):
         """
         Halt any motion on the focuser
         """
 
-        return pwiRequestAndParse(device="focuser"+str(port), cmd="stop")
+        return self.pwiRequestAndParse(device="focuser"+str(port), cmd="stop")
 
-    def startAutoFocus():
+    def startAutoFocus(self):
         """
         Begin an AutoFocus sequence for the currently active focuser
         """
-        return pwiRequestAndParse(device="focuser", cmd="startautofocus")
+        return self.pwiRequestAndParse(device="focuser", cmd="startautofocus")
 
     ### ROTATOR ###
-    def rotatorMove(position, port=1):
-        return pwiRequestAndParse(device="rotator"+str(port), cmd="move", position=position)
+    def rotatorMove(self, position, port=1):
+        return self.pwiRequestAndParse(device="rotator"+str(port), cmd="move", position=position)
 
-    def rotatorIncrement(offset, port=1):
-        return pwiRequestAndParse(device="rotator"+str(port), cmd="move", increment=offset)
+    def rotatorIncrement(self, offset, port=1):
+        return self.pwiRequestAndParse(device="rotator"+str(port), cmd="move", increment=offset)
 
-    def rotatorStop(port=1):
-        return pwiRequestAndParse(device="rotator"+str(port), cmd="stop")
+    def rotatorStop(self, port=1):
+        return self.pwiRequestAndParse(device="rotator"+str(port), cmd="stop")
 
-    def rotatorStartDerotating(port=1):
-        return pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestart")
+    def rotatorStartDerotating(self, port=1):
+        return self.pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestart")
 
-    def rotatorStopDerotating(port=1):
-        return pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestop")
+    def rotatorStopDerotating(self, port=1):
+        return self.pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestop")
 
     ### MOUNT ###
-    def mountConnect():
-        return pwiRequestAndParse(device="mount", cmd="connect")
+    def mountConnect(self):
+        return self.pwiRequestAndParse(device="mount", cmd="connect")
 
-    def mountDisconnect():
-        return pwiRequestAndParse(device="mount", cmd="disconnect")
+    def mountDisconnect(self):
+        return self.pwiRequestAndParse(device="mount", cmd="disconnect")
 
-    def mountEnableMotors():
-        return pwiRequestAndParse(device="mount", cmd="enable")
+    def mountEnableMotors(self):
+        return self.pwiRequestAndParse(device="mount", cmd="enable")
 
-    def mountDisableMotors():
-        return pwiRequestAndParse(device="mount", cmd="disable")
+    def mountDisableMotors(self):
+        return self.pwiRequestAndParse(device="mount", cmd="disable")
 
-    def mountOffsetRaDec(deltaRaArcseconds, deltaDecArcseconds):
-        return pwiRequestAndParse(device="mount", cmd="move", incrementra=deltaRaArcseconds, incrementdec=deltaDecArcseconds)
+    def mountOffsetRaDec(self, deltaRaArcseconds, deltaDecArcseconds):
+        return self.pwiRequestAndParse(device="mount", cmd="move", incrementra=deltaRaArcseconds, incrementdec=deltaDecArcseconds)
 
-    def mountOffsetAltAz(deltaAltArcseconds, deltaAzArcseconds):
-        return pwiRequestAndParse(device="mount", cmd="move", incrementazm=deltaAzArcseconds, incrementalt=deltaAltArcseconds)
+    def mountOffsetAltAz(self, deltaAltArcseconds, deltaAzArcseconds):
+        return self.pwiRequestAndParse(device="mount", cmd="move", incrementazm=deltaAzArcseconds, incrementalt=deltaAltArcseconds)
 
-    def mountGotoRaDecApparent(raAppHours, decAppDegs):
+    def mountGotoRaDecApparent(self, raAppHours, decAppDegs):
         """
         Begin slewing the telescope to a particular RA and Dec in Apparent (current
         epoch and equinox, topocentric) coordinates.
@@ -233,53 +231,53 @@ class CDK700:
         decAppDegs may be a number in decimal degrees, or a string in "DD MM SS" format
         """
 
-        return pwiRequestAndParse(device="mount", cmd="move", ra=raAppHours, dec=decAppDegs)
+        return self.pwiRequestAndParse(device="mount", cmd="move", ra=raAppHours, dec=decAppDegs)
 
-    def mountGotoRaDecJ2000(ra2000Hours, dec2000Degs):
+    def mountGotoRaDecJ2000(self, ra2000Hours, dec2000Degs):
         """
         Begin slewing the telescope to a particular J2000 RA and Dec.
         ra2000Hours may be a number in decimal hours, or a string in "HH MM SS" format
         dec2000Degs may be a number in decimal degrees, or a string in "DD MM SS" format
         """
-        return pwiRequestAndParse(device="mount", cmd="move", ra2000=ra2000Hours, dec2000=dec2000Degs)
+        return self.pwiRequestAndParse(device="mount", cmd="move", ra2000=ra2000Hours, dec2000=dec2000Degs)
 
-    def mountGotoAltAz(altDegs, azmDegs):
-        return pwiRequestAndParse(device="mount", cmd="move", alt=altDegs, azm=azmDegs)
+    def mountGotoAltAz(self, altDegs, azmDegs):
+        return self.pwiRequestAndParse(device="mount", cmd="move", alt=altDegs, azm=azmDegs)
 
-    def mountStop():
-        return pwiRequestAndParse(device="mount", cmd="stop")
+    def mountStop(self):
+        return self.pwiRequestAndParse(device="mount", cmd="stop")
 
-    def mountTrackingOn():
-        return pwiRequestAndParse(device="mount", cmd="trackingon")
+    def mountTrackingOn(self):
+        return self.pwiRequestAndParse(device="mount", cmd="trackingon")
 
-    def mountTrackingOff():
-        return pwiRequestAndParse(device="mount", cmd="trackingoff")
+    def mountTrackingOff(self):
+        return self.pwiRequestAndParse(device="mount", cmd="trackingoff")
 
-    def mountSetTracking(trackingOn):
+    def mountSetTracking(self, trackingOn):
         if trackingOn:
-            mountTrackingOn()
+            self.mountTrackingOn()
         else:
-            mountTrackingOff()
+            self.mountTrackingOff()
 
-    def mountSetTrackingRateOffsets(raArcsecPerSec, decArcsecPerSec):
+    def mountSetTrackingRateOffsets(self, raArcsecPerSec, decArcsecPerSec):
         """
         Set the tracking rates of the mount, represented as offsets from normal
         sidereal tracking in arcseconds per second in RA and Dec.
         """
-        return pwiRequestAndParse(device="mount", cmd="trackingrates", rarate=raArcsecPerSec, decrate=decArcsecPerSec)
+        return self.pwiRequestAndParse(device="mount", cmd="trackingrates", rarate=raArcsecPerSec, decrate=decArcsecPerSec)
 
-    def mountSetPointingModel(filename):
-        return pwiRequestAndParse(device="mount", cmd="setmodel", filename=filename)
+    def mountSetPointingModel(self, filename):
+        return self.pwiRequestAndParse(device="mount", cmd="setmodel", filename=filename)
 
     ### M3 ###
-    def m3SelectPort(port):
-        return pwiRequestAndParse(device="m3", cmd="select", port=port)
+    def m3SelectPort(self, port):
+        return self.pwiRequestAndParse(device="m3", cmd="select", port=port)
 
-    def m3Stop():
-        return pwiRequestAndParse(device="m3", cmd="stop")
+    def m3Stop(self):
+        return self.pwiRequestAndParse(device="m3", cmd="stop")
 
     # additional higher level routines
-    def initialize():
+    def initialize(self):
         # turning on mount tracking
         self.logger.info('Turning mount tracking on')
         self.mountTrackingOn()
@@ -288,7 +286,7 @@ class CDK700:
         self.logger.info('Turning rotator tracking on')
         self.rotatorStartDerotating()
 
-    def inPosition():
+    def inPosition(self):
         # Wait for telescope to complete motion
         timeout = 60.0
         start = datetime.datetime.utcnow()
@@ -303,7 +301,7 @@ class CDK700:
             return True
         else: return False
 
-    def acquireTarget(ra,dec):
+    def acquireTarget(self,ra,dec):
         self.initialize()
     
         self.logger.info("Starting slew to J2000 " + str(ra) + ',' + str(dec))
@@ -314,7 +312,7 @@ class CDK700:
         else:
             self.logger.error("Slew failed to J2000 " + str(ra) + ',' + str(dec))
 
-    def park():
+    def park(self):
         # park the scope (no danger of pointing at the sun if opened during the day)
         parkAlt = 45.0
         parkAz = 0.0 
@@ -329,7 +327,7 @@ class CDK700:
         self.logger.info('Turning rotator tracking off')
         self.rotatorStopDerotating()
 
-    def autoFocus():
+    def autoFocus(self):
 
         nominalFocus = 25500
         self.focuserConnect()
