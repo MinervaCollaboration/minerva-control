@@ -66,6 +66,20 @@ class CDK700:
 
         self.HOST = CDKconfig['Setup']['HOST']
         self.PORT = CDKconfig['Setup']['PORT']
+        logger_name = CDKconfig['Setup']['LOGNAME']
+        log_file = CDKconfig['Setup']['LOGFILE']
+
+        # setting up telescope logger
+	self.logger = logging.getLogger(logger_name)
+	formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
+	fileHandler = logging.FileHandler(log_file, mode='w')
+	fileHandler.setFormatter(formatter)
+	streamHandler = logging.StreamHandler()
+	streamHandler.setFormatter(formatter)
+
+	self.logger.setLevel(logging.DEBUG)
+	self.logger.addHandler(fileHandler)
+	self.logger.addHandler(streamHandler)
     
     # SUPPORT FUNCITONS
     def makeUrl(self, **kwargs):
@@ -264,6 +278,75 @@ class CDK700:
     def m3Stop():
         return pwiRequestAndParse(device="m3", cmd="stop")
 
+    # additional higher level routines
+    def initialize():
+        # turning on mount tracking
+        self.logger.info('Turning mount tracking on')
+        self.mountTrackingOn()
+    
+        # turning on rotator tracking
+        self.logger.info('Turning rotator tracking on')
+        self.rotatorStartDerotating()
+
+    def inPosition():
+        # Wait for telescope to complete motion
+        timeout = 60.0
+        start = datetime.datetime.utcnow()
+        elapsedTime = 0
+        telescopeStatus = self.getStatus()
+        while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout:
+            time.sleep(0.1)
+            elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+            telescopeStatus = self.getStatus()
+        
+        if telescopeStatus.mount.on_target:
+            return True
+        else: return False
+
+    def acquireTarget(ra,dec):
+        self.initialize()
+    
+        self.logger.info("Starting slew to J2000 " + str(ra) + ',' + str(dec))
+        self.mountGotoRaDecJ2000(ra,dec)
+
+        if self.inPosition():
+            self.logger.info("Finished slew to J2000 " + str(ra) + ',' + str(dec))
+        else:
+            self.logger.error("Slew failed to J2000 " + str(ra) + ',' + str(dec))
+
+    def park():
+        # park the scope (no danger of pointing at the sun if opened during the day)
+        parkAlt = 45.0
+        parkAz = 0.0 
+
+        self.logger.info('Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
+        self.mountGotoAltAz(parkAlt, parkAz)
+        self.inPosition()
+
+        self.logger.info('Turning mount tracking off')
+        self.mountTrackingOff()
+    
+        self.logger.info('Turning rotator tracking off')
+        self.rotatorStopDerotating()
+
+    def autoFocus():
+
+        nominalFocus = 25500
+        self.focuserConnect()
+
+        self.logger.info('Moving to nominal focus (' + str(nominalFocus) + ')')
+        focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
+        status = self.getStatus()
+        while status.focuser.moving == 'True':
+            time.sleep(0.3)
+            status = self.getStatus()
+
+        self.logger.info('Starting Autofocus')
+        self.startAutoFocus()
+        status = self.getStatus()
+        while status.focuser.auto_focus_busy == 'True':
+            time.sleep(1)
+            status = self.getStatus()
 
 
 if __name__ == "__main__":
