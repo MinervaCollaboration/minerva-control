@@ -8,8 +8,11 @@ import ipdb
 import socket, threading
 import pyfits
 
-def aqawanOpen(aqawan):
-    pass
+def aqawanOpen(site, aqawan):
+    response = -1
+    if site.oktoopen and aqawan.lastClose < (datetime.datetime.utcnow() - datetime.timedelta(minutes=20)):
+        response = aqawan.open_both()
+    return response
 
 def parseTarget(line):
 
@@ -25,7 +28,7 @@ def heartbeat(site, aqawan):
     while site.observing:
         logger.info(aqawan.heartbeat())
         if not site.oktoopen(open=True):
-            aqawan.close()
+            aqawan.close_both()
         time.sleep(15)
 
 def prepNight(hostname, site):
@@ -74,8 +77,8 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
 
     # Get status info for headers while exposing/reading out
     # (needs error handling)
-#    site.weather = -1
-#    while site.weather == -1: site.getWeather()
+    site.weather = -1
+    while site.weather == -1: site.getWeather()
     telescopeStatus = telescope.getStatus()
     aqStatus = aqawan.status()
 
@@ -93,7 +96,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     logger.info('Saving image: ' + filename)
     imager.cam.SaveImage(filename)
 
-    # faster way?
+    # This only takes 15 ms
     t0=datetime.datetime.utcnow()
     f = pyfits.open(filename, mode='update')
 
@@ -165,23 +168,31 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['OTAFAN'] = (telescopeStatus.fans.on,"OTA Fans on?")    
 
     # Telemetry
-#    f[0].header['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
-#    f[0].header['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
-#    f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
-#    f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
-#    f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
-    
-#    f[0].header['WJD'] = (site.weather['date'],"Last update of weather (UTC)")
-#    f[0].header['RAIN'] = (site.weather['wxt510Rain'],"Current Rain (mm?)")
-#    f[0].header['TOTRAIN'] = (site.weather['totalRain'],"Total rain since ?? (mm?)")
-#    f[0].header['OUTTEMP'] = (site.weather['outsideTemp'],"Outside Temperature (C)")
-#    f[0].header['SKYTEMP'] = (site.weather['relativeSkyTemp'],"Sky - Ambient (C)")
-#    f[0].header['DEWPOINT'] = (site.weather['outsideDewPt'],"Dewpoint (C)")
-#    f[0].header['WINDSPD'] = (site.weather['windSpeed'],"Wind Speed (mph)")
-#    f[0].header['WINDGUST'] = (site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
-#    f[0].header['WINDIR'] = (site.weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
-#    f[0].header['PRESSURE'] = (site.weather['barometer'],"Outside Pressure (mmHg?)")
-#    f[0].header['SUNALT'] = (site.weather['sunAltitude'],"Sun Altitude (deg)")
+    if telescopeStatus.temperature == None:
+        f[0].header['M1TEMP'] = ("N/A","Primary Mirror Temp (C)")
+        f[0].header['M2TEMP'] = ("N/A","Secondary Mirror Temp (C)")
+        f[0].header['M3TEMP'] = ("N/A","Tertiary Mirror Temp (C)")
+        f[0].header['AMBTMP'] = ("N/A","Ambient Temp (C)")
+        f[0].header['BCKTMP'] = ("N/A","Backplate Temp (C)")
+    else:    
+        f[0].header['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
+        f[0].header['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
+        f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
+        f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
+        f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
+
+    # Weather station
+    f[0].header['WJD'] = (str(site.weather['date']),"Last update of weather (UTC)")
+    f[0].header['RAIN'] = (site.weather['wxt510Rain'],"Current Rain (mm?)")
+    f[0].header['TOTRAIN'] = (site.weather['totalRain'],"Total rain since ?? (mm?)")
+    f[0].header['OUTTEMP'] = (site.weather['outsideTemp'],"Outside Temperature (C)")
+    f[0].header['SKYTEMP'] = (site.weather['relativeSkyTemp'],"Sky - Ambient (C)")
+    f[0].header['DEWPOINT'] = (site.weather['outsideDewPt'],"Dewpoint (C)")
+    f[0].header['WINDSPD'] = (site.weather['windSpeed'],"Wind Speed (mph)")
+    f[0].header['WINDGUST'] = (site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
+    f[0].header['WINDIR'] = (site.weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
+    f[0].header['PRESSURE'] = (site.weather['barometer'],"Outside Pressure (mmHg?)")
+    f[0].header['SUNALT'] = (site.weather['sunAltitude'],"Sun Altitude (deg)")
 
     f.flush()
     f.close()
@@ -205,6 +216,129 @@ def doDark(site, aqawan, telescope, imager, exptime=60, num=11):
     for x in range(num):
         logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(exptime) + ')')
         takeImage(site, aqawan, telescope, imager, exptime,'V',objectName)
+
+def getMean(filename):
+    image = pyfits.getdata(filename,0)
+    return image.mean()
+
+def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
+
+    minSunAlt = -12
+    maxSunAlt = 0
+
+    biasLevel = 3200
+    targetCounts = 10000
+    saturation = 15000
+    maxExpTime = 60
+    minExpTime = 10
+   
+    # can we actually do flats right now?
+    if datetime.datetime.now().hour > 12:
+        # Sun setting (evening)
+        if morning:
+            logger.info('Sun setting and morning flats requested; skipping')
+            return
+        if site.sunalt() < minSunAlt:
+            logger.info('Sun setting and already too low; skipping')
+            return               
+        site.obs.horizon = str(maxSunAlt)
+        flatStartTime = site.obs.next_setting(ephem.Sun(),start=startNightTime, use_center=True).datetime()
+        secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
+    else:
+        # Sun rising (morning)
+        if not morning:
+            logger.info('Sun rising and evening flats requested; skipping')
+            return
+        if site.sunalt() > maxSunAlt:
+            logger.info('Sun rising and already too high; skipping')
+            return  
+        site.obs.horizon = str(minSunAlt)
+        flatStartTime = site.obs.next_rising(ephem.Sun(),start=startNightTime, use_center=True).datetime()
+        secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
+
+    if secondsUntilTwilight > 7200:
+        logging.info('Twilight too far away (' + str(secondsUntilTwilight) + " seconds)")
+        return
+
+    # wait for twilight
+    if secondsUntilTwilight > 0 and (site.sunalt() < minSunAlt or site.sunalt() > maxSunAlt):
+        logger.info('Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
+        time.sleep(secondsUntilTwilight)
+
+    # Now it's within 5 minutes of twilight flats
+    logger.info('Beginning twilight flats')
+
+    # make sure the telescope/dome is ready for obs
+    initializeScope()
+    
+    # start off with the extreme exposure times
+    if morning: exptime = maxExpTime
+    else: exptime = minExpTime
+  
+    # filters ordered from least transmissive to most transmissive
+    # flats will be taken in this order (or reverse order in the evening)
+    masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
+    if not morning: masterfilters.reverse()
+
+    for filterInd in masterfilters:
+        if filterInd in filters and filterInd in imager.filters:
+
+            i = 0
+            while i < num:
+                
+                # Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
+                Alt = 75.0 # degrees (somewhat site dependent)
+                Az = site.sunaz() + 180.0 # degrees
+                if Az > 360.0: Az = Az - 360.0
+            
+                # keep slewing to the optimally flat part of the sky (dithers too)
+                logger.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
+                telescope.mountGotoAltAz(Alt,Az)
+
+                if telescope.inPosition():
+                    logger.info("Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+                else:
+                    logger.error("Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+            
+                # Take flat fields
+                filename = takeImage(site, aqawan, telescope, imager, exptime, filterInd, 'SkyFlat')
+                
+                # determine the mode of the image (mode requires scipy, use mean for now...)
+                mode = getMean(filename)
+                logger.info("image " + str(i+1) + " of " + str(num) + " in filter " + filterInd + "; " + filename + ": mode = " + str(mode) + " exptime = " + str(exptime) + " sunalt = " + str(sunAltitude()))
+                if mode > saturation:
+                    # Too much signal
+                    logger.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) +
+                                '; sun altitude=' + str(site.sunalt()) +
+                                 "; exptime=" + str(exptime) + '; filter = ' + filterInd)
+                    os.remove(filename)
+                    i-=1
+                    if exptime == minExpTime and morning:
+                        logger.info("Exposure time at minimum, image saturated, and getting brighter; skipping remaining exposures in filter " + filterInd)
+                        break
+                elif mode < 2.0*biasLevel:
+                    # Too little signal
+                    logger.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) + '; sun altitude=' + str(sunAltitude()) +
+                                 "; exptime=" + str(exptime) + '; filter = ' + filterInd)
+                    os.remove(filename)
+                    i -= 1
+
+                    if exptime == maxExpTime and not morning:
+                        logger.info("Exposure time at maximum, not enough counts, and getting darker; skipping remaining exposures in filter " + filterInd)
+                        break
+ #              else:
+ #                  just right...
+        
+                # Scale exptime to get a mode of targetCounts in next exposure
+                if mode-biasLevel <= 0:
+                    exptime = maxExpTime
+                else:
+                    exptime = exptime*(targetCounts-biasLevel)/(mode-biasLevel)
+                    # do not exceed limits
+                    exptime = max([minExpTime,exptime])
+                    exptime = min([maxExpTime,exptime])
+                    logger.info("Scaling exptime to " + str(exptime))
+                i += 1
 
 
 def doScience(site, aqawan, telescope, imager, target):
@@ -233,8 +367,8 @@ def doScience(site, aqawan, telescope, imager, target):
             for j in range(len(target['filter'])):
 
                 # if the enclosure is not open, wait until it is
-                while not enclosure.isOpen():
-                    response = enclosure.open()
+                while not aqawan.isOpen():
+                    response = aqawanOpen(site,aqawan)
                     if response == -1:
                         logger.info('Enclosure closed; waiting for conditions to improve') 
                         time.sleep(60)
@@ -254,8 +388,8 @@ def doScience(site, aqawan, telescope, imager, target):
             for i in range(target['num'][j]):
 
                 # if the enclosure is not open, wait until it is
-                while not enclosure.isOpen():
-                    response = enclosure.open()
+                while not aqawan.isOpen():
+                    response = aqawanOpen(site,aqawan)
                     if response == -1:
                         logger.info('Enclosure closed; waiting for conditions to improve') 
                         time.sleep(60)
@@ -273,6 +407,7 @@ if __name__ == '__main__':
 
     hostname = socket.gethostname()
 
+    # Select the config files based on the computer name
     if hostname == 't1-PC' or hostname == 't2-PC':
         site = minervasite.site('Pasadena', configfile='minerva_class_files/site.ini')
         aqawan = minervaaqawan.aqawan('A1', configfile='minerva_class_files/aqawan.ini')
@@ -306,19 +441,10 @@ if __name__ == '__main__':
     logger.setLevel(logging.DEBUG)
     logger.addHandler(fileHandler)
     logger.addHandler(streamHandler)
-    
-#    # Start a logger
-#    logging.basicConfig(filename=datapath + site.night + '.log', format="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S", level=logging.DEBUG)  
-#    logging.Formatter.converter = time.gmtime
-#
-#    # define a Handler which writes INFO messages or higher to the sys.stderr
-#    console = logging.StreamHandler()
-#    console.setLevel(logging.INFO)
-#    logging.getLogger('').addHandler(console)
 
     # run the aqawan heartbeat and weather checking asynchronously
-#    aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
-#    aqawanThread.start()
+    aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
+    aqawanThread.start()
 
     imager.connect()
     telescope.initialize()
@@ -329,14 +455,11 @@ if __name__ == '__main__':
 
     ipdb.set_trace()
 
-    # DO NOT GO BEYOND THIS POINT WITHOUT WEATHER STATION
-    sys.exit()
-
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
     response = -1
     while response == -1:
-        response = aqawan.open()
+        response = aqawanOpen(site, aqawan)
         if response == -1: time.sleep(60)
 
    # ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
@@ -344,7 +467,7 @@ if __name__ == '__main__':
     flatFilters = ['V']
 
     # Take Evening Sky flats
-    doSkyFlat(imager, flatFilters)
+    doSkyFlat(site, aqawan, telescope, imager, flatFilters)
 
     # Wait until sunset   
     timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()

@@ -1,6 +1,8 @@
 from configobj import ConfigObj
-import datetime, logging
-import ephem, time
+import datetime, logging, ipdb
+import ephem, time, math, os, sys
+from paramiko import SSHClient, AutoAddPolicy
+from scp import SCPClient
 
 class site:
 
@@ -25,9 +27,9 @@ class site:
         self.observing = True
         self.weather = -1
         
-        # make these more dyamic (read from file?)
-        self.cloudOverride = False 
-        self.sunOverride = False
+        # touch a file in the current directory to enable cloud override
+        self.cloudOverride = os.path.isfile('cloudOverride.txt') 
+        self.sunOverride = os.path.isfile('sunOverride.txt')
 
         logger_name = siteconfig['Setup']['LOGNAME']
         log_file = siteconfig['Setup']['LOGFILE']
@@ -59,7 +61,7 @@ class site:
             'sunAltitude':[-90,6],
             'relativeSkyTemp':[-999,-37],
             'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-            'lastClose':[datetime.datetime(2000,1,1),datetime.datetime.utcnow()-datetime.timedelta(minutes=20)],
+#            'lastClose':[datetime.datetime(2000,1,1),datetime.datetime.utcnow()-datetime.timedelta(minutes=20)],
             }
 
         self.closeLimits = {
@@ -76,7 +78,7 @@ class site:
             'sunAltitude':[-90,6],
             'relativeSkyTemp':[-999,-40],
             'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-            'lastClose':[datetime.datetime(2000,1,1),datetime.datetime(2200,1,1)],
+#            'lastClose':[datetime.datetime(2000,1,1),datetime.datetime(2200,1,1)],
             }
         
 	# setting up site logger
@@ -120,9 +122,6 @@ class site:
             for parameter in data[1:-1]:
                 weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
 
-            # add in the Sun Altitude
-            weather['sunAltitude'] = sunAltitude()
-
             # add in the cloud monitor
             url = "http://mearth.sao.arizona.edu/weather/now"
 
@@ -148,26 +147,68 @@ class site:
             # MJD to datetime
             weather['cloudDate'] = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
             weather['relativeSkyTemp'] = float(data[13])
-           
-            # make sure all required keys are present
-            pageError = False
-            requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
-                            'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
-                            'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
-                            'cloudDate', 'relativeSkyTemp']
-            
-            for key in requiredKeys:
-                if not key in weather.keys():
-                    # if not, return an error
-                    logging.error('Weather page does not have all required keys (' + key + ')')
-                    site.weather = -1
-                    pageError = True
-
-            # if everything checks out, store the weather
-            if not pageError: self.weather = weather
             
         elif self.name == 'Pasadena':
-            return -1
+
+            mainIP = '192.168.1.2' # Mt. Hopkins
+            mainIP = '131.215.123.204' # Pasadena
+            ssh = SSHClient()
+            ssh.set_missing_host_key_policy(AutoAddPolicy())
+            ssh.load_system_host_keys()
+            ssh.connect(mainIP,port=22222,username='minerva',password='!bfthg&*9')
+
+            scp = SCPClient(ssh.get_transport())
+            scp.get('/home/minerva/Software/Status/weather_status','./')
+
+            with open('weather_status','r') as f:
+                data = f.readline().split()
+
+            if len(data) <> 20:
+                self.logger.error('Error reading the weather page; response: ' + str(data))
+                site.weather = -1
+                return                
+
+            weather = {}
+            weather['date'] = datetime.datetime(1970,1,1) + datetime.timedelta(seconds=float(data[0]))
+            weather['cloudDate'] = datetime.datetime(1970,1,1) + datetime.timedelta(seconds=float(data[0]))
+            weather['outsideTemp'] = float(data[6])
+            weather['windSpeed'] = float(data[8]) # km/hr (convert to mph?)
+            weather['outsideHumidity'] = float(data[10])
+            weather['outsideDewPt'] = float(data[12])
+
+            # wetnes (0=unknown, 1=dry, 2=wet on sensor, 3=rain detected
+            if data[14] <> '1': weather['wxt510Rain'] = 1.0
+            else: weather['wxt510Rain'] = 0.0
+
+            # clouds (0=Unknown, 1=clear, 2=cloudy, 3=very cloudy)
+            if data[16] <> '1': weather['relativeSkyTemp'] = -50.0
+            else: weather['relativeSkyTemp'] = 999
+
+            # our weather station doesn't have these -- set to defaults within limits
+            weather['totalRain'] = 0.0
+            weather['barometer'] = 1000.0
+            weather['windGustSpeed'] = 0.0
+            weather['windDirectionDegrees'] = 0.0
+
+        # add in the Sun Altitude
+        weather['sunAltitude'] = self.sunalt()
+        
+        # make sure all required keys are present
+        pageError = False
+        requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
+                        'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
+                        'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
+                        'cloudDate', 'relativeSkyTemp']
+        
+        for key in requiredKeys:
+            if not key in weather.keys():
+                # if not, return an error
+                logging.error('Weather page does not have all required keys (' + key + ')')
+                self.weather = -1
+                pageError = True
+
+        # if everything checks out, store the weather
+        if not pageError: self.weather = weather
 
     def oktoopen(self, open=False):
         
@@ -194,15 +235,13 @@ class site:
     def sunrise(self, horizon=-12):
 
         self.obs.horizon = str(horizon)
-        sun = ephem.Sun()
-        sunrise = obs.next_rising(sun, start=self.startNightTime, use_center=True).datetime()
+        sunrise = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
         return sunrise
     
     def sunset(self, horizon=-12):
 
         self.obs.horizon = str(horizon)
-        sun = ephem.Sun()
-        sunset = obs.next_setting(sun, start=self.startNightTime, use_center=True).datetime()
+        sunset = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
         return sunset
 
     def sunalt(self):

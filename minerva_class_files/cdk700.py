@@ -329,6 +329,8 @@ class CDK700:
 
     def autoFocus(self):
 
+        self.initialize()
+
         nominalFocus = 25500
         self.focuserConnect()
 
