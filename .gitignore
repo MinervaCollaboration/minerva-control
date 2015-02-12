@@ -1,0 +1,4 @@
+./schedule/ 
+./logs/
+*.pyc
+./*/*.pyc
