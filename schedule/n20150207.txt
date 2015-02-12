@@ -1,1 +1,0 @@
-{"name": "AlphaCom", "ra": 13.166466, "dec": 17.529431, "starttime": "2015-02-01 05:00:00", "endtime": "2015-03-24 05:00:00", "filter": ["V"], "num": [9999], "exptime": [10.0], "defocus": 4.0, "selfguide": true, "guide": false, "cycleFilter": false}

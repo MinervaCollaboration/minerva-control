@@ -1,7 +1,0 @@
-2015-02-12T10:07:34 [imager.py:85 -              connect()] INFO: Connecting to Maxim
-2015-02-12T10:07:34 [imager.py:89 -              connect()] INFO: Connecting to camera
-2015-02-12T10:07:35 [imager.py:93 -              connect()] INFO: Preventing the camera from disconnecting when we exit
-2015-02-12T10:07:35 [imager.py:98 -              connect()] INFO: Preventing maxim from closing upon exit
-2015-02-12T10:07:35 [imager.py:111 -              connect()] INFO: Setting binning to 1,1
-2015-02-12T10:07:35 [imager.py:119 -              connect()] INFO: Setting subframe to [0:2047,0:2047]
-2015-02-12T10:07:35 [imager.py:126 -              connect()] INFO: Turning cooler on
