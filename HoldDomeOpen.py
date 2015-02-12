@@ -17,8 +17,8 @@ from apiclient.http import MediaFileUpload
 from oauth2client.client import OAuth2WebServerFlow
 
 Observing = True
-sunOverride = False
-cloudOverride = True
+sunOverride = True
+cloudOverride = False
 
 # reset the night at local 10 am
 today = datetime.datetime.utcnow()
@@ -344,11 +344,6 @@ def getWeather():
 
     if pageError: return -1
 
-    json_weather = weather
-    json_weather['date'] = str(weather['date'])
-    json_weather['cloudDate'] = str(weather['cloudDate'])
-    json_weather['lastClose'] = str(weather['lastClose'])
-
     # if everything checks out, return the weather
     return weather
 
@@ -498,6 +493,20 @@ def openShutter(shutter):
 
     logging.info('Shutter ' + str(shutter) + ' open')
 
+def crackAqawan():
+    sunOverride = True
+
+    if oktoopen():
+        print "Ok to open; cracking the aqawan"
+        response = aqawanCommunicate("OPEN_SHUTTER_1")
+        response = aqawanCommunicate("STOP")
+
+    while True:            
+        aqawanCommunicate('HEARTBEAT')
+        if not oktoopen(open=True):
+            closeAqawan()
+        time.sleep(15)  
+
 # Open the aqawan shutters sequentially
 def openAqawan():
     if oktoopen():
@@ -604,7 +613,7 @@ def oktoopen(open=False):
         if weather[key] < weatherLimits[key][0] or weather[key] > weatherLimits[key][1]:
             # will this screw up the asynchronous-ness?
             logging.info('Not OK to open: ' + key + '=' + str(weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
-            retval = False
+            retval = False    
 
     return retval
 
@@ -1222,6 +1231,8 @@ def endNight(dataPath):
 
 def autoFocus():
 
+    initializeScope()
+
     nominalFocus = 25500
     focuserConnect()
 
@@ -1240,8 +1251,21 @@ def autoFocus():
         status = getStatus()
 
 
+def getweatherlog():
+    from paramiko import SSHClient, AutoAddPolicy
+    from scp import SCPClient
+    ssh = SSHClient()
+    ssh.set_missing_host_key_policy(AutoAddPolicy())
+    ssh.load_system_host_keys()
+    ssh.connect('192.168.1.2',port=22222,username='minerva',password='!bfthg&*9')
+
+    scp = SCPClient(ssh.get_transport())
+    scp.get('/home/minerva/Software/Status/weather_status','./')
+
+
 if __name__ == '__main__':
-    
+    getweatherlog()
+
     # Prepare for the night (define data directories, etc)
     datapath = prepNight()
 
@@ -1259,11 +1283,6 @@ if __name__ == '__main__':
     # add the handler to the root logger
     logging.getLogger('').addHandler(console)
 
-#    backup()
-#    cam = connectCamera()
-#    takeImage(cam,0,'B','Bias')
-#    ipdb.set_trace()
-
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=aqawan, args=(), kwargs={})
     aqawanThread.start()
@@ -1272,14 +1291,6 @@ if __name__ == '__main__':
     cam = connectCamera()
     mountConnect()
 
-#    ipdb.set_trace()
-
-    # Take biases and darks
-    doBias(cam)
-    doDark(cam)
-
-    #ipdb.set_trace()
-
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
     response = -1
@@ -1287,55 +1298,11 @@ if __name__ == '__main__':
         response = openAqawan()
         if response == -1: time.sleep(60)
 
-   # ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
-
-    flatFilters = ['V']
-
-    # Take Evening Sky flats
-    doSkyFlat(cam, flatFilters)
-
-    # Determine sunrise/sunset times
-    obs = setObserver()
-    obs.horizon = '-12.0'
-    sun = ephem.Sun()
-    sunrise = obs.next_rising(sun, start=startNightTime, use_center=True).datetime()
-    sunset = obs.next_setting(sun, start=startNightTime, use_center=True).datetime()
-
-    timeUntilSunset = (sunset - datetime.datetime.utcnow()).total_seconds()
-    if timeUntilSunset > 0:
-        logging.info('Waiting for sunset (' + str(timeUntilSunset) + 'seconds)')
-        time.sleep(timeUntilSunset)
-    
-    # find the best focus for the night
-    autoFocus()
-
-    #ipdb.set_trace()
-
-    # read the target list
-    with open(night + '.txt', 'r') as targetfile:
-        for line in targetfile:
-            target = parseTarget(line)
-            
-            # check if the end is before sunrise
-            if target['endtime'] > sunrise: 
-                target['endtime'] = sunrise
-            # check if the start is after sunset
-            if target['starttime'] < sunset: 
-                target['starttime'] = sunset
-
-            # Start Science Obs
-            doScience(cam, target)
-    
-    # Take Morning Sky flats
-    doSkyFlat(cam, flatFilters, morning=True)
+    ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
     # Want to close the aqawan before darks and biases
     # closeAqawan in endNight just a double check
     closeAqawan()
-
-    # Take biases and darks
-    doDark(cam)
-    doBias(cam)
 
     endNight(datapath)
     
