@@ -3,10 +3,10 @@ import minerva_class_files.imager as minervaimager
 import minerva_class_files.cdk700 as minervatelescope
 import minerva_class_files.aqawan as minervaaqawan
 
-import datetime, logging, os, sys, time, subprocess, glob, math
+import datetime, logging, os, sys, time, subprocess, glob, math, json
 import ipdb
 import socket, threading
-import pyfits
+import pyfits, ephem
 
 def aqawanOpen(site, aqawan):
     response = -1
@@ -16,7 +16,12 @@ def aqawanOpen(site, aqawan):
 
 def parseTarget(line):
 
-    target = json.loads(line)
+    try:
+        target = json.loads(line)
+    except ValueError:
+        logger.error('Not a valid JSON line: ' + line)
+        return -1
+    
     # convert strings to datetime objects
     target['starttime'] = datetime.datetime.strptime(target['starttime'],'%Y-%m-%d %H:%M:%S')
     target['endtime'] = datetime.datetime.strptime(target['endtime'],'%Y-%m-%d %H:%M:%S')
@@ -31,17 +36,72 @@ def heartbeat(site, aqawan):
             aqawan.close_both()
         time.sleep(15)
 
-def prepNight(hostname, site):
+def endNight(site, aqawan, telescope, imager):
 
-    if hostname == 't3-PC':
-        dirname = "E:/" + site.night + "/"
-    elif hostname == 't1-PC':    
-        dirname = "C:/minerva/data/" + site.night + "/"
+    # park the scope
+    telescope.park()
 
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
+    # Close the aqawan
+    aqawan.close_both()
+    
+    # Compress the data
+    compressData(imager.dataPath)
 
-    return dirname
+    #TODO: Back up the data
+#    site.backup()
+
+def compressData(dataPath):
+    files = glob.glob(dataPath + "/*.fits")
+    for filename in files:
+        logging.info('Compressing ' + filename)
+        subprocess.call(['cfitsio/fpack.exe','-D',filename])
+
+def prepNight():
+
+    # reset the night at 10 am local
+    today = datetime.datetime.utcnow()
+    if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 17:
+        today = today + datetime.timedelta(days=1)
+    night = 'n' + today.strftime('%Y%m%d')
+
+    # make sure the log path exists
+    logpath = 'logs/' + night + '/'
+    if not os.path.exists(logpath):
+        os.makedirs(logpath)
+        
+    hostname = socket.gethostname()
+
+    # Select the config files based on the computer name
+    if hostname == 't1-PC' or hostname == 't2-PC':
+        site = minervasite.site('Pasadena',night,configfile='minerva_class_files/site.ini')
+    elif hostname == 'pwi-PC' or hostname == 't4-PC':
+        site = minervasite.site('Mount_Hopkins',night,configfile='minerva_class_files/site.ini')
+    site.night = night
+
+    site.startNightTime = datetime.datetime(today.year, today.month, today.day, 17) - datetime.timedelta(days=1)
+
+    # initialize the first of everything
+    aqawan = minervaaqawan.aqawan(site.enclosures[0],night,configfile='minerva_class_files/aqawan.ini')
+    telescope = minervatelescope.CDK700(aqawan.telescopes[0],night,configfile='minerva_class_files/telescope.ini')
+    imager = minervaimager.imager(telescope.imager,night,configfile='minerva_class_files/imager.ini')
+
+    if hostname == 't1-PC':
+        imager.dataPath = "C:/minerva/data/" + night + "/"
+        imager.gitPath = "C:/Users/t1/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
+    elif hostname == 't2-PC':    
+        imager.dataPath = "C:/minerva/data/" + night + "/"
+        imager.gitPath = "C:/Users/t2/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
+    elif hostname == 'pwi-PC':
+        imager.dataPath = "E:/minerva/data/" + night + "/"
+        imager.gitPath = "C:/Users/pwi/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
+    elif hostname == 't4-PC':    
+        imager.dataPath = "E:/minerva/data/" + night + "/"
+        imager.gitPath = "C:/Users/t4/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
+
+    if not os.path.exists(imager.dataPath):
+        os.makedirs(imager.dataPath)
+
+    return site, aqawan, telescope, imager
 
 def getIndex(dirname):
     files = glob.glob(dirname + "/*.fits")
@@ -80,24 +140,17 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     site.weather = -1
     while site.weather == -1: site.getWeather()
     telescopeStatus = telescope.getStatus()
-    aqStatus = aqawan.status()
+    aqStatus = aqawan.status()    
+    gitNum = subprocess.check_output([imager.gitPath, "rev-list", "HEAD", "--count"]).strip()
 
-    # on T3
-    gitPath = "C:/Users/pwi/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
-    # on T1
-    gitPath = 'C:/Users/t1/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe'
-    
-    gitNum = subprocess.check_output([gitPath, "rev-list", "HEAD", "--count"]).strip()
-
-    while not imager.cam.ImageReady: time.sleep(0.1)
+    while not imager.cam.ImageReady: time.sleep(0.01)
 
     # Save the image
-    filename = datapath + "/" + site.night + ".T3." + objname + "." + getIndex(datapath) + ".fits"
+    filename = imager.dataPath + "/" + site.night + "." + telescope.name + "." + objname + "." + getIndex(imager.dataPath) + ".fits"
     logger.info('Saving image: ' + filename)
     imager.cam.SaveImage(filename)
 
     # This only takes 15 ms
-    t0=datetime.datetime.utcnow()
     f = pyfits.open(filename, mode='update')
 
     # Static Keywords
@@ -196,7 +249,6 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
 
     f.flush()
     f.close()
-    print (datetime.datetime.utcnow()-t0).total_seconds()
     
     return filename
 
@@ -226,11 +278,11 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
     minSunAlt = -12
     maxSunAlt = 0
 
-    biasLevel = 3200
-    targetCounts = 10000
-    saturation = 15000
+    biasLevel = 300
+    targetCounts = 30000
+    saturation = 55000
     maxExpTime = 60
-    minExpTime = 10
+    minExpTime = 5
    
     # can we actually do flats right now?
     if datetime.datetime.now().hour > 12:
@@ -242,7 +294,7 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
             logger.info('Sun setting and already too low; skipping')
             return               
         site.obs.horizon = str(maxSunAlt)
-        flatStartTime = site.obs.next_setting(ephem.Sun(),start=startNightTime, use_center=True).datetime()
+        flatStartTime = site.obs.next_setting(ephem.Sun(),start=site.startNightTime, use_center=True).datetime()
         secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
     else:
         # Sun rising (morning)
@@ -253,13 +305,14 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
             logger.info('Sun rising and already too high; skipping')
             return  
         site.obs.horizon = str(minSunAlt)
-        flatStartTime = site.obs.next_rising(ephem.Sun(),start=startNightTime, use_center=True).datetime()
+        flatStartTime = site.obs.next_rising(ephem.Sun(),start=site.startNightTime, use_center=True).datetime()
         secondsUntilTwilight = (flatStartTime - datetime.datetime.utcnow()).total_seconds() - 300.0
 
     if secondsUntilTwilight > 7200:
-        logging.info('Twilight too far away (' + str(secondsUntilTwilight) + " seconds)")
+        logger.info('Twilight too far away (' + str(secondsUntilTwilight) + " seconds)")
         return
 
+#    ipdb.set_trace()
     # wait for twilight
     if secondsUntilTwilight > 0 and (site.sunalt() < minSunAlt or site.sunalt() > maxSunAlt):
         logger.info('Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
@@ -269,7 +322,7 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
     logger.info('Beginning twilight flats')
 
     # make sure the telescope/dome is ready for obs
-    initializeScope()
+    telescope.initialize()
     
     # start off with the extreme exposure times
     if morning: exptime = maxExpTime
@@ -299,13 +352,14 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                     logger.info("Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
                 else:
                     logger.error("Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+                    # now what?
             
                 # Take flat fields
                 filename = takeImage(site, aqawan, telescope, imager, exptime, filterInd, 'SkyFlat')
                 
                 # determine the mode of the image (mode requires scipy, use mean for now...)
                 mode = getMean(filename)
-                logger.info("image " + str(i+1) + " of " + str(num) + " in filter " + filterInd + "; " + filename + ": mode = " + str(mode) + " exptime = " + str(exptime) + " sunalt = " + str(sunAltitude()))
+                logger.info("image " + str(i+1) + " of " + str(num) + " in filter " + filterInd + "; " + filename + ": mode = " + str(mode) + " exptime = " + str(exptime) + " sunalt = " + str(site.sunalt()))
                 if mode > saturation:
                     # Too much signal
                     logger.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) +
@@ -318,7 +372,7 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                         break
                 elif mode < 2.0*biasLevel:
                     # Too little signal
-                    logger.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) + '; sun altitude=' + str(sunAltitude()) +
+                    logger.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) + '; sun altitude=' + str(site.sunalt()) +
                                  "; exptime=" + str(exptime) + '; filter = ' + filterInd)
                     os.remove(filename)
                     i -= 1
@@ -326,6 +380,13 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                     if exptime == maxExpTime and not morning:
                         logger.info("Exposure time at maximum, not enough counts, and getting darker; skipping remaining exposures in filter " + filterInd)
                         break
+                elif morning and site.sunalt() > maxsunalt:
+                    logger.info("Sun rising and greater than maxsunalt; skipping")
+                    break
+                elif not morning and sun.sunalt() < minsunalt:
+                    logger.info("Sun setting and less than minsunalt; skipping")
+                    break                    
+
  #              else:
  #                  just right...
         
@@ -339,7 +400,6 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                     exptime = min([maxExpTime,exptime])
                     logger.info("Scaling exptime to " + str(exptime))
                 i += 1
-
 
 def doScience(site, aqawan, telescope, imager, target):
 
@@ -367,19 +427,19 @@ def doScience(site, aqawan, telescope, imager, target):
             for j in range(len(target['filter'])):
 
                 # if the enclosure is not open, wait until it is
-                while not aqawan.isOpen():
+                while not aqawan.isOpen:
                     response = aqawanOpen(site,aqawan)
                     if response == -1:
                         logger.info('Enclosure closed; waiting for conditions to improve') 
                         time.sleep(60)
                     if datetime.datetime.utcnow() > target['endtime']: return
                     # reacquire the target
-                    if aqawan.isOpen(): telescope.acquireTarget(target['ra'],target['dec'])
+                    if aqawan.isOpen: telescope.acquireTarget(target['ra'],target['dec'])
 
                 if datetime.datetime.utcnow() > target['endtime']: return
                 if i < target['num'][j]:
                         logger.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-                        camera.takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
+                        takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
                 
     else:
         # take all in each band, then loop over filters (e.g., B,B,B,V,V,V,R,R,R) 
@@ -388,52 +448,27 @@ def doScience(site, aqawan, telescope, imager, target):
             for i in range(target['num'][j]):
 
                 # if the enclosure is not open, wait until it is
-                while not aqawan.isOpen():
+                while not aqawan.isOpen:
                     response = aqawanOpen(site,aqawan)
                     if response == -1:
                         logger.info('Enclosure closed; waiting for conditions to improve') 
                         time.sleep(60)
                     if datetime.datetime.utcnow() > target['endtime']: return
                     # reacquire the target
-                    if aqawan.isOpen(): telescope.acquireTarget(target['ra'],target['dec'])
+                    if aqawan.isOpen: telescope.acquireTarget(target['ra'],target['dec'])
                 
                 if datetime.datetime.utcnow() > target['endtime']: return
                 logger.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-                camera.takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
-
- 
+                takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
 
 if __name__ == '__main__':
 
-    hostname = socket.gethostname()
-
-    # Select the config files based on the computer name
-    if hostname == 't1-PC' or hostname == 't2-PC':
-        site = minervasite.site('Pasadena', configfile='minerva_class_files/site.ini')
-        aqawan = minervaaqawan.aqawan('A1', configfile='minerva_class_files/aqawan.ini')
-        if hostname == 't1-PC':
-            telescope = minervatelescope.CDK700('T1', configfile='minerva_class_files/telescope.ini')
-            imager = minervaimager.imager('C1', configfile='minerva_class_files/imager.ini')
-        else:
-            telescope = minervatelescope.CDK700('T2', configfile='minerva_class_files/telescope.ini')
-            imager = minervaimager.imager('C2', configfile='minerva_class_files/imager.ini')
-    elif hostname == 't3-PC' or hostname == 't4-PC':
-        site = minervasite.site('Mount_Hopkins', configfile='minerva_class_files/site.ini')
-        aqawan = minervaaqawan.aqawan('A2', configfile='minerva_class_files/aqawan.ini')
-        if hostname == 't3-PC':
-            telescope = minervatelescope.telescope('T3', configfile='minerva_class_files/telescope.ini')
-            imager = minervaimager.imager('C3', configfile='minerva_class_files/imager.ini')
-        else:
-            telescope = minervatelescope.telescope('T4', configfile='minerva_class_files/telescope.ini')
-            imager = minervaimager.imager('C4', configfile='minerva_class_files/imager.ini')
-
-    # Prepare for the night (define data directories, etc)
-    datapath = prepNight(hostname, site)
-
+    site, aqawan, telescope, imager = prepNight()
+        
     # setting up site logger
     logger = logging.getLogger('main')
     formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-    fileHandler = logging.FileHandler('main.log', mode='w')
+    fileHandler = logging.FileHandler('logs/' + site.night + '/main.log', mode='a')
     fileHandler.setFormatter(formatter)
     streamHandler = logging.StreamHandler()
     streamHandler.setFormatter(formatter)
@@ -442,16 +477,21 @@ if __name__ == '__main__':
     logger.addHandler(fileHandler)
     logger.addHandler(streamHandler)
 
+#    ipdb.set_trace()
+
+
     # run the aqawan heartbeat and weather checking asynchronously
-    aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
-    aqawanThread.start()
+#    aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
+#    aqawanThread.start()
+
+#    ipdb.set_trace()
 
     imager.connect()
     telescope.initialize()
 
     # Take biases and darks
-    doBias(site, aqawan, telescope, imager)
-    doDark(site, aqawan, telescope, imager)
+#    doBias(site, aqawan, telescope, imager)
+#    doDark(site, aqawan, telescope, imager)
 
     ipdb.set_trace()
 
@@ -464,7 +504,7 @@ if __name__ == '__main__':
 
    # ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
-    flatFilters = ['V']
+    flatFilters = ['V','B','ip']
 
     # Take Evening Sky flats
     doSkyFlat(site, aqawan, telescope, imager, flatFilters)
@@ -472,39 +512,43 @@ if __name__ == '__main__':
     # Wait until sunset   
     timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
     if timeUntilSunset > 0:
-        logging.info('Waiting for sunset (' + str(timeUntilSunset) + 'seconds)')
+        logger.info('Waiting for sunset (' + str(timeUntilSunset) + 'seconds)')
         time.sleep(timeUntilSunset)
     
     # find the best focus for the night
     telescope.autoFocus()
 
+#    ipdb.set_trace()
+
     # read the target list
-    with open(site.night + '.txt', 'r') as targetfile:
+    with open('schedule/' + site.night + '.txt', 'r') as targetfile:
         for line in targetfile:
             target = parseTarget(line)
-            
-            # check if the end is before sunrise
-            if target['endtime'] > sunrise: 
-                target['endtime'] = sunrise
-            # check if the start is after sunset
-            if target['starttime'] < sunset: 
-                target['starttime'] = sunset
 
-            # Start Science Obs
-            doScience(imager, target)
+            if target <> -1:
+            
+                # check if the end is before sunrise
+                if target['endtime'] > site.sunrise(): 
+                    target['endtime'] = site.sunrise()
+                # check if the start is after sunset
+                if target['starttime'] < site.sunset(): 
+                    target['starttime'] = site.sunset()
+
+                # Start Science Obs
+#                doScience(site, aqawan, telescope, imager, target)
     
     # Take Morning Sky flats
-    doSkyFlat(imager, flatFilters, morning=True)
+    doSkyFlat(site, aqawan, telescope, imager, flatFilters, morning=True)
 
     # Want to close the aqawan before darks and biases
     # closeAqawan in endNight just a double check
-    aqawan.close()
+    aqawan.close_both()
 
     # Take biases and darks
-    doDark(cam)
-    doBias(cam)
+    doDark(site, aqawan, telescope, imager)
+    doBias(site, aqawan, telescope, imager)
 
-    endNight(datapath)
+    endNight(site, aqawan, telescope, imager)
     
     # Stop the aqawan thread
     site.observing = False

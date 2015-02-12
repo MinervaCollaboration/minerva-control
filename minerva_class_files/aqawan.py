@@ -2,14 +2,14 @@
 create class object by aqawan(aqawan_num), where aqawan_num specify which aqawan
 test program creates aqawan(1) object and send keyboard commands'''
 
-import time, telnetlib, socket, threading, logging, ipdb, datetime
+import time, telnetlib, socket, threading, logging, ipdb, datetime, json
 from configobj import ConfigObj
 
 #To Do: change log to appropriate format, log open/close failure by reading status, add more functionality as needed 
 class aqawan:
 
     #aqawan class init method, create an aqawan object by passing either 1 or 2 to specify which aqawan
-    def __init__(self,aqawan_num, configfile=''):
+    def __init__(self,aqawan_num, night, configfile=''):
 
         self.num = aqawan_num
 
@@ -26,12 +26,14 @@ class aqawan:
         self.IP = aqawanconfig['Setup']['IP']
         self.PORT = aqawanconfig['Setup']['PORT']
         logger_name = aqawanconfig['Setup']['LOGNAME']
-        log_file = aqawanconfig['Setup']['LOGFILE']
+        log_file = 'logs/' + night + '/' + aqawanconfig['Setup']['LOGFILE']
+        self.telescopes = aqawanconfig['Setup']['TELESCOPES']
+        self.currentStatusFile = 'current_' + aqawan_num + '.log'
                 
         # setting up aqawan logger
         self.logger = logging.getLogger(logger_name)
         formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-        fileHandler = logging.FileHandler(log_file, mode='w')
+        fileHandler = logging.FileHandler(log_file, mode='a')
         fileHandler.setFormatter(formatter)
         streamHandler = logging.StreamHandler()
         streamHandler.setFormatter(formatter)
@@ -42,7 +44,7 @@ class aqawan:
 
         
         self.isOpen = False
-        self.lastClose = datetime.datetime.utcnow()
+        self.lastClose = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
         #start heartbeat thread, create lock object to prevent multiple PAC connection at same time
         self.h_thread = threading.Thread(target=self.heartbeat, args=())
@@ -97,10 +99,17 @@ class aqawan:
 
     #open both shutters
     def open_both(self):
+
+        self.logger.info('Shutting off lights')
+        response = self.send('LIGHTS_OFF')
+        if response == -1:
+            self.logger.error('Could not turn off lights')
+            
         response = self.open_shutter(1)
         if response == -1: return -1
         response = self.open_shutter(2)
         if response == -1: return -1
+        
         self.isOpen = True
             
     def open_shutter(self,shutter):
@@ -115,7 +124,7 @@ class aqawan:
 
         # if it's already open, return
         if status['Shutter' + str(shutter)] == 'OPEN':
-            logging.info('Shutter ' + str(shutter) + ' already open')
+            self.logger.info('Shutter ' + str(shutter) + ' already open')
             return
 
         # open the shutter
@@ -128,18 +137,19 @@ class aqawan:
             ipdb.set_trace()
             # need to reset the PAC? ("Enclosure not in AUTO"?)
         
-            # Wait for it to open
+        # Wait for it to open
+        self.logger.info('Waiting for shutter ' + str(shutter) + ' to open')
+        status = self.status()
+        while status['Shutter' + str(shutter)] == 'OPENING' and elapsedTime < timeout:
             status = self.status()
-            while status['Shutter' + str(shutter)] == 'OPENING' and elapsedTime < timeout:
-                status = self.status()
-                elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
+            elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
 
-            # Did it fail to open?
-            if status['Shutter' + str(shutter)] <> 'OPEN':
-                self.logger.error('Error opening Shutter ' + str(shutter) )
-                return -1
+        # Did it fail to open?
+        if status['Shutter' + str(shutter)] <> 'OPEN':
+            self.logger.error('Error opening Shutter ' + str(shutter) )
+            return -1
 
-            self.logger.info('Shutter ' + str(shutter) + ' open')
+        self.logger.info('Shutter ' + str(shutter) + ' open')
             
     #close both shutter
     def close_both(self):
@@ -150,7 +160,7 @@ class aqawan:
             self.logger.info('Both shutters already closed')
             self.isOpen = False
         else:
-            response = aqawanCommunicate('CLOSE_SEQUENTIAL')
+            response = self.send('CLOSE_SEQUENTIAL')
             if not 'Success=TRUE' in response:
                 self.logger.error('Aqawan failed to close!')
                 # need to send alerts, attempt other stuff
@@ -175,6 +185,9 @@ class aqawan:
         for entry in response:
             if '=' in entry:
                 status[(entry.split('='))[0].strip()] = (entry.split('='))[1].strip()
+
+        with open(self.currentStatusFile,'w') as outfile:
+            json.dump(status,outfile)
 
         return status         
 

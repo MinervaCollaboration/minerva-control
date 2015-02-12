@@ -1,12 +1,12 @@
 from configobj import ConfigObj
 import datetime, logging, ipdb
-import ephem, time, math, os, sys
+import ephem, time, math, os, sys, json
 from paramiko import SSHClient, AutoAddPolicy
 from scp import SCPClient
 
 class site:
 
-    def __init__(self,site_name, configfile=''):
+    def __init__(self,site_name, night, configfile=''):
 
         self.name = site_name
 
@@ -24,22 +24,19 @@ class site:
         self.latitude = siteconfig['Setup']['LATITUDE']
         self.longitude = siteconfig['Setup']['LONGITUDE']        
         self.elevation = float(siteconfig['Setup']['ELEVATION'])
+        self.enclosures = siteconfig['Setup']['ENCLOSURES']
+
+        self.currentStatusFile = 'current_' + site_name + '.log'
         self.observing = True
         self.weather = -1
+        self.startNightTime = -1
         
         # touch a file in the current directory to enable cloud override
         self.cloudOverride = os.path.isfile('cloudOverride.txt') 
         self.sunOverride = os.path.isfile('sunOverride.txt')
 
         logger_name = siteconfig['Setup']['LOGNAME']
-        log_file = siteconfig['Setup']['LOGFILE']
-
-        # reset the night at 10 am local
-        today = datetime.datetime.utcnow()
-        if datetime.datetime.now().hour > 10 and datetime.datetime.now().hour < 17:
-            today = today + datetime.timedelta(days=1)
-        self.night = 'n' + today.strftime('%Y%m%d')
-        self.startNightTime = datetime.datetime(today.year, today.month, today.day, 17) - datetime.timedelta(days=1)
+        log_file = 'logs/' + night + '/' + siteconfig['Setup']['LOGFILE']
 
         self.obs = ephem.Observer()
         self.obs.lat = ephem.degrees(str(self.latitude)) # N
@@ -61,7 +58,6 @@ class site:
             'sunAltitude':[-90,6],
             'relativeSkyTemp':[-999,-37],
             'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-#            'lastClose':[datetime.datetime(2000,1,1),datetime.datetime.utcnow()-datetime.timedelta(minutes=20)],
             }
 
         self.closeLimits = {
@@ -78,13 +74,12 @@ class site:
             'sunAltitude':[-90,6],
             'relativeSkyTemp':[-999,-40],
             'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-#            'lastClose':[datetime.datetime(2000,1,1),datetime.datetime(2200,1,1)],
             }
         
 	# setting up site logger
 	self.logger = logging.getLogger(logger_name)
         formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-	fileHandler = logging.FileHandler(log_file, mode='w')
+	fileHandler = logging.FileHandler(log_file, mode='a')
 	fileHandler.setFormatter(formatter)
 	streamHandler = logging.StreamHandler()
 	streamHandler.setFormatter(formatter)
@@ -93,6 +88,22 @@ class site:
 	self.logger.addHandler(fileHandler)
 	self.logger.addHandler(streamHandler)
 
+    def status(self):
+        self.getWeather()
+
+        status = deepcopy(self.weather)
+        status['sunrise'] = self.sunrise()
+        status['sunset'] = self.sunset()
+        status['sunalt'] = self.sunalt()
+        status['sunaz'] = self.sunaz()
+        status['cloudDate'] = str(status['cloudDate'])
+        status['date'] = str(status['date'])
+
+        with open(self.currentStatusFile,'w') as outfile:
+            json.dump(status,outfile)
+            
+        return status
+            
     def getWeather(self):
 
         if self.name == 'Mount_Hopkins':
@@ -181,15 +192,30 @@ class site:
             else: weather['wxt510Rain'] = 0.0
 
             # clouds (0=Unknown, 1=clear, 2=cloudy, 3=very cloudy)
-            if data[16] <> '1': weather['relativeSkyTemp'] = -50.0
-            else: weather['relativeSkyTemp'] = 999
-
+            if data[16] <> '1': weather['relativeSkyTemp'] = 999
+            else: weather['relativeSkyTemp'] = -999
+            
             # our weather station doesn't have these -- set to defaults within limits
             weather['totalRain'] = 0.0
             weather['barometer'] = 1000.0
             weather['windGustSpeed'] = 0.0
             weather['windDirectionDegrees'] = 0.0
-
+        elif self.name == 'Simulate':
+            # get values that pass through
+            weather = {}
+            weather['date'] = datetime.datetime.utcnow()
+            weather['cloudDate'] = datetime.datetime.utcnow()
+            weather['outsideTemp'] = 20.0
+            weather['windSpeed'] = 0.0
+            weather['outsideHumidity'] = 0.0
+            weather['outsideDewPt'] = 0.0
+            weather['wxt510Rain'] = 0.0
+            weather['relativeSkyTemp'] = 999
+            weather['totalRain'] = 0.0
+            weather['barometer'] = 1000.0
+            weather['windGustSpeed'] = 0.0
+            weather['windDirectionDegrees'] = 0.0
+            
         # add in the Sun Altitude
         weather['sunAltitude'] = self.sunalt()
         
@@ -211,6 +237,8 @@ class site:
         if not pageError: self.weather = weather
 
     def oktoopen(self, open=False):
+
+        retval = True
         
         if open: weatherLimits = self.closeLimits
         else: weatherLimits = self.openLimits
@@ -230,6 +258,7 @@ class site:
                 self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
                 retval = False
 
+        if retval: self.logger.info('OK to open')
         return retval
 
     def sunrise(self, horizon=-12):

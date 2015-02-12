@@ -1,4 +1,4 @@
-import urllib, urllib2, datetime, time, logging
+import urllib, urllib2, datetime, time, logging, json
 from configobj import ConfigObj
 import os, sys, ipdb
 #import pwihelpers as pwi
@@ -41,7 +41,7 @@ def elementTreeToObject(elementTreeNode):
 
 
 class CDK700:
-    def __init__(self, name, configfile=''):
+    def __init__(self, name, night, configfile=''):
         
         self.name = name
 
@@ -64,13 +64,17 @@ class CDK700:
 
         self.HOST = CDKconfig['Setup']['HOST']
         self.PORT = CDKconfig['Setup']['PORT']
+        self.imager = CDKconfig['Setup']['IMAGER']
+        self.guider = CDKconfig['Setup']['GUIDER']
+        self.fau = CDKconfig['Setup']['FAU']
         logger_name = CDKconfig['Setup']['LOGNAME']
-        log_file = CDKconfig['Setup']['LOGFILE']
+        log_file = 'logs/' + night + '/' + CDKconfig['Setup']['LOGFILE']
+        self.currentStatusFile = 'current_' + self.name + '.log'
 
         # setting up telescope logger
 	self.logger = logging.getLogger(logger_name)
 	formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-	fileHandler = logging.FileHandler(log_file, mode='w')
+	fileHandler = logging.FileHandler(log_file, mode='a')
 	fileHandler.setFormatter(formatter)
 	streamHandler = logging.StreamHandler()
 	streamHandler.setFormatter(formatter)
@@ -136,14 +140,26 @@ class CDK700:
 
         return self.pwiRequest(cmd="getsystem")
 
+
+
+    def status(self):
+
+        import xmltodict
+        status = xmltodict.parse(self.getStatusXml())
+
+        with open(self.currentStatusFile,'w') as outfile:
+            json.dump(status,outfile)
+
+        ipdb.set_trace()
+
+        return status    
+
     def getStatus(self):
         """
         Return a status object representing the tree structure of the XML text.
         Example: getStatus().mount.tracking --> "False"
         """
-
         return self.parseXml(self.getStatusXml())
-
 
     ### FOCUSER ###
     def focuserConnect(self, port=1):
@@ -278,28 +294,57 @@ class CDK700:
 
     # additional higher level routines
     def initialize(self):
+
+        # turning on mount tracking
+        self.logger.info('Connecting to mount')
+        self.mountConnect()
+        
         # turning on mount tracking
         self.logger.info('Turning mount tracking on')
         self.mountTrackingOn()
     
         # turning on rotator tracking
         self.logger.info('Turning rotator tracking on')
-        self.rotatorStartDerotating()
+        self.rotatorStartDerotating
+
+    def attemptRecovery(self):
+        self.logger.info('Telescope in error state; attempting recovery')
+        self.mountEnableMotors()
+#        self.
 
     def inPosition(self):
         # Wait for telescope to complete motion
         timeout = 60.0
         start = datetime.datetime.utcnow()
         elapsedTime = 0
+        time.sleep(0.25) # needs time to start moving
         telescopeStatus = self.getStatus()
+        self.logger.info('Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving)
         while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout:
             time.sleep(0.1)
             elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
             telescopeStatus = self.getStatus()
+            if telescopeStatus.mount.moving == 'False':
+                time.sleep(1)
+                telescopeStatus = self.getStatus()
+                if telescopeStatus.mount.moving == 'True':
+                    self.logger.error("Telescope moving after it said it was done")
+
+            if telescopeStatus.mount.alt_motor_error_code <> '0':
+                self.logger.error('Error with altitude drive: ' + telescopeStatus.mount.alt_motor_error_message)
+                self.attemptRecovery()
+
+            if telescopeStatus.mount.azm_motor_error_code <> '0':
+                self.logger.info('Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
+                self.attemptRecovery()
+                
         
         if telescopeStatus.mount.on_target:
+            self.logger.info('Telescope finished slew')
             return True
-        else: return False
+        else:
+            self.logger.error('Telescope failed to slew')
+            return False
 
     def acquireTarget(self,ra,dec):
         self.initialize()
@@ -335,11 +380,13 @@ class CDK700:
         self.focuserConnect()
 
         self.logger.info('Moving to nominal focus (' + str(nominalFocus) + ')')
-        focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
+        self.focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
         status = self.getStatus()
         while status.focuser.moving == 'True':
             time.sleep(0.3)
             status = self.getStatus()
+        self.logger.info('Finished move to focus (' + str(status.focuser.position) + ')')
+
 
         self.logger.info('Starting Autofocus')
         self.startAutoFocus()
@@ -347,6 +394,7 @@ class CDK700:
         while status.focuser.auto_focus_busy == 'True':
             time.sleep(1)
             status = self.getStatus()
+        self.logger.info('Finished autofocus')
 
 
 if __name__ == "__main__":
