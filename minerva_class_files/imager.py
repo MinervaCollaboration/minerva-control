@@ -102,7 +102,10 @@ class imager:
         # Check that the filters match the Maxim config (can't set maxim config)
         for i in range(len(self.filters)):
 #            ipdb.set_trace()
-            if self.filters[self.cam.FilterNames[i]] <> str(i):
+            if self.cam.FilterNames[i] not in self.filters.keys():
+                self.logger.error('Configuration mismatch for filter ' + str(i) +
+                                  '. Maxim filter = ' + self.cam.FilterNames[i])
+            elif self.filters[self.cam.FilterNames[i]] <> str(i):
                 self.logger.error('Configuration mismatch for filter ' + str(i) +
                                   '. Maxim filter = ' + self.cam.FilterNames[i] +
                                   '; config file filter = ' + self.filters[self.cam.FilterNames[i]])
