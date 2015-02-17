@@ -14,8 +14,15 @@ def aqawanOpen(site, aqawan):
         response = aqawan.open_both()
     return response
 
-def parseTarget(line):
+def parseCalib(line):
+    try:
+        calibinfo = json.loads(line)
+    except ValueError:
+        logger.error('Not a valid JSON line: ' + line)
+        return -1
+    return calibinfo
 
+def parseTarget(line):
     try:
         target = json.loads(line)
     except ValueError:
@@ -146,7 +153,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     while not imager.cam.ImageReady: time.sleep(0.01)
 
     # Save the image
-    filename = imager.dataPath + "/" + site.night + "." + telescope.name + "." + objname + "." + getIndex(imager.dataPath) + ".fits"
+    filename = imager.dataPath + "/" + site.night + "." + telescope.name + "." + objname + "." + filterInd + "." + getIndex(imager.dataPath) + ".fits"
     logger.info('Saving image: ' + filename)
     imager.cam.SaveImage(filename)
 
@@ -261,13 +268,16 @@ def doDark(site, aqawan, telescope, imager, exptime=60, num=11):
     DARK = 0
     if exptime == 0:
         objectName = 'Bias'
+        for x in range(num):    
+            logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(exptime) + ')')
+            takeImage(site, aqawan, telescope, imager, exptime,'V',objectName)
     else:
         objectName = 'Dark'
-
-    # Take num Dark frames
-    for x in range(num):
-        logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(exptime) + ')')
-        takeImage(site, aqawan, telescope, imager, exptime,'V',objectName)
+    # Take num Dark frames and loop over more than one exptime
+        for time in exptime:
+            for x in range(num):    
+                logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(time) + ')')
+                takeImage(site, aqawan, telescope, imager, time,'V',objectName)
 
 def getMean(filename):
     image = pyfits.getdata(filename,0)
@@ -276,13 +286,13 @@ def getMean(filename):
 def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
 
     minSunAlt = -12
-    maxSunAlt = 0
+    maxSunAlt = -2
 
     biasLevel = 300
     targetCounts = 30000
     saturation = 55000
     maxExpTime = 60
-    minExpTime = 5
+    minExpTime = 10
    
     # can we actually do flats right now?
     if datetime.datetime.now().hour > 12:
@@ -481,19 +491,26 @@ if __name__ == '__main__':
 
 
     # run the aqawan heartbeat and weather checking asynchronously
-#    aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
-#    aqawanThread.start()
+    aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
+    aqawanThread.start()
 
-#    ipdb.set_trace()
+    # ipdb.set_trace()
 
     imager.connect()
     telescope.initialize()
 
-    # Take biases and darks
-#    doBias(site, aqawan, telescope, imager)
-#    doDark(site, aqawan, telescope, imager)
+    # Open the target file and read the first line for calibration info
+    # then close the file
+    with open('schedule/' + site.night + '.txt', 'r') as calibfile:
+        calibline = calibfile.readline()
+        CalibInfo = parseCalib(calibline)
 
-    ipdb.set_trace()
+    # Take biases and darks
+    print CalibInfo['nbias']
+    doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
+    doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
+
+    #ipdb.set_trace()
 
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
@@ -504,7 +521,7 @@ if __name__ == '__main__':
 
    # ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
-    flatFilters = ['V','B','ip']
+    flatFilters = CalibInfo['flatFilters']
 
     # Take Evening Sky flats
     doSkyFlat(site, aqawan, telescope, imager, flatFilters)
@@ -522,6 +539,7 @@ if __name__ == '__main__':
 
     # read the target list
     with open('schedule/' + site.night + '.txt', 'r') as targetfile:
+        next(targetfile) # skip the calibration header
         for line in targetfile:
             target = parseTarget(line)
 
@@ -538,15 +556,17 @@ if __name__ == '__main__':
 #                doScience(site, aqawan, telescope, imager, target)
     
     # Take Morning Sky flats
-    doSkyFlat(site, aqawan, telescope, imager, flatFilters, morning=True)
+    # Check if we want to wait for these
+    if CalibInfo['WaitForMorning']:
+        doSkyFlat(site, aqawan, telescope, imager, flatFilters, morning=True)
 
     # Want to close the aqawan before darks and biases
     # closeAqawan in endNight just a double check
     aqawan.close_both()
 
     # Take biases and darks
-    doDark(site, aqawan, telescope, imager)
-    doBias(site, aqawan, telescope, imager)
+    doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
+    doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
 
     endNight(site, aqawan, telescope, imager)
     
