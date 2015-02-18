@@ -487,14 +487,9 @@ if __name__ == '__main__':
     logger.addHandler(fileHandler)
     logger.addHandler(streamHandler)
 
-#    ipdb.set_trace()
-
-
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
     aqawanThread.start()
-
-    # ipdb.set_trace()
 
     imager.connect()
     telescope.initialize()
@@ -506,11 +501,8 @@ if __name__ == '__main__':
         CalibInfo = parseCalib(calibline)
 
     # Take biases and darks
-    print CalibInfo['nbias']
-    doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
+   	doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
     doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
-
-    #ipdb.set_trace()
 
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
@@ -524,7 +516,7 @@ if __name__ == '__main__':
     flatFilters = CalibInfo['flatFilters']
 
     # Take Evening Sky flats
-    doSkyFlat(site, aqawan, telescope, imager, flatFilters)
+    doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibInfo['nflat'])
 
     # Wait until sunset   
     timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
@@ -534,8 +526,6 @@ if __name__ == '__main__':
     
     # find the best focus for the night
     telescope.autoFocus()
-
-#    ipdb.set_trace()
 
     # read the target list
     with open('schedule/' + site.night + '.txt', 'r') as targetfile:
@@ -553,12 +543,12 @@ if __name__ == '__main__':
                     target['starttime'] = site.sunset()
 
                 # Start Science Obs
-#                doScience(site, aqawan, telescope, imager, target)
+                doScience(site, aqawan, telescope, imager, target)
     
     # Take Morning Sky flats
     # Check if we want to wait for these
     if CalibInfo['WaitForMorning']:
-        doSkyFlat(site, aqawan, telescope, imager, flatFilters, morning=True)
+    	doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibInfo['nflat'], morning=True)
 
     # Want to close the aqawan before darks and biases
     # closeAqawan in endNight just a double check
