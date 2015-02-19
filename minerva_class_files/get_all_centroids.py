@@ -8,7 +8,7 @@ import time
 import pyfits as pf
 #import matplotlib.pyplot as plt
 import os
-#from scipy.ndimage import median_filter
+from scipy.ndimage import median_filter
 import numpy as np
 import cv2
 
@@ -166,14 +166,21 @@ def writeout(data, outputfile, header=None, comment=None):
  
 def getfitsdata(fname):
     hdulist = pf.open(fname)
-    data = hdulist[0].data
+    if '.fz' in fname:
+        data = hdulist[1].data
+    else: data = hdulist[0].data
     hdulist.close()
     return data
    
 
  
 if __name__ == "__main__":
-    for f in glob.glob("C:/minerva/data/n20150207/*M77.fits.fz"):
+
+    filepath = "C:/minerva/data/n20150207/*M77.fits.fz"
+    filepath = "C:\minerva\data\\n20150207\*M77*.fits.fz"
+    print glob.glob(filepath)
+    print filepath
+    for f in glob.glob(filepath):
         print(f)
         d= getfitsdata(f)
         th = threshold_pyguide(d, level = 4)
