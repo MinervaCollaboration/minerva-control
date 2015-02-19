@@ -67,7 +67,7 @@ def prepNight():
 
     # reset the night at 10 am local
     today = datetime.datetime.utcnow()
-    if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 17:
+    if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
         today = today + datetime.timedelta(days=1)
     night = 'n' + today.strftime('%Y%m%d')
 
@@ -501,8 +501,14 @@ if __name__ == '__main__':
         CalibInfo = parseCalib(calibline)
 
     # Take biases and darks
-   	doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
-    doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
+   	#doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
+    #doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
+
+    # Wait until sunset   
+    timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
+    if timeUntilSunset > 0:
+        logger.info('Waiting for sunset (' + str(timeUntilSunset) + 'seconds)')
+        time.sleep(timeUntilSunset)
 
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
@@ -517,15 +523,15 @@ if __name__ == '__main__':
 
     # Take Evening Sky flats
     doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibInfo['nflat'])
-
-    # Wait until sunset   
-    timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
-    if timeUntilSunset > 0:
-        logger.info('Waiting for sunset (' + str(timeUntilSunset) + 'seconds)')
-        time.sleep(timeUntilSunset)
-    
+   
     # find the best focus for the night
     telescope.autoFocus()
+
+    # Wait until nautical twilight ends 
+    timeUntilTwilEnd = (site.NautTwilEnd() - datetime.datetime.utcnow()).total_seconds()
+    if timeUntilTwilEnd > 0:
+        logger.info('Waiting for nautical twilight to end (' + str(timeUntilTwilEnd) + 'seconds)')
+        time.sleep(timeUntilTwilEnd)
 
     # read the target list
     with open('schedule/' + site.night + '.txt', 'r') as targetfile:
@@ -535,12 +541,12 @@ if __name__ == '__main__':
 
             if target <> -1:
             
-                # check if the end is before sunrise
-                if target['endtime'] > site.sunrise(): 
-                    target['endtime'] = site.sunrise()
-                # check if the start is after sunset
-                if target['starttime'] < site.sunset(): 
-                    target['starttime'] = site.sunset()
+                # check if the end is after morning twilight begins
+                if target['endtime'] > site.NautTwilBegin(): 
+                    target['endtime'] = site.NautTwilBegin()
+                # check if the start is after evening twilight ends
+                if target['starttime'] < site.NautTwilEnd(): 
+                    target['starttime'] = site.NautTwilEnd()
 
                 # Start Science Obs
                 doScience(site, aqawan, telescope, imager, target)

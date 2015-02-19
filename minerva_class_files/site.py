@@ -1,6 +1,6 @@
 from configobj import ConfigObj
 import datetime, logging, ipdb
-import ephem, time, math, os, sys, json
+import ephem, time, math, os, sys, json, urllib2
 from paramiko import SSHClient, AutoAddPolicy
 from scp import SCPClient
 
@@ -261,13 +261,25 @@ class site:
         if retval: self.logger.info('OK to open')
         return retval
 
-    def sunrise(self, horizon=-12):
+    def sunrise(self, horizon=0):
 
         self.obs.horizon = str(horizon)
         sunrise = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
         return sunrise
     
-    def sunset(self, horizon=-12):
+    def sunset(self, horizon=0):
+
+        self.obs.horizon = str(horizon)
+        sunset = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
+        return sunset
+
+    def NautTwilBegin(self, horizon=-12):
+
+        self.obs.horizon = str(horizon)
+        sunrise = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
+        return sunrise
+    
+    def NautTwilEnd(self, horizon=-12):
 
         self.obs.horizon = str(horizon)
         sunset = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
