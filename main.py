@@ -390,10 +390,10 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                     if exptime == maxExpTime and not morning:
                         logger.info("Exposure time at maximum, not enough counts, and getting darker; skipping remaining exposures in filter " + filterInd)
                         break
-                elif morning and site.sunalt() > maxsunalt:
+                elif morning and site.sunalt() > maxSunAlt:
                     logger.info("Sun rising and greater than maxsunalt; skipping")
                     break
-                elif not morning and sun.sunalt() < minsunalt:
+                elif not morning and site.sunalt() < minSunAlt:
                     logger.info("Sun setting and less than minsunalt; skipping")
                     break                    
 
@@ -491,6 +491,8 @@ if __name__ == '__main__':
     aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
     aqawanThread.start()
 
+    # ipdb.set_trace()
+    
     imager.connect()
     telescope.initialize()
 
@@ -501,8 +503,8 @@ if __name__ == '__main__':
         CalibInfo = parseCalib(calibline)
 
     # Take biases and darks
-   	#doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
-    #doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
+   	doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
+    doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
 
     # Wait until sunset   
     timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
@@ -558,6 +560,7 @@ if __name__ == '__main__':
 
     # Want to close the aqawan before darks and biases
     # closeAqawan in endNight just a double check
+    telescope.park()
     aqawan.close_both()
 
     # Take biases and darks
