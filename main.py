@@ -341,7 +341,7 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
     # filters ordered from least transmissive to most transmissive
     # flats will be taken in this order (or reverse order in the evening)
     masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
-    if not morning: masterfilters.reverse()
+    if morning: masterfilters.reverse()
 
     for filterInd in masterfilters:
         if filterInd in filters and filterInd in imager.filters:
@@ -495,6 +495,8 @@ if __name__ == '__main__':
     
     imager.connect()
     telescope.initialize()
+
+    ipdb.set_trace()
 
     # Open the target file and read the first line for calibration info
     # then close the file

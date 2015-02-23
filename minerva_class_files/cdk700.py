@@ -305,7 +305,7 @@ class CDK700:
     
         # turning on rotator tracking
         self.logger.info('Turning rotator tracking on')
-        self.rotatorStartDerotating
+        self.rotatorStartDerotating()
 
     def attemptRecovery(self):
         self.logger.info('Telescope in error state; attempting recovery')
