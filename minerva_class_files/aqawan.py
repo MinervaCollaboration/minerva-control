@@ -55,6 +55,10 @@ class aqawan:
     def heartbeat(self):
         return self.send('HEARTBEAT')
 
+    def crack(self):
+        self.send('OPEN_SHUTTER_1')
+        self.send('STOP')
+
     #send message to aqawan
     def send(self,message):
             
@@ -104,12 +108,17 @@ class aqawan:
         response = self.send('LIGHTS_OFF')
         if response == -1:
             self.logger.error('Could not turn off lights')
-            
+
+        self.logger.error('Opening shutter 1')
         response = self.open_shutter(1)
         if response == -1: return -1
+        self.logger.error('Shutter 1 open')
+
+        self.logger.error('Opening shutter 2')
         response = self.open_shutter(2)
         if response == -1: return -1
-        
+        self.logger.error('Shutter 2 open')
+
         self.isOpen = True
             
     def open_shutter(self,shutter):

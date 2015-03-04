@@ -381,6 +381,7 @@ class CDK700:
 
         self.logger.info('Moving to nominal focus (' + str(nominalFocus) + ')')
         self.focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
+        time.sleep(5.0)
         status = self.getStatus()
         while status.focuser.moving == 'True':
             time.sleep(0.3)

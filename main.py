@@ -10,7 +10,8 @@ import pyfits, ephem
 
 def aqawanOpen(site, aqawan):
     response = -1
-    if site.oktoopen and aqawan.lastClose < (datetime.datetime.utcnow() - datetime.timedelta(minutes=20)):
+    if site.oktoopen() and aqawan.lastClose < (datetime.datetime.utcnow() - datetime.timedelta(minutes=20)):
+        logger.error('Weather is good; opening telescope')
         response = aqawan.open_both()
     return response
 
@@ -491,12 +492,9 @@ if __name__ == '__main__':
     aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
     aqawanThread.start()
 
-    # ipdb.set_trace()
     
     imager.connect()
     telescope.initialize()
-
-    ipdb.set_trace()
 
     # Open the target file and read the first line for calibration info
     # then close the file
@@ -505,7 +503,7 @@ if __name__ == '__main__':
         CalibInfo = parseCalib(calibline)
 
     # Take biases and darks
-   	doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
+    doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
     doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
 
     # Wait until sunset   
@@ -521,14 +519,16 @@ if __name__ == '__main__':
         response = aqawanOpen(site, aqawan)
         if response == -1: time.sleep(60)
 
-   # ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
+    #ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
     flatFilters = CalibInfo['flatFilters']
 
     # Take Evening Sky flats
+    logger.info('Beginning sky flats')
     doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibInfo['nflat'])
    
     # find the best focus for the night
+    logger.info('Beginning autofocus')
     telescope.autoFocus()
 
     # Wait until nautical twilight ends 
@@ -554,7 +554,7 @@ if __name__ == '__main__':
 
                 # Start Science Obs
                 doScience(site, aqawan, telescope, imager, target)
-    
+
     # Take Morning Sky flats
     # Check if we want to wait for these
     if CalibInfo['WaitForMorning']:

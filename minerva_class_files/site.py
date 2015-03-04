@@ -94,6 +94,8 @@ class site:
         status = deepcopy(self.weather)
         status['sunrise'] = self.sunrise()
         status['sunset'] = self.sunset()
+        status['NautTwilBegin'] = self.NautTwilBegin()
+        status['NautTwilEnd'] = self.NautTwilEnd()
         status['sunalt'] = self.sunalt()
         status['sunaz'] = self.sunaz()
         status['cloudDate'] = str(status['cloudDate'])
@@ -276,14 +278,14 @@ class site:
     def NautTwilBegin(self, horizon=-12):
 
         self.obs.horizon = str(horizon)
-        sunrise = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
-        return sunrise
+        NautTwilBegin = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
+        return NautTwilBegin
     
     def NautTwilEnd(self, horizon=-12):
 
         self.obs.horizon = str(horizon)
-        sunset = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
-        return sunset
+        NautTwilEnd = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
+        return NautTwilEnd
 
     def sunalt(self):
 
