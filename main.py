@@ -484,7 +484,7 @@ if __name__ == '__main__':
     streamHandler = logging.StreamHandler()
     streamHandler.setFormatter(formatter)
 
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     logger.addHandler(fileHandler)
     logger.addHandler(streamHandler)
 
@@ -499,8 +499,10 @@ if __name__ == '__main__':
     # Open the target file and read the first line for calibration info
     # then close the file
     with open('schedule/' + site.night + '.txt', 'r') as calibfile:
-        calibline = calibfile.readline()
-        CalibInfo = parseCalib(calibline)
+        calibline1 = calibfile.readline()
+        CalibInfo = parseCalib(calibline1)
+        calibline2 = calibfile.readline()
+        CalibEndInfo = parseCalib(calibline2)
 
     # Take biases and darks
     doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
@@ -518,7 +520,7 @@ if __name__ == '__main__':
     while response == -1:
         response = aqawanOpen(site, aqawan)
         if response == -1: time.sleep(60)
-
+    logger.info('Dome open')
     #ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
     flatFilters = CalibInfo['flatFilters']
@@ -539,7 +541,8 @@ if __name__ == '__main__':
 
     # read the target list
     with open('schedule/' + site.night + '.txt', 'r') as targetfile:
-        next(targetfile) # skip the calibration header
+        next(targetfile) # skip the calibration headers
+        next(targetfile) # skip the calibration headers
         for line in targetfile:
             target = parseTarget(line)
 
@@ -558,7 +561,7 @@ if __name__ == '__main__':
     # Take Morning Sky flats
     # Check if we want to wait for these
     if CalibInfo['WaitForMorning']:
-    	doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibInfo['nflat'], morning=True)
+    	doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibEndInfo['nflatEnd'], morning=True)
 
     # Want to close the aqawan before darks and biases
     # closeAqawan in endNight just a double check
@@ -566,8 +569,8 @@ if __name__ == '__main__':
     aqawan.close_both()
 
     # Take biases and darks
-    doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
-    doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
+    doBias(site, aqawan, telescope, imager, num=CalibEndInfo['nbiasEnd'])
+    doDark(site, aqawan, telescope, imager, num=CalibEndInfo['ndarkEnd'], exptime=CalibInfo['darkexptime'])
 
     endNight(site, aqawan, telescope, imager)
     
