@@ -77,16 +77,36 @@ class site:
             }
         
 	# setting up site logger
-	self.logger = logging.getLogger(logger_name)
-        formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-	fileHandler = logging.FileHandler(log_file, mode='a')
-	fileHandler.setFormatter(formatter)
-	streamHandler = logging.StreamHandler()
-	streamHandler.setFormatter(formatter)
+        fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+        datefmt = "%Y-%m-%dT%H:%M:%S"
 
-	self.logger.setLevel(logging.DEBUG)
-	self.logger.addHandler(fileHandler)
-	self.logger.addHandler(streamHandler)
+        self.logger = logging.getLogger(logger_name)
+        formatter = logging.Formatter(fmt,datefmt=datefmt)
+        formatter.converter = time.gmtime
+        
+        fileHandler = logging.FileHandler(log_file, mode='a')
+        fileHandler.setFormatter(formatter)
+
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        console.setLevel(logging.INFO)
+        
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.addHandler(fileHandler)
+        self.logger.addHandler(console)
+
+	
+##	self.logger = logging.getLogger(logger_name)
+##        formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
+##        formatter.converter = time.gmtime
+##	fileHandler = logging.FileHandler(log_file, mode='a')
+##	fileHandler.setFormatter(formatter)
+##	streamHandler = logging.StreamHandler()
+##	streamHandler.setFormatter(formatter)
+##
+##	self.logger.setLevel(logging.DEBUG)
+##	self.logger.addHandler(fileHandler)
+##	self.logger.addHandler(streamHandler)
 
     def status(self):
         self.getWeather()
@@ -113,7 +133,7 @@ class site:
             url = "http://linmax.sao.arizona.edu/weather/weather.cur_cond"
 
             # read the webpage
-            self.logger.info('Requesting URL: ' + url)
+            self.logger.debug('Requesting URL: ' + url)
             request = urllib2.Request(url)
             try:
                 response = urllib2.urlopen(request)
@@ -139,7 +159,7 @@ class site:
             url = "http://mearth.sao.arizona.edu/weather/now"
 
             # read the webpage
-            self.logger.info('Requesting URL: ' + url)
+            self.logger.debug('Requesting URL: ' + url)
             request = urllib2.Request(url)
             try:
                 response = urllib2.urlopen(request)

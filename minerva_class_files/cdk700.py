@@ -72,16 +72,35 @@ class CDK700:
         self.currentStatusFile = 'current_' + self.name + '.log'
 
         # setting up telescope logger
-	self.logger = logging.getLogger(logger_name)
-	formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-	fileHandler = logging.FileHandler(log_file, mode='a')
-	fileHandler.setFormatter(formatter)
-	streamHandler = logging.StreamHandler()
-	streamHandler.setFormatter(formatter)
+        fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+        datefmt = "%Y-%m-%dT%H:%M:%S"
 
-	self.logger.setLevel(logging.DEBUG)
-	self.logger.addHandler(fileHandler)
-	self.logger.addHandler(streamHandler)
+        self.logger = logging.getLogger(logger_name)
+        formatter = logging.Formatter(fmt,datefmt=datefmt)
+        formatter.converter = time.gmtime
+        
+        fileHandler = logging.FileHandler(log_file, mode='a')
+        fileHandler.setFormatter(formatter)
+
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        console.setLevel(logging.INFO)
+        
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.addHandler(fileHandler)
+        self.logger.addHandler(console)
+        
+##	self.logger = logging.getLogger(logger_name)
+##	formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
+##        formatter.converter = time.gmtime
+##	fileHandler = logging.FileHandler(log_file, mode='a')
+##	fileHandler.setFormatter(formatter)
+##	streamHandler = logging.StreamHandler()
+##	streamHandler.setFormatter(formatter)
+##
+##	self.logger.setLevel(logging.DEBUG)
+##	self.logger.addHandler(fileHandler)
+##	self.logger.addHandler(streamHandler)
     
     # SUPPORT FUNCITONS
     def makeUrl(self, **kwargs):

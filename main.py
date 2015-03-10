@@ -39,10 +39,14 @@ def parseTarget(line):
 def heartbeat(site, aqawan):
     
     while site.observing:
-        logger.info(aqawan.heartbeat())
+        t0 = datetime.datetime.utcnow()
+        logger.debug(aqawan.heartbeat())
         if not site.oktoopen(open=True):
             aqawan.close_both()
-        time.sleep(15)
+
+        # send a heartbeat every 14 seconds
+        sleeptime = max(14.0-(datetime.datetime.utcnow() - t0).total_seconds(),0)
+        time.sleep(sleeptime)
 
 def endNight(site, aqawan, telescope, imager):
 
@@ -475,24 +479,50 @@ def doScience(site, aqawan, telescope, imager, target):
 if __name__ == '__main__':
 
     site, aqawan, telescope, imager = prepNight()
-        
-    # setting up site logger
+
+    # setting up main logger
+    fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+    datefmt = "%Y-%m-%dT%H:%M:%S"
+
+
     logger = logging.getLogger('main')
-    formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
+    formatter = logging.Formatter(fmt,datefmt=datefmt)
+    formatter.converter = time.gmtime
+        
     fileHandler = logging.FileHandler('logs/' + site.night + '/main.log', mode='a')
     fileHandler.setFormatter(formatter)
-    streamHandler = logging.StreamHandler()
-    streamHandler.setFormatter(formatter)
 
-    logger.setLevel(logging.INFO)
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    console.setLevel(logging.INFO)
+        
+    logger.setLevel(logging.DEBUG)
     logger.addHandler(fileHandler)
-    logger.addHandler(streamHandler)
+    logger.addHandler(console)
+
+##    # format for the log file
+##    logging.basicConfig(level=logging.DEBUG,format=fmt,datefmt=datefmt,
+##                        filename='logs/' + site.night + '/main.log',
+##                        filemode='a')
+##    logging.Formatter.convert = time.gmtime
+##
+##    # format for the screen (supress debug messages)
+##    console = logging.StreamHandler()
+##    console.setLevel(logging.INFO)
+##    formatter = logging.Formatter(fmt=fmt,datefmt=datefmt)
+##    formatter.converter = time.gmtime
+##    console.setFormatter(formatter)
+##    logging.getLogger('main').addHandler(console)
+##    logger = logging.getLogger('main')
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
     aqawanThread.start()
 
+    logger.debug("this is debug")
     
+    ipdb.set_trace()
+
     imager.connect()
     telescope.initialize()
 
