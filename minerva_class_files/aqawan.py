@@ -48,19 +48,6 @@ class aqawan:
         self.logger.setLevel(logging.DEBUG)
         self.logger.addHandler(fileHandler)
         self.logger.addHandler(console)
-
-##        self.logger = logging.getLogger(logger_name)
-##        formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-##        formatter.converter = time.gmtime
-##        fileHandler = logging.FileHandler(log_file, mode='a')
-##        fileHandler.setFormatter(formatter)
-##        streamHandler = logging.StreamHandler()
-##        streamHandler.setFormatter(formatter)
-##
-##        self.logger.setLevel(logging.DEBUG)
-##        self.logger.addHandler(fileHandler)
-##        self.logger.addHandler(streamHandler)
-
         
         self.isOpen = False
         self.lastClose = datetime.datetime.utcnow() - datetime.timedelta(days=1)
@@ -185,7 +172,7 @@ class aqawan:
         elapsedTime = 0
         status = self.status()
         if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
-            self.logger.info('Both shutters already closed')
+            self.logger.debug('Both shutters already closed')
             self.isOpen = False
         else:
             response = self.send('CLOSE_SEQUENTIAL')

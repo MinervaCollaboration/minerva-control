@@ -277,7 +277,9 @@ class site:
         # make sure each parameter is within the limits for safe observing
         for key in weatherLimits:
             if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
-                self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
+                keyname = key
+                if keyname == 'relativeSkyTemp': keyname = 'Clouds'
+                self.logger.info('Not OK to open: ' + keyname + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
                 retval = False
 
         if retval: self.logger.info('OK to open')

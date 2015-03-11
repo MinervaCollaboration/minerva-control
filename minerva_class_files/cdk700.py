@@ -1,6 +1,6 @@
 import urllib, urllib2, datetime, time, logging, json
 from configobj import ConfigObj
-import os, sys, ipdb
+import os, sys, psutil, subprocess, ipdb
 #import pwihelpers as pwi
 from xml.etree import ElementTree
 
@@ -311,12 +311,48 @@ class CDK700:
     def m3Stop(self):
         return self.pwiRequestAndParse(device="m3", cmd="stop")
 
+    def restartPWI(self):
+        for p in psutil.process_iter():
+            try:
+                pinfo = p.as_dict(attrs=['pid','name'])
+                if pinfo['name'] == 'PWI.exe':
+                    self.logger.info('Killing PWI')
+                    p.kill()
+
+                    self.logger.info('Restarting now')
+                    subprocess.Popen(["C:\Program Files\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+                    return
+            except psutil.Error:
+                pass
+
+        self.logger.info('PWI not running, starting now')
+        subprocess.Popen(["C:\Program Files\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+
+    def startPWI(self):
+        for p in psutil.process_iter():
+            try:
+                pinfo = p.as_dict(attrs=['pid','name'])
+                if pinfo['name'] == 'PWI.exe':
+                    self.logger.info('PWI already running')
+                    return
+            except psutil.Error:
+                pass
+
+        self.logger.info('PWI not running, starting now')
+        subprocess.Popen(["C:\Program Files\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+            
     # additional higher level routines
     def initialize(self):
+
+        self.logger.info('Starting PWI')
+        self.startPWI()
 
         # turning on mount tracking
         self.logger.info('Connecting to mount')
         self.mountConnect()
+
+        self.logger.info('Enabling motors')
+        self.mountEnableMotors()
         
         # turning on mount tracking
         self.logger.info('Turning mount tracking on')
@@ -329,11 +365,13 @@ class CDK700:
     def attemptRecovery(self):
         self.logger.info('Telescope in error state; attempting recovery')
         self.mountEnableMotors()
+
+        
 #        self.
 
     def inPosition(self):
         # Wait for telescope to complete motion
-        timeout = 60.0
+        timeout = 180.0
         start = datetime.datetime.utcnow()
         elapsedTime = 0
         time.sleep(0.25) # needs time to start moving
@@ -356,25 +394,40 @@ class CDK700:
             if telescopeStatus.mount.azm_motor_error_code <> '0':
                 self.logger.info('Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
                 self.attemptRecovery()
-                
+
+        self.logger.info('Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
+        while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
+            time.sleep(0.1)
+            elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+            telescopeStatus = self.getStatus()
+            if telescopeStatus.rotator.goto_complete == 'True':
+                time.sleep(1)
+                telescopeStatus = self.getStatus()
+                if telescopeStatus.rotator.goto_complete == 'False':
+                    self.logger.error("Rotator moving after it said it was done")               
         
-        if telescopeStatus.mount.on_target:
+        if telescopeStatus.mount.on_target == 'True' and telescopeStatus.rotator.goto_complete == 'True':
             self.logger.info('Telescope finished slew')
             return True
         else:
             self.logger.error('Telescope failed to slew')
             return False
 
-    def acquireTarget(self,ra,dec):
+    def acquireTarget(self,ra,dec,pa=None):
         self.initialize()
     
         self.logger.info("Starting slew to J2000 " + str(ra) + ',' + str(dec))
         self.mountGotoRaDecJ2000(ra,dec)
 
+        if pa <> None:
+            self.logger.info("Slewing rotator to PA=" + str(pa) + ' deg')
+            self.rotatorMove(pa)
+
         if self.inPosition():
             self.logger.info("Finished slew to J2000 " + str(ra) + ',' + str(dec))
         else:
             self.logger.error("Slew failed to J2000 " + str(ra) + ',' + str(dec))
+
 
     def park(self):
         # park the scope (no danger of pointing at the sun if opened during the day)
@@ -395,16 +448,19 @@ class CDK700:
 
         self.initialize()
 
-        nominalFocus = 25500
+        self.logger.info('Connecting to the focuser')
         self.focuserConnect()
 
+        nominalFocus = 25500
         self.logger.info('Moving to nominal focus (' + str(nominalFocus) + ')')
         self.focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
         time.sleep(5.0)
         status = self.getStatus()
         while status.focuser.moving == 'True':
+            self.logger.info('Focuser moving (' + str(status.focuser.position) + ')')
             time.sleep(0.3)
             status = self.getStatus()
+            
         self.logger.info('Finished move to focus (' + str(status.focuser.position) + ')')
 
 

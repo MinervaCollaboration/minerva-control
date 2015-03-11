@@ -429,8 +429,13 @@ def doScience(site, aqawan, telescope, imager, target):
         logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
         time.sleep(waittime)
 
-    # slew to the target
-    telescope.acquireTarget(target['ra'],target['dec'])
+    # get the desired position angle (if none specified, don't move rotator)
+    if positionAngle in target.keys():
+        pa = target['positionAngle']
+    else: pa = None
+    
+    # slew to the target    
+    telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 
     if target['defocus'] <> 0.0:
         logger.info("Defocusing Telescope by " + str(target['defocus']) + ' mm')
@@ -500,28 +505,11 @@ if __name__ == '__main__':
     logger.addHandler(fileHandler)
     logger.addHandler(console)
 
-##    # format for the log file
-##    logging.basicConfig(level=logging.DEBUG,format=fmt,datefmt=datefmt,
-##                        filename='logs/' + site.night + '/main.log',
-##                        filemode='a')
-##    logging.Formatter.convert = time.gmtime
-##
-##    # format for the screen (supress debug messages)
-##    console = logging.StreamHandler()
-##    console.setLevel(logging.INFO)
-##    formatter = logging.Formatter(fmt=fmt,datefmt=datefmt)
-##    formatter.converter = time.gmtime
-##    console.setFormatter(formatter)
-##    logging.getLogger('main').addHandler(console)
-##    logger = logging.getLogger('main')
+    ipdb.set_trace()
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
     aqawanThread.start()
-
-    logger.debug("this is debug")
-    
-    ipdb.set_trace()
 
     imager.connect()
     telescope.initialize()
