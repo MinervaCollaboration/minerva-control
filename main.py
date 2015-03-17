@@ -2,16 +2,128 @@ import minerva_class_files.site as minervasite
 import minerva_class_files.imager as minervaimager
 import minerva_class_files.cdk700 as minervatelescope
 import minerva_class_files.aqawan as minervaaqawan
+import minerva_class_files.segments as segments
+import numpy as np
+from minerva_class_files.get_all_centroids import *
+
 
 import datetime, logging, os, sys, time, subprocess, glob, math, json
 import ipdb
 import socket, threading
 import pyfits, ephem
+from scipy import stats
+
+def getstars(imageName):
+    
+    d = getfitsdata(imageName)
+    th = threshold_pyguide(d, level = 4)
+    imtofeed = np.array(np.round((d*th)/np.max(d*th)*255), dtype='uint8')
+    cc = centroid_all_blobs(imtofeed)
+
+    return cc
+
+def guide(filename, reference):
+
+    if reference == None:
+        logger.info("No reference frame defined yet; using " + filename)
+        reference = getstars(filename)
+        if len(reference[:,0]) < 6:
+            logger.error("Not enough stars in reference frame")
+            return None
+        return reference
+
+    logger.info("Extracting stars for " + filename)
+    stars = getstars(filename)
+    if len(stars[:,0]) < 6:
+        logger.error("Not enough stars in frame")
+        return reference
+
+    # proportional servo gain (apply this fraction of the offset)
+    gain = 0.66
+
+    # get the platescale from the header
+    hdr = pyfits.getheader(filename)
+    platescale = float(hdr['PIXSCALE'])
+    dec = float(hdr['CRVAL2'])*math.pi/180.0 # declination in radians
+    PA = math.acos(-float(hdr['CD1_1'])*3600.0/platescale) # position angle in radians
+    logger.info("Image PA=" + str(PA))
+
+    m0 = 22
+    x = stars[:,0]
+    y = stars[:,1]
+    mag = -2.5*np.log10(stars[:,2])+m0
+
+    xref = reference[:,0]
+    yref = reference[:,1]
+    magref = -2.5*np.log10(reference[:,2])+m0
+
+    logger.info("Getting offset for " + filename)
+    dx,dy,scale,rot,flag,rmsf,nstf = findoffset(x, y, mag, xref, yref, magref)
+
+    logger.info("dx=" + str(dx) + ", dy=" + str(dy) + ", scale=" + str(scale) +
+                ", rot=" + str(rot) + ", flag=" + str(flag) +
+                ", rmsf=" + str(rmsf) + ", nstf=" + str(nstf))
+    
+    # adjust the rotator angle (sign?)
+    logger.info("Adjusting the rotator by " + str(rot*gain) + " degrees")
+    telescope.rotatorIncrement(rot*gain)
+
+    # adjust RA/Dec (need to calibrate PA)
+    deltaRA = -(dx*math.cos(PA) - dy*math.sin(PA))*math.cos(dec)*platescale*gain
+    deltaDec = (dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
+    logger.info("Adjusting the RA,Dec by " + str(deltaRA) + "," + str(deltaDec))
+    telescope.mountOffsetRaDec(deltaRA,deltaDec)
+
+    return reference
+
+# finds the offset (x, y, theta) between two star lists)
+def findoffset(x, y, mag, xref, yref, magref):
+
+    MAXSTARS = 50 # only consider MAXSTARS brightest stars
+    thet=0.0 # thet +/- dthet (deg)
+    dthet=3.0 # maximum allowed rotation between images (deg)
+
+    # allowed change in scale from image to image
+    scl = 0.0 # 1 + scl +/- dscl
+    dscl = 0.01
+
+    # size of the image (should be dynamic)
+    naxis1 = 2048
+    naxis2 = 2048
+
+    maxstars = min(MAXSTARS,len(xref))
+    sortndx = np.argsort(magref)
+       
+    xreftrunc = xref[sortndx[0:maxstars]]
+    yreftrunc = yref[sortndx[0:maxstars]]
+    magreftrunc = magref[sortndx[0:maxstars]]
+    lindx1,lparm1 = segments.listseg(xreftrunc, yreftrunc, magreftrunc)
+
+    maxstars = min(MAXSTARS,len(x))
+
+    sortndx = np.argsort(mag)
+    xtrunc = x[sortndx[0:maxstars]]
+    ytrunc = y[sortndx[0:maxstars]]
+    magtrunc = mag[sortndx[0:maxstars]]
+    lindx2,lparm2 = segments.listseg(xtrunc, ytrunc, magtrunc)
+    
+    # magic
+    dx,dy,scale,rot,mat,flag,rmsf,nstf = \
+        segments.fitlists4(naxis1,naxis2,lindx1,lparm1,lindx2,lparm2,\
+                               xreftrunc,yreftrunc,xtrunc,ytrunc,scl,dscl,thet,dthet)
+
+    return dx,dy,scale,rot,flag,rmsf,nstf
+
 
 def aqawanOpen(site, aqawan):
     response = -1
-    if site.oktoopen() and aqawan.lastClose < (datetime.datetime.utcnow() - datetime.timedelta(minutes=20)):
-        logger.error('Weather is good; opening telescope')
+
+    if aqawan.lastClose > (datetime.datetime.utcnow() - datetime.timedelta(minutes=20)):
+        logger.info('Aqawan closed at ' + str(aqawan.lastClose) + '; waiting 20 minutes for conditions to improve')
+        return response
+    
+    if site.oktoopen():
+        logger.info('Weather is good; opening telescope')
         response = aqawan.open_both()
     return response
 
@@ -58,6 +170,9 @@ def endNight(site, aqawan, telescope, imager):
     
     # Compress the data
     compressData(imager.dataPath)
+
+    # Turn off the camera cooler, disconnect
+    imager.disconnect()
 
     #TODO: Back up the data
 #    site.backup()
@@ -145,6 +260,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         return
    
     # Take flat fields
+    logger.info("Taking " + str(exptime) + " second image")
     imager.cam.Expose(exptime, exptype, imager.filters[filterInd])
 
     # Get status info for headers while exposing/reading out
@@ -212,7 +328,8 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
 
     # WCS
     platescale = imager.platescale/3600.0*imager.xbin # deg/pix
-    PA = float(telescopeStatus.rotator.position)*math.pi/180.0
+    PA = 0.0 #float(telescopeStatus.rotator.position)*math.pi/180.0
+    f[0].header['PIXSCALE'] = imager.platescale*imager.xbin
     f[0].header['CTYPE1'] = ("RA---TAN","TAN projection")
     f[0].header['CTYPE2'] = ("DEC--TAN","TAN projection")
     f[0].header['CUNIT1'] = ("deg","X pixel scale units")
@@ -288,6 +405,40 @@ def getMean(filename):
     image = pyfits.getdata(filename,0)
     return image.mean()
 
+def getMode(filename):
+    image = pyfits.getdata(filename,0)
+
+    # mode is slow; take the central 100x100 region
+    # (or the size of the image, which ever is smaller)
+    nx = len(image)
+    ny = len(image[1])
+    size = 100
+    x1 = max(nx/2.0 - size/2.0,0)
+    x2 = min(nx/2.0 + size/2.0,nx-1)
+    y1 = max(ny/2.0 - size/2.0,0)
+    y2 = min(ny/2.0 + size/2.0,ny-1)
+    
+    return stats.mode(image[x1:x2,y1:y2],axis=None)[0][0]
+
+def isSupersaturated(filename):
+    image = pyfits.getdata(filename,0)
+
+    # mode is slow; take the central 100x100 region
+    # (or the size of the image, which ever is smaller)
+    nx = len(image)
+    ny = len(image[1])
+    size = 100
+    x1 = max(nx/2.0 - size/2.0,0)
+    x2 = min(nx/2.0 + size/2.0,nx-1)
+    y1 = max(ny/2.0 - size/2.0,0)
+    y2 = min(ny/2.0 + size/2.0,ny-1)
+
+    photonNoise = 10.0 # made up, should do this better
+    if np.std(image[x1:x2,y1:y2],axis=None) < photonNoise:
+        return True
+    
+    return False
+
 def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
 
     minSunAlt = -12
@@ -327,7 +478,6 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
         logger.info('Twilight too far away (' + str(secondsUntilTwilight) + " seconds)")
         return
 
-#    ipdb.set_trace()
     # wait for twilight
     if secondsUntilTwilight > 0 and (site.sunalt() < minSunAlt or site.sunalt() > maxSunAlt):
         logger.info('Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
@@ -344,7 +494,7 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
     else: exptime = minExpTime
   
     # filters ordered from least transmissive to most transmissive
-    # flats will be taken in this order (or reverse order in the evening)
+    # flats will be taken in this order (or reverse order in the morning)
     masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
     if morning: masterfilters.reverse()
 
@@ -373,9 +523,13 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                 filename = takeImage(site, aqawan, telescope, imager, exptime, filterInd, 'SkyFlat')
                 
                 # determine the mode of the image (mode requires scipy, use mean for now...)
-                mode = getMean(filename)
+                mode = getMode(filename)
                 logger.info("image " + str(i+1) + " of " + str(num) + " in filter " + filterInd + "; " + filename + ": mode = " + str(mode) + " exptime = " + str(exptime) + " sunalt = " + str(site.sunalt()))
-                if mode > saturation:
+
+                # if way too many counts, it can roll over and look dark
+                supersaturated = isSupersaturated(filename)
+                
+                if mode > saturation or supersaturated:
                     # Too much signal
                     logger.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) +
                                 '; sun altitude=' + str(site.sunalt()) +
@@ -401,12 +555,13 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                 elif not morning and site.sunalt() < minSunAlt:
                     logger.info("Sun setting and less than minsunalt; skipping")
                     break                    
-
  #              else:
  #                  just right...
         
                 # Scale exptime to get a mode of targetCounts in next exposure
-                if mode-biasLevel <= 0:
+                if supersaturated:
+                    exptime = minExpTime
+                elif mode-biasLevel <= 0:
                     exptime = maxExpTime
                 else:
                     exptime = exptime*(targetCounts-biasLevel)/(mode-biasLevel)
@@ -430,9 +585,10 @@ def doScience(site, aqawan, telescope, imager, target):
         time.sleep(waittime)
 
     # get the desired position angle (if none specified, don't move rotator)
-    if positionAngle in target.keys():
-        pa = target['positionAngle']
-    else: pa = None
+    #if positionAngle in target.keys():
+    #    pa = target['positionAngle']
+    #else: pa = None
+    pa = None
     
     # slew to the target    
     telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
@@ -440,6 +596,8 @@ def doScience(site, aqawan, telescope, imager, target):
     if target['defocus'] <> 0.0:
         logger.info("Defocusing Telescope by " + str(target['defocus']) + ' mm')
         telescope.focuserIncrement(target['defocus']*1000.0)
+
+    reference=None
 
     # take one in each band, then loop over number (e.g., B,V,R,B,V,R,B,V,R)
     if target['cycleFilter']:
@@ -458,8 +616,10 @@ def doScience(site, aqawan, telescope, imager, target):
 
                 if datetime.datetime.utcnow() > target['endtime']: return
                 if i < target['num'][j]:
-                        logger.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-                        takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
+                    logger.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
+                    filename = takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
+                    if target['selfguide']:
+                        reference = guide(filename, reference)
                 
     else:
         # take all in each band, then loop over filters (e.g., B,B,B,V,V,V,R,R,R) 
@@ -479,8 +639,10 @@ def doScience(site, aqawan, telescope, imager, target):
                 
                 if datetime.datetime.utcnow() > target['endtime']: return
                 logger.info('Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-                takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
-
+                filename = takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
+                if target['selfguide']:
+                    reference = guide(filename, reference)
+                        
 if __name__ == '__main__':
 
     site, aqawan, telescope, imager = prepNight()
@@ -505,7 +667,7 @@ if __name__ == '__main__':
     logger.addHandler(fileHandler)
     logger.addHandler(console)
 
-    ipdb.set_trace()
+    #ipdb.set_trace()
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
@@ -523,6 +685,7 @@ if __name__ == '__main__':
         CalibEndInfo = parseCalib(calibline2)
 
     # Take biases and darks
+    # ipdb.set_trace()
     doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
     doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
 
@@ -547,15 +710,15 @@ if __name__ == '__main__':
     logger.info('Beginning sky flats')
     doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibInfo['nflat'])
    
-    # find the best focus for the night
-    logger.info('Beginning autofocus')
-    telescope.autoFocus()
-
     # Wait until nautical twilight ends 
     timeUntilTwilEnd = (site.NautTwilEnd() - datetime.datetime.utcnow()).total_seconds()
     if timeUntilTwilEnd > 0:
         logger.info('Waiting for nautical twilight to end (' + str(timeUntilTwilEnd) + 'seconds)')
         time.sleep(timeUntilTwilEnd)
+
+    # find the best focus for the night
+    logger.info('Beginning autofocus')
+    telescope.autoFocus()
 
     # read the target list
     with open('schedule/' + site.night + '.txt', 'r') as targetfile:
@@ -563,7 +726,6 @@ if __name__ == '__main__':
         next(targetfile) # skip the calibration headers
         for line in targetfile:
             target = parseTarget(line)
-
             if target <> -1:
             
                 # check if the end is after morning twilight begins

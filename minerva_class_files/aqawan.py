@@ -115,15 +115,15 @@ class aqawan:
         if response == -1:
             self.logger.error('Could not turn off lights')
 
-        self.logger.error('Opening shutter 1')
+        self.logger.info('Opening shutter 1')
         response = self.open_shutter(1)
         if response == -1: return -1
-        self.logger.error('Shutter 1 open')
+        self.logger.info('Shutter 1 open')
 
-        self.logger.error('Opening shutter 2')
+        self.logger.info('Opening shutter 2')
         response = self.open_shutter(2)
         if response == -1: return -1
-        self.logger.error('Shutter 2 open')
+        self.logger.info('Shutter 2 open')
 
         self.isOpen = True
             
@@ -170,14 +170,15 @@ class aqawan:
     def close_both(self):
         timeout = 500
         elapsedTime = 0
+        self.isOpen = False
         status = self.status()
         if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
             self.logger.debug('Both shutters already closed')
-            self.isOpen = False
         else:
             response = self.send('CLOSE_SEQUENTIAL')
             if not 'Success=TRUE' in response:
                 self.logger.error('Aqawan failed to close!')
+                self.isOpen = True
                 # need to send alerts, attempt other stuff
             else:
                 self.logger.info(response)    
@@ -187,11 +188,11 @@ class aqawan:
                     status = self.status()
                 if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
                     self.logger.error('Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
+                    self.isOpen = True
                     # need to send alerts, attempt other stuff
                 else:
                     self.logger.info('Closed both shutters')
                     self.lastClose = datetime.datetime.utcnow()
-                    self.isOpen = False
             
     # get aqawan status
     def status(self):

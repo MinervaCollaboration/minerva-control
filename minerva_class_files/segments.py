@@ -153,7 +153,7 @@ def mktestlists(nstar,len,sed,dx,dy,dmag,theta,scl):
 
 def fitlists4(lenx,leny,ldx1,lprm1,ldx2,lprm2,x1,y1,x2,y2,scl,dscl,thet,dthet):
 
-#; constants
+   # constants
    fracv=0.6         # use votes cells that have at least fracv*max(votes)
    nmv0=4            # but insist on at least nmv0 votes
    mns=4             # need at least this many stars cross-identified to do
@@ -163,42 +163,45 @@ def fitlists4(lenx,leny,ldx1,lprm1,ldx2,lprm2,x1,y1,x2,y2,scl,dscl,thet,dthet):
    bad=1              # ditto
 
 
-#; match the line segment lists
+   # match the line segment lists
    nst1=np.size(x1)
    nst2=np.size(x2)
    n1=np.size(ldx1)
    n2=np.size(ldx2)
-   zp=0.                 # assume no systematic zero point shift
-   dm=.5                 # match magnitude differences within +/- 0.5 mag
+   zp=0.0                 # assume no systematic zero point shift
+   dm=0.5                 # match magnitude differences within +/- 0.5 mag
    votes = matchseg(nst1,ldx1,lprm1,nst2,ldx2,lprm2,scl,thet,zp,dscl,dthet,dm)
-
-#; select votes to give corresponding stars
+      
+   # select votes to give corresponding stars
    nmv=max(fracv*np.max(votes),nmv0)
    s=np.where(votes >= nmv)
    ns=np.size(s[0])
    if(ns > mns):
 
-#; do the fit
-#; compute star indices from s values, get coordinates
+      # do the fit
+      # compute star indices from s values, get coordinates
       ix1=s[0]
       ix2=s[1]
-      xx1=x1[ix1]-lenx/2.
-      yy1=y1[ix1]-leny/2.
-      xx2=x2[ix2]-lenx/2.           #fortran/sextractor/python indexing issue?
-      yy2=y2[ix2]-leny/2.           #      ditto
 
-#; make fitting functions
+      # shift origin to center of image
+      # fortran/sextractor/python indexing issue?
+      xx1=x1[ix1]-lenx/2.0
+      yy1=y1[ix1]-leny/2.0
+      xx2=x2[ix2]-lenx/2.0           
+      yy2=y2[ix2]-leny/2.0
+
+      # make fitting functions
       funs=np.zeros((3,ns))
       funs[0,:]=1.
       funs[1,:]=xx1
       funs[2,:]=yy1
       wt=np.ones(ns)
 
-#; do the fits
+      # do the fits
       ccx,rmsx,chisqx,outpx = util.lstsqr(xx2,funs,wt,3,type=1)
       ccy,rmsy,chisqy,outpy = util.lstsqr(yy2,funs,wt,3,type=1)
 
-#; pitch outliers, if any
+      # pitch outliers, if any
       err=np.sqrt(outpx**2+outpy**2)
       med,q,dq = util.quartile(err)
       sb=np.where(err > (med+5.*dq/1.349))
@@ -218,10 +221,10 @@ def fitlists4(lenx,leny,ldx1,lprm1,ldx2,lprm2,x1,y1,x2,y2,scl,dscl,thet,dthet):
       outpy=np.ones(ns > 1)
       ccx=np.array([0.,1.,0.])
       ccy=np.array([0.,0.,1.])
-      rmsx=0.
-      rmsy=0.
+      rmsx=0.0
+      rmsy=0.0
 
-#; test for scale and rotation in correct range, also for unitary matrix
+   # test for scale and rotation in correct range, also for unitary matrix
    while(bad):
       dx=ccx[0]
       dy=ccy[0]

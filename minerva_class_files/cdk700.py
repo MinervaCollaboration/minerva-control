@@ -339,7 +339,12 @@ class CDK700:
                 pass
 
         self.logger.info('PWI not running, starting now')
-        subprocess.Popen(["C:\Program Files\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+        try:
+            subprocess.Popen(["C:\Program Files\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+        except:
+            subprocess.Popen(["C:\Program Files (x86)\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+
+        time.sleep(5)   
             
     # additional higher level routines
     def initialize(self):

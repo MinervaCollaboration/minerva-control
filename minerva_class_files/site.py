@@ -191,7 +191,13 @@ class site:
             ssh.connect(mainIP,port=22222,username='minerva',password='!bfthg&*9')
 
             scp = SCPClient(ssh.get_transport())
-            scp.get('/home/minerva/Software/Status/weather_status','./')
+            try:
+                scp.get('/home/minerva/Software/Status/weather_status','./')
+            except:
+                self.logger.error('Error SCPing the weather status')
+                site.weather = -1
+                return
+            
 
             with open('weather_status','r') as f:
                 data = f.readline().split()
@@ -282,7 +288,7 @@ class site:
                 self.logger.info('Not OK to open: ' + keyname + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
                 retval = False
 
-        if retval: self.logger.info('OK to open')
+        if retval: self.logger.debug('OK to open')
         return retval
 
     def sunrise(self, horizon=0):

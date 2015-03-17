@@ -176,7 +176,6 @@ def getfitsdata(fname):
  
 if __name__ == "__main__":
 
-    filepath = "C:/minerva/data/n20150207/*M77.fits.fz"
     filepath = "C:\minerva\data\\n20150207\*M77*.fits.fz"
     print glob.glob(filepath)
     print filepath
@@ -188,4 +187,5 @@ if __name__ == "__main__":
         cc = centroid_all_blobs(imtofeed)
         print(cc)
         print('\n')
+        ipdb.set_trace()
         #ds9(d)

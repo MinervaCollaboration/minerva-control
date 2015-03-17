@@ -95,7 +95,17 @@ class imager:
         with open(self.currentStatusFile,'w') as outfile:
             json.dump(status,outfile)
 
-        return status 
+        return status
+    
+    def disconnect(self):
+        
+        # Turn the cooler off 
+        self.logger.info('Turning cooler off')
+        self.cam.CoolerOn = False
+
+        # Disconnect from the camera 
+        self.logger.info('Disconnecting from the camera') 
+        self.cam.LinkEnabled = False      
 
     def connect(self):
         settleTime = 900
@@ -121,7 +131,6 @@ class imager:
 
         # Check that the filters match the Maxim config (can't set maxim config)
         for i in range(len(self.filters)):
-#            ipdb.set_trace()
             if self.cam.FilterNames[i] not in self.filters.keys():
                 self.logger.error('Configuration mismatch for filter ' + str(i) +
                                   '. Maxim filter = ' + self.cam.FilterNames[i])
