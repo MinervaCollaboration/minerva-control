@@ -685,9 +685,9 @@ if __name__ == '__main__':
         CalibEndInfo = parseCalib(calibline2)
 
     # Take biases and darks
-    # ipdb.set_trace()
+    ipdb.set_trace()
     doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
-    doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
+    doDark(site, aqawan, telescope, imager, num=CalibEndInfo['ndark'], exptime=CalibInfo['darkexptime'])
 
     # Wait until sunset   
     timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
@@ -735,8 +735,11 @@ if __name__ == '__main__':
                 if target['starttime'] < site.NautTwilEnd(): 
                     target['starttime'] = site.NautTwilEnd()
 
-                # Start Science Obs
-                doScience(site, aqawan, telescope, imager, target)
+                # Start Science Obs (or focus again)
+                if target['name'] == 'autofocus':
+                    telescope.autoFocus()
+                else:
+                    doScience(site, aqawan, telescope, imager, target)
 
     # Take Morning Sky flats
     # Check if we want to wait for these
