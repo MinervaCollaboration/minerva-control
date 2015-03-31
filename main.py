@@ -7,7 +7,7 @@ import numpy as np
 from minerva_class_files.get_all_centroids import *
 
 
-import datetime, logging, os, sys, time, subprocess, glob, math, json
+import datetime, logging, os, sys, time, subprocess, glob, math, json, copy
 import ipdb
 import socket, threading
 import pyfits, ephem
@@ -70,7 +70,7 @@ def guide(filename, reference):
 
     # adjust RA/Dec (need to calibrate PA)
     deltaRA = -(dx*math.cos(PA) - dy*math.sin(PA))*math.cos(dec)*platescale*gain
-    deltaDec = (dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
+    deltaDec = -(dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
     logger.info("Adjusting the RA,Dec by " + str(deltaRA) + "," + str(deltaDec))
     telescope.mountOffsetRaDec(deltaRA,deltaDec)
 
@@ -88,6 +88,7 @@ def findoffset(x, y, mag, xref, yref, magref):
     dscl = 0.01
 
     # size of the image (should be dynamic)
+    # actually, twice the center pixel of the rotator
     naxis1 = 2048
     naxis2 = 2048
 
@@ -125,6 +126,11 @@ def aqawanOpen(site, aqawan):
     if site.oktoopen():
         logger.info('Weather is good; opening telescope')
         response = aqawan.open_both()
+    else:
+        if site.sunalt() < 6:
+            logger.info('Weather still not ok; resetting timeout')
+            aqawan.lastClose = datetime.datetime.utcnow()
+
     return response
 
 def parseCalib(line):
@@ -180,7 +186,7 @@ def endNight(site, aqawan, telescope, imager):
 def compressData(dataPath):
     files = glob.glob(dataPath + "/*.fits")
     for filename in files:
-        logging.info('Compressing ' + filename)
+#        logger.info('Compressing ' + filename)
         subprocess.call(['cfitsio/fpack.exe','-D',filename])
 
 def prepNight():
@@ -265,8 +271,11 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
 
     # Get status info for headers while exposing/reading out
     # (needs error handling)
-    site.weather = -1
-    while site.weather == -1: site.getWeather()
+    weather = -1
+    while weather == -1:
+        site.getWeather()
+        weather = copy.deepcopy(site.weather)
+        
     telescopeStatus = telescope.getStatus()
     aqStatus = aqawan.status()    
     gitNum = subprocess.check_output([imager.gitPath, "rev-list", "HEAD", "--count"]).strip()
@@ -279,9 +288,11 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     imager.cam.SaveImage(filename)
 
     # This only takes 15 ms
+    logger.debug('Opening ' + filename + " to modify header")
     f = pyfits.open(filename, mode='update')
 
     # Static Keywords
+    logger.debug('Inserting static keywords')
     f[0].header['SITELAT'] = str(site.obs.lat)
     f[0].header['SITELONG'] = (str(site.obs.lon),"East Longitude of the imaging location")
     f[0].header['SITEALT'] = (site.obs.elevation,"Site Altitude (m)")
@@ -293,27 +304,33 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
 
     # Site Specific
+    logger.debug('Inserting LST')
     f[0].header['LST'] = (telescopeStatus.status.lst,"Local Sidereal Time")
 
     # Enclosure Specific
-    f[0].header['AQSOFTV'] = (aqStatus['SWVersion'],"Aqawan software version number")
-    f[0].header['AQSHUT1'] = (aqStatus['Shutter1'],"Aqawan shutter 1 state")
-    f[0].header['AQSHUT2'] = (aqStatus['Shutter2'],"Aqawan shutter 2 state")
-    f[0].header['INHUMID'] = (aqStatus['EnclHumidity'],"Humidity inside enclosure")
-    f[0].header['DOOR1'] = (aqStatus['EntryDoor1'],"Door 1 into aqawan state")
-    f[0].header['DOOR2'] = (aqStatus['EntryDoor2'],"Door 2 into aqawan state")
-    f[0].header['PANELDR'] = (aqStatus['PanelDoor'],"Aqawan control panel door state")
-    f[0].header['HRTBEAT'] = (aqStatus['Heartbeat'],"Heartbeat timer")
-    f[0].header['AQPACUP'] = (aqStatus['SystemUpTime'],"PAC uptime (seconds)")
-    f[0].header['AQFAULT'] = (aqStatus['Fault'],"Aqawan fault present?")
-    f[0].header['AQERROR'] = (aqStatus['Error'],"Aqawan error present?")
-    f[0].header['PANLTMP'] = (aqStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
-    f[0].header['AQTEMP'] = (aqStatus['EnclTemp'],"Enclosure temperature (C)")
-    f[0].header['AQEXTMP'] = (aqStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
-    f[0].header['AQINTMP'] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
-    f[0].header['AQLITON'] = (aqStatus['LightsOn'],"Aqawan lights on?")
+    logger.debug('Inserting Enclosure keywords')
+    try:
+        f[0].header['AQSOFTV'] = (aqStatus['SWVersion'],"Aqawan software version number")
+        f[0].header['AQSHUT1'] = (aqStatus['Shutter1'],"Aqawan shutter 1 state")
+        f[0].header['AQSHUT2'] = (aqStatus['Shutter2'],"Aqawan shutter 2 state")
+        f[0].header['INHUMID'] = (aqStatus['EnclHumidity'],"Humidity inside enclosure")
+        f[0].header['DOOR1'] = (aqStatus['EntryDoor1'],"Door 1 into aqawan state")
+        f[0].header['DOOR2'] = (aqStatus['EntryDoor2'],"Door 2 into aqawan state")
+        f[0].header['PANELDR'] = (aqStatus['PanelDoor'],"Aqawan control panel door state")
+        f[0].header['HRTBEAT'] = (aqStatus['Heartbeat'],"Heartbeat timer")
+        f[0].header['AQPACUP'] = (aqStatus['SystemUpTime'],"PAC uptime (seconds)")
+        f[0].header['AQFAULT'] = (aqStatus['Fault'],"Aqawan fault present?")
+        f[0].header['AQERROR'] = (aqStatus['Error'],"Aqawan error present?")
+        f[0].header['PANLTMP'] = (aqStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
+        f[0].header['AQTEMP'] = (aqStatus['EnclTemp'],"Enclosure temperature (C)")
+        f[0].header['AQEXTMP'] = (aqStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
+        f[0].header['AQINTMP'] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
+        f[0].header['AQLITON'] = (aqStatus['LightsOn'],"Aqawan lights on?")
+    except AttributeError:
+        logger.error('Failed getting the enclosure keywords!')
 
     # Mount specific
+    logger.debug('Inserting Mount keywords')
     f[0].header['TELRA'] = (telescopeStatus.mount.ra_2000,"Telescope RA (J2000)")
     f[0].header['TELDEC'] = (telescopeStatus.mount.dec_2000,"Telescope Dec (J2000)")
     f[0].header['RA'] = (telescopeStatus.mount.ra_target, "Target RA (J2000)")
@@ -321,12 +338,15 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['PMODEL'] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
 
     # Focuser Specific
+    logger.debug('Inserting Focuser keywords')
     f[0].header['FOCPOS'] = (telescopeStatus.focuser.position,"Focus Position (microns)")
 
     # Rotator Specific
+    logger.debug('Inserting Rotator keywords')
     f[0].header['ROTPOS'] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
 
     # WCS
+    logger.debug('Inserting WCS keywords')
     platescale = imager.platescale/3600.0*imager.xbin # deg/pix
     PA = 0.0 #float(telescopeStatus.rotator.position)*math.pi/180.0
     f[0].header['PIXSCALE'] = imager.platescale*imager.xbin
@@ -344,40 +364,49 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['CD2_2'] = platescale*math.cos(PA)
 
     # M3 Specific
+    logger.debug('Inserting M3 keywords')
     f[0].header['PORT'] = (telescopeStatus.m3.port,"Selected port")    
     
     # Fans
+    logger.debug('Inserting Fan keywords')
     f[0].header['OTAFAN'] = (telescopeStatus.fans.on,"OTA Fans on?")    
 
     # Telemetry
+    logger.debug('Inserting Telescope telemetry keywords')
     if telescopeStatus.temperature == None:
         f[0].header['M1TEMP'] = ("N/A","Primary Mirror Temp (C)")
         f[0].header['M2TEMP'] = ("N/A","Secondary Mirror Temp (C)")
         f[0].header['M3TEMP'] = ("N/A","Tertiary Mirror Temp (C)")
         f[0].header['AMBTMP'] = ("N/A","Ambient Temp (C)")
         f[0].header['BCKTMP'] = ("N/A","Backplate Temp (C)")
-    else:    
-        f[0].header['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
-        f[0].header['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
-        f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
-        f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
-        f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
+    else:   
+        try: 
+            f[0].header['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
+            f[0].header['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
+            f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
+            f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
+            f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
+        except AttributeError:
+            logger.error('Failed getting the telescope telemetry keywords!')
 
     # Weather station
-    f[0].header['WJD'] = (str(site.weather['date']),"Last update of weather (UTC)")
-    f[0].header['RAIN'] = (site.weather['wxt510Rain'],"Current Rain (mm?)")
-    f[0].header['TOTRAIN'] = (site.weather['totalRain'],"Total rain since ?? (mm?)")
-    f[0].header['OUTTEMP'] = (site.weather['outsideTemp'],"Outside Temperature (C)")
-    f[0].header['SKYTEMP'] = (site.weather['relativeSkyTemp'],"Sky - Ambient (C)")
-    f[0].header['DEWPOINT'] = (site.weather['outsideDewPt'],"Dewpoint (C)")
-    f[0].header['WINDSPD'] = (site.weather['windSpeed'],"Wind Speed (mph)")
-    f[0].header['WINDGUST'] = (site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
-    f[0].header['WINDIR'] = (site.weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
-    f[0].header['PRESSURE'] = (site.weather['barometer'],"Outside Pressure (mmHg?)")
-    f[0].header['SUNALT'] = (site.weather['sunAltitude'],"Sun Altitude (deg)")
+    f[0].header['WJD'] = (str(weather['date']),"Last update of weather (UTC)")
+    f[0].header['RAIN'] = (weather['wxt510Rain'],"Current Rain (mm?)")
+    f[0].header['TOTRAIN'] = (weather['totalRain'],"Total rain since ?? (mm?)")
+    f[0].header['OUTTEMP'] = (weather['outsideTemp'],"Outside Temperature (C)")
+    f[0].header['SKYTEMP'] = (weather['relativeSkyTemp'],"Sky - Ambient (C)")
+    f[0].header['DEWPOINT'] = (weather['outsideDewPt'],"Dewpoint (C)")
+    f[0].header['WINDSPD'] = (weather['windSpeed'],"Wind Speed (mph)")
+    f[0].header['WINDGUST'] = (weather['windGustSpeed'],"Wind Gust Speed (mph)")
+    f[0].header['WINDIR'] = (weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
+    f[0].header['PRESSURE'] = (weather['barometer'],"Outside Pressure (mmHg?)")
+    f[0].header['SUNALT'] = (weather['sunAltitude'],"Sun Altitude (deg)")
 
+    logger.debug('Updating header')
     f.flush()
     f.close()
+    logger.debug('Done saving image: ' + filename)
+
     
     return filename
 
@@ -539,7 +568,7 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                     if exptime == minExpTime and morning:
                         logger.info("Exposure time at minimum, image saturated, and getting brighter; skipping remaining exposures in filter " + filterInd)
                         break
-                elif mode < 2.0*biasLevel:
+                elif mode < 6.0*biasLevel:
                     # Too little signal
                     logger.info("Flat deleted: exptime=" + str(exptime) + " Mode=" + str(mode) + '; sun altitude=' + str(site.sunalt()) +
                                  "; exptime=" + str(exptime) + '; filter = ' + filterInd)
@@ -583,6 +612,10 @@ def doScience(site, aqawan, telescope, imager, target):
         waittime = (target['starttime']-datetime.datetime.utcnow()).total_seconds()
         logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
         time.sleep(waittime)
+
+    if target['name'] == 'autofocus':
+        telescope.autoFocus()
+        return
 
     # get the desired position angle (if none specified, don't move rotator)
     #if positionAngle in target.keys():
@@ -647,11 +680,13 @@ if __name__ == '__main__':
 
     site, aqawan, telescope, imager = prepNight()
 
+    #ipdb.set_trace()
+
     # setting up main logger
     fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
     datefmt = "%Y-%m-%dT%H:%M:%S"
 
-
+#    logging.basicConfig(level=logging.DEBUG, format=fmt, datefmt=datefmt)
     logger = logging.getLogger('main')
     formatter = logging.Formatter(fmt,datefmt=datefmt)
     formatter.converter = time.gmtime
@@ -683,11 +718,11 @@ if __name__ == '__main__':
         CalibInfo = parseCalib(calibline1)
         calibline2 = calibfile.readline()
         CalibEndInfo = parseCalib(calibline2)
-
+    
     # Take biases and darks
-    ipdb.set_trace()
+    #ipdb.set_trace()
     doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
-    doDark(site, aqawan, telescope, imager, num=CalibEndInfo['ndark'], exptime=CalibInfo['darkexptime'])
+    doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
 
     # Wait until sunset   
     timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
@@ -735,11 +770,7 @@ if __name__ == '__main__':
                 if target['starttime'] < site.NautTwilEnd(): 
                     target['starttime'] = site.NautTwilEnd()
 
-                # Start Science Obs (or focus again)
-                if target['name'] == 'autofocus':
-                    telescope.autoFocus()
-                else:
-                    doScience(site, aqawan, telescope, imager, target)
+                doScience(site, aqawan, telescope, imager, target)
 
     # Take Morning Sky flats
     # Check if we want to wait for these
