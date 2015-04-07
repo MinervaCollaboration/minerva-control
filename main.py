@@ -24,6 +24,10 @@ def getstars(imageName):
 
 def guide(filename, reference):
 
+    if os.path.exists("disableGuiding.txt"):
+        logger.info("Guiding disabled")
+        return None
+
     if reference == None:
         logger.info("No reference frame defined yet; using " + filename)
         reference = getstars(filename)
@@ -527,27 +531,27 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
     masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
     if morning: masterfilters.reverse()
 
+    # Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
+    Alt = 75.0 # degrees (somewhat site dependent)
+    Az = site.sunaz() + 180.0 # degrees
+    if Az > 360.0: Az = Az - 360.0
+    
+    # keep slewing to the optimally flat part of the sky (dithers too)
+    logger.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
+    telescope.mountGotoAltAz(Alt,Az)
+
+    if telescope.inPosition():
+        logger.info("Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+    else:
+        logger.error("Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+        # now what?    
+
     for filterInd in masterfilters:
         if filterInd in filters and filterInd in imager.filters:
 
             i = 0
             while i < num:
-                
-                # Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
-                Alt = 75.0 # degrees (somewhat site dependent)
-                Az = site.sunaz() + 180.0 # degrees
-                if Az > 360.0: Az = Az - 360.0
-            
-                # keep slewing to the optimally flat part of the sky (dithers too)
-                logger.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
-                telescope.mountGotoAltAz(Alt,Az)
-
-                if telescope.inPosition():
-                    logger.info("Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
-                else:
-                    logger.error("Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
-                    # now what?
-            
+                            
                 # Take flat fields
                 filename = takeImage(site, aqawan, telescope, imager, exptime, filterInd, 'SkyFlat')
                 
