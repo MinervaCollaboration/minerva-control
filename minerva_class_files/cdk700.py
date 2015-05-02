@@ -67,6 +67,17 @@ class CDK700:
         self.imager = CDKconfig['Setup']['IMAGER']
         self.guider = CDKconfig['Setup']['GUIDER']
         self.fau = CDKconfig['Setup']['FAU']
+
+        # initialize to the most recent best focus
+        if os.path.isfile('focus.txt'):
+            f = open('focus.txt','r')
+            self.focus = float(f.readline())
+            f.close()
+        else:
+            # if no recent best focus exists, initialize to 25000. (old: current value)
+            status = self.getStatus()
+            self.focus = 25000.  #status.focuser.position
+            
         logger_name = CDKconfig['Setup']['LOGNAME']
         log_file = 'logs/' + night + '/' + CDKconfig['Setup']['LOGFILE']
         self.currentStatusFile = 'current_' + self.name + '.log'
@@ -456,7 +467,7 @@ class CDK700:
         self.logger.info('Connecting to the focuser')
         self.focuserConnect()
 
-        nominalFocus = 25500
+        nominalFocus = self.focus
         self.logger.info('Moving to nominal focus (' + str(nominalFocus) + ')')
         self.focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
         time.sleep(5.0)
@@ -475,6 +486,15 @@ class CDK700:
         while status.focuser.auto_focus_busy == 'True':
             time.sleep(1)
             status = self.getStatus()
+
+        
+        self.logger.info('Updating best focus')
+        status = self.getStatus()
+        self.focus = float(status.focuser.position)
+        f = open('focus.txt','w')
+        f.write(str(self.focus))
+        f.close()
+        
         self.logger.info('Finished autofocus')
 
 

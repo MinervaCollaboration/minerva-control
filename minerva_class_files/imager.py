@@ -103,12 +103,15 @@ class imager:
         self.logger.info('Turning cooler off')
         self.cam.CoolerOn = False
 
+        time.sleep(1)
+
         # Disconnect from the camera 
         self.logger.info('Disconnecting from the camera') 
         self.cam.LinkEnabled = False      
 
     def connect(self):
         settleTime = 900
+        oscillationTime = 120.0
 
         # Connect to an instance of Maxim's camera control.
         # (This launches the app if needed)
@@ -161,13 +164,21 @@ class imager:
         start = datetime.datetime.utcnow()
         currentTemp = self.cam.Temperature
         elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-
-        # Wait for temperature to settle (timeout of 10 minutes)
-        while elapsedTime < settleTime and (abs(self.setTemp - currentTemp) > self.maxdiff):    
+        lastTimeNotAtTemp = datetime.datetime.utcnow() - datetime.timedelta(seconds=oscillationTime)
+        elapsedTimeAtTemp = oscillationTime
+        
+        # Wait for temperature to settle (timeout of 15 minutes)
+        while elapsedTime < settleTime and ((abs(self.setTemp - currentTemp) > self.maxdiff) or elapsedTimeAtTemp < oscillationTime):    
             self.logger.info('Current temperature (' + str(currentTemp) +
                              ') not at setpoint (' + str(self.setTemp) +
                              '); waiting for CCD Temperature to stabilize (Elapsed time: '
                              + str(elapsedTime) + ' seconds)')
+
+            # has to maintain temp within range for 1 minute
+            if (abs(self.setTemp - currentTemp) > self.maxdiff):
+                lastTimeNotAtTemp = datetime.datetime.utcnow()
+            elapsedTimeAtTemp = (datetime.datetime.utcnow() - lastTimeNotAtTemp).total_seconds()
+            
             time.sleep(10)
             currentTemp = self.cam.Temperature
             elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()

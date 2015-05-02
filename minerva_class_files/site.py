@@ -257,7 +257,7 @@ class site:
         for key in requiredKeys:
             if not key in weather.keys():
                 # if not, return an error
-                logging.error('Weather page does not have all required keys (' + key + ')')
+                self.logger.warning('Weather page does not have all required keys (' + key + ')')
                 self.weather = -1
                 pageError = True
 

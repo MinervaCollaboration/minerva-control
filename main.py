@@ -24,6 +24,9 @@ def getstars(imageName):
 
 def guide(filename, reference):
 
+    threshhold = 30.0 # maximum offset in X or Y (larger corrections will be ignored)
+    maxangle = 3.0 # maximum offset in theta (larger corrections will be ignored)
+
     if os.path.exists("disableGuiding.txt"):
         logger.info("Guiding disabled")
         return None
@@ -68,6 +71,10 @@ def guide(filename, reference):
                 ", rot=" + str(rot) + ", flag=" + str(flag) +
                 ", rmsf=" + str(rmsf) + ", nstf=" + str(nstf))
     
+    if abs(dx) > threshhold or abs(dy) > threshhold or abs(rot) > maxangle:
+        logger.error("Offset too large; ignoring")
+        return reference
+
     # adjust the rotator angle (sign?)
     logger.info("Adjusting the rotator by " + str(rot*gain) + " degrees")
     telescope.rotatorIncrement(rot*gain)
@@ -358,14 +365,23 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['CTYPE2'] = ("DEC--TAN","TAN projection")
     f[0].header['CUNIT1'] = ("deg","X pixel scale units")
     f[0].header['CUNIT2'] = ("deg","Y pixel scale units")
-    f[0].header['CRVAL1'] = (float(telescopeStatus.mount.ra_radian)*180.0/math.pi,"RA of reference point")
-    f[0].header['CRVAL2'] = (float(telescopeStatus.mount.dec_radian)*180.0/math.pi,"DEC of reference point")
+
+    raarr = telescopeStatus.mount.ra_2000.split()
+    radeg = (float(raarr[0]) + float(raarr[1])/60.0 + float(raarr[2])/3600.0)*15.0
+    decarr = telescopeStatus.mount.dec_2000.split()
+    if "-" in decarr[0]:
+        decdeg = float(decarr[0]) - float(decarr[1])/60.0 - float(decarr[2])/3600.0
+    else:
+        decdeg = float(decarr[0]) + float(decarr[1])/60.0 + float(decarr[2])/3600.0
+    
+    f[0].header['CRVAL1'] = (radeg,"RA of reference point")
+    f[0].header['CRVAL2'] = (decdeg,"DEC of reference point")
     f[0].header['CRPIX1'] = (imager.xcenter,"X reference pixel")
     f[0].header['CRPIX2'] = (imager.ycenter,"Y reference pixel")
     f[0].header['CD1_1'] = -platescale*math.cos(PA)
     f[0].header['CD1_2'] = platescale*math.sin(PA)
     f[0].header['CD2_1'] = platescale*math.sin(PA)
-    f[0].header['CD2_2'] = platescale*math.cos(PA)
+    f[0].header['CD2_2'] = -platescale*math.cos(PA)
 
     # M3 Specific
     logger.debug('Inserting M3 keywords')
@@ -529,28 +545,50 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
     # filters ordered from least transmissive to most transmissive
     # flats will be taken in this order (or reverse order in the morning)
     masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
-    if morning: masterfilters.reverse()
-
-    # Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
-    Alt = 75.0 # degrees (somewhat site dependent)
-    Az = site.sunaz() + 180.0 # degrees
-    if Az > 360.0: Az = Az - 360.0
-    
-    # keep slewing to the optimally flat part of the sky (dithers too)
-    logger.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
-    telescope.mountGotoAltAz(Alt,Az)
-
-    if telescope.inPosition():
-        logger.info("Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
-    else:
-        logger.error("Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
-        # now what?    
+    if morning: masterfilters.reverse()  
 
     for filterInd in masterfilters:
         if filterInd in filters and filterInd in imager.filters:
 
             i = 0
+            NotFirstImage = 0
             while i < num:
+
+                # Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
+                Alt = 75.0 # degrees (somewhat site dependent)
+                Az = site.sunaz() + 180.0 # degrees
+                if Az > 360.0: Az = Az - 360.0
+                
+                # keep slewing to the optimally flat part of the sky (dithers too)
+                # DeltaPos is here to check if we're within DeltaPosLimit of the target pos.
+                DeltaPos = 90.
+                DeltaPosLimit = 5.0
+                SlewRepeat = 0
+                while DeltaPos > DeltaPosLimit:
+                    logger.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
+                    telescope.mountGotoAltAz(Alt,Az)
+
+                    if NotFirstImage == 0:
+                        if telescope.inPosition():
+                            logger.info("Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+                            NotFirstImage = 1
+                        else:
+                            logger.error("Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
+                            # now what?  
+                    else:
+                        time.sleep(10)
+
+                    telescopeStatus = telescope.getStatus()
+                    ActualAz = float(telescopeStatus.mount.azm_radian)*(180./3.14159265358979626)
+                    ActualAlt = float(telescopeStatus.mount.alt_radian)*(180./3.14159265358979626)
+                    DeltaPos = math.sqrt((Alt-ActualAlt)**2.+(Az-ActualAz)**2.)
+                    if DeltaPos > DeltaPosLimit:
+                        logger.error("Telescope reports it is more than " + str(DeltaPos) + " deg. away from the target postion. Reslewing...") 
+                        SlewRepeat += 1
+                    if SlewRepeat>10:
+                        logger.error("Repeated slewing is not getting us to the flat-field target position; skipping.")
+                        break
+
                             
                 # Take flat fields
                 filename = takeImage(site, aqawan, telescope, imager, exptime, filterInd, 'SkyFlat')
@@ -630,9 +668,17 @@ def doScience(site, aqawan, telescope, imager, target):
     # slew to the target    
     telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 
-    if target['defocus'] <> 0.0:
-        logger.info("Defocusing Telescope by " + str(target['defocus']) + ' mm')
-        telescope.focuserIncrement(target['defocus']*1000.0)
+    newfocus = telescope.focus + target['defocus']*1000.0
+    status = telescope.getStatus()
+    if newfocus <> status.focuser.position:
+        logger.info("Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
+        telescope.focuserMove(newfocus)
+
+    status = telescope.getStatus()
+    while status.focuser.moving == 'True':
+        logger.info('Focuser moving (' + str(status.focuser.position) + ')')
+        time.sleep(0.3)
+        status = telescope.getStatus()
 
     reference=None
 
@@ -684,8 +730,6 @@ if __name__ == '__main__':
 
     site, aqawan, telescope, imager = prepNight()
 
-    #ipdb.set_trace()
-
     # setting up main logger
     fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
     datefmt = "%Y-%m-%dT%H:%M:%S"
@@ -721,7 +765,6 @@ if __name__ == '__main__':
         calibline1 = calibfile.readline()
         CalibInfo = parseCalib(calibline1)
         calibline2 = calibfile.readline()
-        CalibEndInfo = parseCalib(calibline2)
     
     # Take biases and darks
     #ipdb.set_trace()
@@ -760,13 +803,12 @@ if __name__ == '__main__':
     telescope.autoFocus()
 
     # read the target list
-    with open('schedule/' + site.night + '.txt', 'r') as targetfile:
+    with open('./schedule/' + site.night + '.txt', 'r') as targetfile:
         next(targetfile) # skip the calibration headers
         next(targetfile) # skip the calibration headers
         for line in targetfile:
             target = parseTarget(line)
             if target <> -1:
-            
                 # check if the end is after morning twilight begins
                 if target['endtime'] > site.NautTwilBegin(): 
                     target['endtime'] = site.NautTwilBegin()
@@ -779,6 +821,10 @@ if __name__ == '__main__':
     # Take Morning Sky flats
     # Check if we want to wait for these
     if CalibInfo['WaitForMorning']:
+        sleeptime = (site.NautTwilBegin() - datetime.datetime.utcnow()).total_seconds()
+        if sleeptime > 0:
+            logger.info('Waiting for morning flats (' + str(sleeptime) + ' seconds)')
+            time.sleep(sleeptime)
     	doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibEndInfo['nflatEnd'], morning=True)
 
     # Want to close the aqawan before darks and biases
