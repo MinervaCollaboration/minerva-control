@@ -2,3 +2,6 @@
 ./logs/
 *.pyc
 ./*/*.pyc
+*.log
+minerva_class_files/site.py
+*.txt

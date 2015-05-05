@@ -205,7 +205,7 @@ class site:
             if len(data) <> 20:
                 self.logger.error('Error reading the weather page; response: ' + str(data))
                 site.weather = -1
-                return                
+                return
 
             weather = {}
             weather['date'] = datetime.datetime(1970,1,1) + datetime.timedelta(seconds=float(data[0]))
