@@ -5,3 +5,5 @@
 *.log
 minerva_class_files/site.py
 *.txt
+minerva_class_files/__init__.pyc
+*.pyc
