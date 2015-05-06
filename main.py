@@ -215,32 +215,32 @@ def prepNight():
         
     hostname = socket.gethostname()
 
-    # Select the config files based on the computer name
-    if hostname == 't1-PC' or hostname == 't2-PC':
-        site = minervasite.site('Pasadena',night,configfile='minerva_class_files/site.ini')
-    elif hostname == 'pwi-PC' or hostname == 't4-PC':
-        site = minervasite.site('Mount_Hopkins',night,configfile='minerva_class_files/site.ini')
+    site = minervasite.site('Mount_Hopkins',night,configfile='minerva_class_files/site.ini')
     site.night = night
 
     site.startNightTime = datetime.datetime(today.year, today.month, today.day, 17) - datetime.timedelta(days=1)
 
     # initialize the first of everything
-    aqawan = minervaaqawan.aqawan(site.enclosures[0],night,configfile='minerva_class_files/aqawan.ini')
-    telescope = minervatelescope.CDK700(aqawan.telescopes[0],night,configfile='minerva_class_files/telescope.ini')
+    telname =  hostname.split('-')[0] 
+    if telname == 't1': 
+	aqawanndx = 0
+	telndx = 0
+    elif telname == 't2':
+	aqawanndx = 0
+	telndx = 1
+    elif telname == 't3':
+	aqawanndx = 1
+	telndx = 0
+    elif telname == 't4':
+        aqawanndx = 1
+        telndx = 1
+
+    aqawan = minervaaqawan.aqawan(site.enclosures[aqawanndx],night,configfile='minerva_class_files/aqawan.ini')
+    telescope = minervatelescope.CDK700(aqawan.telescopes[telndx],night,configfile='minerva_class_files/telescope.ini')
     imager = minervaimager.imager(telescope.imager,night,configfile='minerva_class_files/imager.ini')
 
-    if hostname == 't1-PC':
-        imager.dataPath = "C:/minerva/data/" + night + "/"
-        imager.gitPath = "C:/Users/t1/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
-    elif hostname == 't2-PC':    
-        imager.dataPath = "C:/minerva/data/" + night + "/"
-        imager.gitPath = "C:/Users/t2/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
-    elif hostname == 'pwi-PC':
-        imager.dataPath = "E:/minerva/data/" + night + "/"
-        imager.gitPath = "C:/Users/pwi/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
-    elif hostname == 't4-PC':    
-        imager.dataPath = "E:/minerva/data/" + night + "/"
-        imager.gitPath = "C:/Users/t4/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
+    imager.dataPath = "C:/minerva/data/" + night + "/"
+    imager.gitPath = "C:/Users/" + telname + "/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
 
     if not os.path.exists(imager.dataPath):
         os.makedirs(imager.dataPath)
@@ -248,7 +248,7 @@ def prepNight():
     return site, aqawan, telescope, imager
 
 def getIndex(dirname):
-    files = glob.glob(dirname + "/*.fits")
+    files = glob.glob(dirname + "/*.fits*")
 
     return str(len(files)+1).zfill(4)
 
@@ -289,6 +289,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         
     telescopeStatus = telescope.getStatus()
     aqStatus = aqawan.status()    
+
     gitNum = subprocess.check_output([imager.gitPath, "rev-list", "HEAD", "--count"]).strip()
 
     while not imager.cam.ImageReady: time.sleep(0.01)
