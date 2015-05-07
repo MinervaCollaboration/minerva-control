@@ -766,7 +766,8 @@ if __name__ == '__main__':
         calibline1 = calibfile.readline()
         CalibInfo = parseCalib(calibline1)
         calibline2 = calibfile.readline()
-    
+    	CalibEndInfo = parseCalib(calibline2)
+    	
     # Take biases and darks
     #ipdb.set_trace()
     doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
