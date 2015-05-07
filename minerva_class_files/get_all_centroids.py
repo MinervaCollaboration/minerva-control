@@ -112,7 +112,7 @@ def centroid_all_blobs(thresholded_image, areacutoff=30):
                                         cv2.RETR_LIST,
                                         cv2.CHAIN_APPROX_SIMPLE)
     if len(contours)==0:
-        return (-1, -1) 
+        return np.zeros((1, 3)) 
     
     else:
         outarray = np.zeros((1, 3))

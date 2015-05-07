@@ -17,6 +17,10 @@ def getstars(imageName):
     
     d = getfitsdata(imageName)
     th = threshold_pyguide(d, level = 4)
+
+    if np.max(d*th) == 0.0:
+        return np.zeros((1,3))
+    
     imtofeed = np.array(np.round((d*th)/np.max(d*th)*255), dtype='uint8')
     cc = centroid_all_blobs(imtofeed)
 
