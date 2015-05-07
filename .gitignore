@@ -1,13 +1,6 @@
 ./schedule/ 
 ./logs/
-*.pyc
 ./*/*.pyc
 *.log
-minerva_class_files/site.py
 *.txt
-focus.txt
-*.pyc
-focus.txt
-focus.txt
-focus.txt
 *.pyc
