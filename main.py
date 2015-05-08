@@ -85,7 +85,7 @@ def guide(filename, reference):
 
     # adjust RA/Dec (need to calibrate PA)
     deltaRA = -(dx*math.cos(PA) - dy*math.sin(PA))*math.cos(dec)*platescale*gain
-    deltaDec = -(dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
+    deltaDec = (dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
     logger.info("Adjusting the RA,Dec by " + str(deltaRA) + "," + str(deltaDec))
     telescope.mountOffsetRaDec(deltaRA,deltaDec)
 
@@ -386,7 +386,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['CD1_1'] = -platescale*math.cos(PA)
     f[0].header['CD1_2'] = platescale*math.sin(PA)
     f[0].header['CD2_1'] = platescale*math.sin(PA)
-    f[0].header['CD2_2'] = -platescale*math.cos(PA)
+    f[0].header['CD2_2'] = platescale*math.cos(PA)
 
     # M3 Specific
     logger.debug('Inserting M3 keywords')
