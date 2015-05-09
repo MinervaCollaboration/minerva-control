@@ -822,7 +822,40 @@ if __name__ == '__main__':
                 if target['starttime'] < site.NautTwilEnd(): 
                     target['starttime'] = site.NautTwilEnd()
 
-                doScience(site, aqawan, telescope, imager, target)
+                # compute the rise/set times of the target
+                site.obs.horizon = '20.0'
+                body = ephem.FixedBody()
+                body._ra = str(target['ra'])
+                body._dec = str(target['dec'])
+                body._epoch = '2000.0'
+                body.compute()
+                try:
+                    risetime = site.obs.next_rising(body,start=site.NautTwilEnd()).datetime()
+                except AlwaysUpError:
+                    # if it's always up, don't modify the start time
+                    risetime = target['starttime']
+                except NeverUpError:
+                    # if it's never up, skip the target
+                    risetime = target['endtime']
+                try:
+                    settime = site.obs.next_setting(body,start=site.NautTwilEnd()).datetime()
+                except AlwaysUpError:
+                    # if it's always up, don't modify the end time
+                    settime = target['endtime']
+                except NeverUpError:
+                    # if it's never up, skip the target
+                    settime = target['starttime']
+                
+                # make sure the target is always above the horizon
+                if target['starttime'] < risetime:
+                    target['starttime'] = risetime
+                if target['endtime'] > settime:
+                    target['endtime'] = settime
+
+                if target['starttime'] < target['endtime']:
+                    doScience(site, aqawan, telescope, imager, target)
+                else:
+                    logger.info(target['name']+ ' not observable; skipping')
 
     # Take Morning Sky flats
     # Check if we want to wait for these
