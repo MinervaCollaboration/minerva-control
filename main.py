@@ -845,7 +845,17 @@ if __name__ == '__main__':
                 except NeverUpError:
                     # if it's never up, skip the target
                     settime = target['starttime']
-                
+
+                if risetime > settime:
+                    try:
+                        risetime = site.obs.next_rising(body,start=site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
+                    except AlwaysUpError:
+                        # if it's always up, don't modify the start time
+                        risetime = target['starttime']
+                    except NeverUpError:
+                        # if it's never up, skip the target
+                        risetime = target['endtime']
+                    
                 # make sure the target is always above the horizon
                 if target['starttime'] < risetime:
                     target['starttime'] = risetime
