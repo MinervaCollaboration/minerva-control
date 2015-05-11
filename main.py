@@ -173,9 +173,10 @@ def heartbeat(site, aqawan):
     
     while site.observing:
         t0 = datetime.datetime.utcnow()
-        logger.debug(aqawan.heartbeat())
         if not site.oktoopen(open=True):
             aqawan.close_both()
+        else:
+            logger.debug(aqawan.heartbeat())
 
         # send a heartbeat every 14 seconds
         sleeptime = max(14.0-(datetime.datetime.utcnow() - t0).total_seconds(),0)
