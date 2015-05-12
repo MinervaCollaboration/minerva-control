@@ -110,7 +110,7 @@ class imager:
         self.cam.LinkEnabled = False      
 
     def connect(self):
-        settleTime = 900
+        settleTime = 1200
         oscillationTime = 120.0
 
         # Connect to an instance of Maxim's camera control.
