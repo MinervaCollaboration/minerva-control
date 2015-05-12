@@ -773,10 +773,15 @@ if __name__ == '__main__':
         calibline2 = calibfile.readline()
     	CalibEndInfo = parseCalib(calibline2)
     	
-    # Take biases and darks
-    #ipdb.set_trace()
-    doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
-    doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
+    # wait until it's darker to take biases/darks
+    readtime = 10
+    biastime = site.sunset() - datetime.timedelta(seconds=(CalibInfo['nbias']*readtime + CalibInfo['ndark']*(readtime+CalibInfo['darkexptime']) + 600)
+   	watitime = (biastime - datetime.datetime.utcnow()).total_seconds()
+   	if waittime > 0:
+	    # Take biases and darks (skip if we don't have time before twilight)
+    	logger.info('Waiting for until darker (' + str(waittime) + 'seconds)')
+	    doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
+    	doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
 
     # Wait until sunset   
     timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
