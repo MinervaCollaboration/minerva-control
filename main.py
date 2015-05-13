@@ -244,7 +244,7 @@ def prepNight():
     telescope = minervatelescope.CDK700(aqawan.telescopes[telndx],night,configfile='minerva_class_files/telescope.ini')
     imager = minervaimager.imager(telescope.imager,night,configfile='minerva_class_files/imager.ini')
 
-    imager.dataPath = "C:/minerva/data/" + night + "/"
+    imager.dataPath = "D:/minerva/data/" + night + "/"
     imager.gitPath = "C:/Users/" + telname + "/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
 
     if not os.path.exists(imager.dataPath):
