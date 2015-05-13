@@ -780,7 +780,7 @@ if __name__ == '__main__':
     waittime = (biastime - datetime.datetime.utcnow()).total_seconds()
     if waittime > 0:
     	# Take biases and darks (skip if we don't have time before twilight)
-    	logger.info('Waiting for until darker (' + str(waittime) + 'seconds)')
+    	logger.info('Waiting until darker before biases/darks (' + str(waittime) + ' seconds)')
     	time.sleep(waittime)
 	doBias(site, aqawan, telescope, imager, num=CalibInfo['nbias'])
 	doDark(site, aqawan, telescope, imager, num=CalibInfo['ndark'], exptime=CalibInfo['darkexptime'])
