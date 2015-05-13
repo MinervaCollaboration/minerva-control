@@ -387,7 +387,7 @@ class CDK700:
 
     def inPosition(self):
         # Wait for telescope to complete motion
-        timeout = 180.0
+        timeout = 360.0
         start = datetime.datetime.utcnow()
         elapsedTime = 0
         time.sleep(0.25) # needs time to start moving
