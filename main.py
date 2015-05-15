@@ -3,6 +3,7 @@ import minerva_class_files.imager as minervaimager
 import minerva_class_files.cdk700 as minervatelescope
 import minerva_class_files.aqawan as minervaaqawan
 import minerva_class_files.segments as segments
+import minerva_class_files.mail as mail
 import numpy as np
 from minerva_class_files.get_all_centroids import *
 
@@ -12,6 +13,7 @@ import ipdb
 import socket, threading
 import pyfits, ephem
 from scipy import stats
+mailsent = False
 
 def getstars(imageName):
     
@@ -77,6 +79,9 @@ def guide(filename, reference):
     
     if abs(dx) > threshhold or abs(dy) > threshhold or abs(rot) > maxangle:
         logger.error("Offset too large; ignoring")
+        if not mailsent:
+            mail.send("Guiding offset is too large","Guiding offset is too large for " + filename + "; rotator probably needs to be homed/calibrated",level="serious")
+            mailsent = True
         return reference
 
     # adjust the rotator angle (sign?)
@@ -88,6 +93,9 @@ def guide(filename, reference):
     deltaDec = (dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
     logger.info("Adjusting the RA,Dec by " + str(deltaRA) + "," + str(deltaDec))
     telescope.mountOffsetRaDec(deltaRA,deltaDec)
+
+    # correction sent
+    mailsent=False
 
     return reference
 
@@ -297,7 +305,12 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
 
     gitNum = subprocess.check_output([imager.gitPath, "rev-list", "HEAD", "--count"]).strip()
 
-    while not imager.cam.ImageReady: time.sleep(0.01)
+    try:
+        while not imager.cam.ImageReady: time.sleep(0.01)
+    except:
+        logger.error("Camera failure: " + str(sys.exc_info()[0]))
+        mail.send("Camera failure on " + telescope.name,"Camera failure on " + telescope.name + ": " + str(sys.exc_info()[0]) + "\n\nPlease reconnect, power cycle the panel, or reboot the machine.\n\nLove,\n" + telescope.name, level='serious')
+        sys.exit(0)
 
     # Save the image
     filename = imager.dataPath + "/" + site.night + "." + telescope.name + "." + objname + "." + filterInd + "." + getIndex(imager.dataPath) + ".fits"
@@ -344,6 +357,22 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         f[0].header['AQINTMP'] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
         f[0].header['AQLITON'] = (aqStatus['LightsOn'],"Aqawan lights on?")
     except AttributeError:
+        f[0].header['AQSOFTV'] = ("UNKNOWN","Aqawan software version number")
+        f[0].header['AQSHUT1'] = ("UNKNOWN","Aqawan shutter 1 state")
+        f[0].header['AQSHUT2'] = ("UNKNOWN","Aqawan shutter 2 state")
+        f[0].header['INHUMID'] = ("UNKNOWN","Humidity inside enclosure")
+        f[0].header['DOOR1'] = ("UNKNOWN","Door 1 into aqawan state")
+        f[0].header['DOOR2'] = ("UNKNOWN","Door 2 into aqawan state")
+        f[0].header['PANELDR'] = ("UNKNOWN","Aqawan control panel door state")
+        f[0].header['HRTBEAT'] = ("UNKNOWN","Heartbeat timer")
+        f[0].header['AQPACUP'] = ("UNKNOWN","PAC uptime (seconds)")
+        f[0].header['AQFAULT'] = ("UNKNOWN","Aqawan fault present?")
+        f[0].header['AQERROR'] = ("UNKNOWN","Aqawan error present?")
+        f[0].header['PANLTMP'] = ("UNKNOWN","Aqawan control panel exhaust temp (C)")
+        f[0].header['AQTEMP'] = ("UNKNOWN","Enclosure temperature (C)")
+        f[0].header['AQEXTMP'] = ("UNKNOWN","Enclosure exhaust temperature (C)")
+        f[0].header['AQINTMP'] = ("UNKNOWN","Enclosure intake temperature (C)")
+        f[0].header['AQLITON'] = ("UNKNOWN","Aqawan lights on?")
         logger.error('Failed getting the enclosure keywords!')
 
     # Mount specific
@@ -413,6 +442,11 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
             f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
             f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
         except AttributeError:
+            f[0].header['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
+            f[0].header['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
+            f[0].header['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
+            f[0].header['AMBTMP'] = ("UNKNOWN","Ambient Temp (C)")
+            f[0].header['BCKTMP'] = ("UNKNOWN","Backplate Temp (C)")
             logger.error('Failed getting the telescope telemetry keywords!')
 
     # Weather station

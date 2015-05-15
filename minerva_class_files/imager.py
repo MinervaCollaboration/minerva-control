@@ -1,6 +1,9 @@
 from configobj import ConfigObj
 from win32com.client import Dispatch
 import logging, datetime, ipdb, time, json
+import minerva_class_files.mail as mail
+import sys
+
 # See http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.htm
 
 class imager:
@@ -109,6 +112,11 @@ class imager:
         self.logger.info('Disconnecting from the camera') 
         self.cam.LinkEnabled = False      
 
+    def recoverCamera(self):
+        
+        mail.send("Camera " + str(self.num) + " failed to connect","please do something",level="serious")
+        sys.exit()
+
     def connect(self):
         settleTime = 1200
         oscillationTime = 120.0
@@ -119,8 +127,11 @@ class imager:
         self.cam = Dispatch("MaxIm.CCDCamera")
 
         # Connect to the camera 
-        self.logger.info('Connecting to camera') 
-        self.cam.LinkEnabled = True
+        self.logger.info('Connecting to camera')
+        try:
+            self.cam.LinkEnabled = True
+        except:
+            self.recoverCamera()
 
         # Prevent the camera from disconnecting when we exit
         self.logger.info('Preventing the camera from disconnecting when we exit') 

@@ -4,6 +4,7 @@ test program creates aqawan(1) object and send keyboard commands'''
 
 import time, telnetlib, socket, threading, logging, ipdb, datetime, json
 from configobj import ConfigObj
+import minerva_class_files.mail as mail
 
 #To Do: change log to appropriate format, log open/close failure by reading status, add more functionality as needed 
 class aqawan:
@@ -50,6 +51,7 @@ class aqawan:
         self.logger.addHandler(console)
         
         self.isOpen = False
+        self.mailsent = False
         self.lastClose = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
         #start heartbeat thread, create lock object to prevent multiple PAC connection at same time
@@ -174,12 +176,18 @@ class aqawan:
         status = self.status()
         if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
             self.logger.debug('Both shutters already closed')
+            if self.mailsent:
+                mail.send("Aqawan closed!","Love,\nMINERVA",level="critical")
+                self.mailsent = False
         else:
             response = self.send('CLOSE_SEQUENTIAL')
             if not 'Success=TRUE' in response:
                 self.logger.error('Aqawan failed to close!')
                 self.isOpen = True
-                # need to send alerts, attempt other stuff
+                if not self.mailsent:
+                    mail.send("Aqawan failed to close!","Love,\nMINERVA",level="critical")
+                    self.mailsent = True
+                self.close_both() # keep trying!
             else:
                 self.logger.info(response)    
                 start = datetime.datetime.utcnow()
@@ -189,10 +197,17 @@ class aqawan:
                 if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
                     self.logger.error('Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
                     self.isOpen = True
-                    # need to send alerts, attempt other stuff
+                    if not self.mailsent:
+                        mail.send("Aqawan failed to within the timeout!","Love,\nMINERVA",level="critical")
+                        self.mailsent = True
+                    self.close_both() # keep trying!
                 else:
                     self.logger.info('Closed both shutters')
                     self.lastClose = datetime.datetime.utcnow()
+                    if self.mailsent:
+                        mail.send("Aqawan closed; crisis averted!","Love,\nMINERVA",level="critical")
+                        self.mailsent = False
+    
             
     # get aqawan status
     def status(self):
