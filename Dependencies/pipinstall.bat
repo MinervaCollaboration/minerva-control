@@ -7,6 +7,5 @@ pip install psutil
 pip install paramiko
 pip install scp
 pip install pyreadline
-pip install smtplib
 #pip install google-api-python-client
 #pip install astropy
