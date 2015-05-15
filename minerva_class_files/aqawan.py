@@ -217,6 +217,17 @@ class aqawan:
             if '=' in entry:
                 status[(entry.split('='))[0].strip()] = (entry.split('='))[1].strip()
 
+        # check to make sure it has everything we use
+        requiredKeys = ['Shutter1', 'Shutter2', 'SWVersion', 'EnclHumidity',
+                        'EntryDoor1', 'EntryDoor2', 'PanelDoor', 'Heartbeat',
+                        'SystemUpTime', 'Fault', 'Error', 'PanelExhaustTemp',
+                        'EnclTemp', 'EnclExhaustTemp', 'EnclIntakeTemp', 'LightsOn']
+        
+        for key in requiredKeys:
+            if not key in status.keys():
+                self.logger.error("Required key " + str(key) + " not present; trying again")
+                status = self.status() # potential infinite loop!
+                
         with open(self.currentStatusFile,'w') as outfile:
             json.dump(status,outfile)
 

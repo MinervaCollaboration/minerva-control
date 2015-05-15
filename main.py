@@ -828,10 +828,10 @@ if __name__ == '__main__':
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
     response = -1
-    while response == -1:
+    while response == -1 or datetime.datetime.utcnow() > site.NautTwilBegin():
         response = aqawanOpen(site, aqawan)
         if response == -1: time.sleep(60)
-    logger.info('Dome open')
+    if response <> -1: logger.info('Dome open')
     #ipdb.set_trace() # stop execution until we type 'cont' so we can keep the dome open 
 
     flatFilters = CalibInfo['flatFilters']
