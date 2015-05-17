@@ -177,7 +177,7 @@ class aqawan:
         if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
             self.logger.debug('Both shutters already closed')
             if self.mailsent:
-                mail.send("Aqawan closed!","Love,\nMINERVA",level="critical")
+                mail.send("Aqawan " + str(self.num) + " closed!","Love,\nMINERVA",level="critical")
                 self.mailsent = False
         else:
             response = self.send('CLOSE_SEQUENTIAL')
@@ -185,8 +185,9 @@ class aqawan:
                 self.logger.error('Aqawan failed to close!')
                 self.isOpen = True
                 if not self.mailsent:
-                    mail.send("Aqawan failed to close!","Love,\nMINERVA",level="critical")
+                    mail.send("Aqawan " + str(self.num) + " failed to close!","Love,\nMINERVA",level="critical")
                     self.mailsent = True
+                self.logger.info('Trying to close again!')
                 self.close_both() # keep trying!
             else:
                 self.logger.info(response)    
@@ -198,20 +199,21 @@ class aqawan:
                     self.logger.error('Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
                     self.isOpen = True
                     if not self.mailsent:
-                        mail.send("Aqawan failed to within the timeout!","Love,\nMINERVA",level="critical")
+                        mail.send("Aqawan " + str(self.num) + " failed to within the timeout!","Love,\nMINERVA",level="critical")
                         self.mailsent = True
                     self.close_both() # keep trying!
                 else:
                     self.logger.info('Closed both shutters')
                     self.lastClose = datetime.datetime.utcnow()
                     if self.mailsent:
-                        mail.send("Aqawan closed; crisis averted!","Love,\nMINERVA",level="critical")
+                        mail.send("Aqawan " + str(self.num) + " closed; crisis averted!","Love,\nMINERVA",level="critical")
                         self.mailsent = False
     
             
     # get aqawan status
     def status(self):
         response = self.send('STATUS').split(',')
+        self.logger.info("Status: " + response)
         status = {}
         for entry in response:
             if '=' in entry:
