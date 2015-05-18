@@ -205,13 +205,13 @@ def endNight(site, aqawan, telescope, imager):
     imager.disconnect()
 
     #TODO: Back up the data
-#    site.backup()
+    #site.backup()
 
     # copy schedule to data directory
-#	shutil.copyfile("schedule/" + site.night + ".txt", imager.dataPath)
+    shutil.copyfile("schedule/" + site.night + ".txt", imager.dataPath)
 
-	# copy logs to data directory
-#	shutil.copyfile("logs/" + site.night + "/*", imager.dataPath)
+    # copy logs to data directory
+    shutil.copyfile("logs/" + site.night + "/*", imager.dataPath)
 
 def compressData(dataPath):
     files = glob.glob(dataPath + "/*.fits")
