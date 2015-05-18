@@ -67,6 +67,7 @@ class CDK700:
         self.imager = CDKconfig['Setup']['IMAGER']
         self.guider = CDKconfig['Setup']['GUIDER']
         self.fau = CDKconfig['Setup']['FAU']
+        self.rotatorMailsent=False
 
         # initialize to the most recent best focus
         if os.path.isfile('focus.txt'):
