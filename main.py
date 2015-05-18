@@ -13,7 +13,6 @@ import ipdb
 import socket, threading
 import pyfits, ephem
 from scipy import stats
-mailsent = False
 
 def getstars(imageName):
     
@@ -79,9 +78,9 @@ def guide(filename, reference):
     
     if abs(dx) > threshhold or abs(dy) > threshhold or abs(rot) > maxangle:
         logger.error("Offset too large; ignoring")
-        if not mailsent:
+        if not telescope.rotatorMailsent:
             mail.send("Guiding offset is too large","Guiding offset is too large for " + filename + "; rotator probably needs to be homed/calibrated",level="serious")
-            mailsent = True
+            telescope.rotatorMailsent = True
         return reference
 
     # adjust the rotator angle (sign?)
@@ -95,7 +94,7 @@ def guide(filename, reference):
     telescope.mountOffsetRaDec(deltaRA,deltaDec)
 
     # correction sent
-    mailsent=False
+    telescope.rotatorMailsent=False
 
     return reference
 
