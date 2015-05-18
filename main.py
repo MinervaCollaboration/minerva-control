@@ -327,7 +327,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['SITELONG'] = (str(site.obs.lon),"East Longitude of the imaging location")
     f[0].header['SITEALT'] = (site.obs.elevation,"Site Altitude (m)")
     f[0].header['OBSERVER'] = ('MINERVA Robot',"Observer")
-    f[0].header['TELESCOP'] = "CDK700"
+    f[0].header['TELESCOP'] = telescope.name
     f[0].header['OBJECT'] = objname
     f[0].header['APTDIA'] = 700
     f[0].header['APTAREA'] = 490000
