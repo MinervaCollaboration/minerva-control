@@ -6,7 +6,7 @@ import minerva_class_files.segments as segments
 import minerva_class_files.mail as mail
 import numpy as np
 from minerva_class_files.get_all_centroids import *
-
+import shutil
 
 import datetime, logging, os, sys, time, subprocess, glob, math, json, copy
 import ipdb
@@ -206,6 +206,12 @@ def endNight(site, aqawan, telescope, imager):
 
     #TODO: Back up the data
 #    site.backup()
+
+    # copy schedule to data directory
+#	shutil.copyfile("schedule/" + site.night + ".txt", imager.dataPath)
+
+	# copy logs to data directory
+#	shutil.copyfile("logs/" + site.night + "/*", imager.dataPath)
 
 def compressData(dataPath):
     files = glob.glob(dataPath + "/*.fits")

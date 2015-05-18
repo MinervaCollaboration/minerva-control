@@ -30,6 +30,7 @@ class site:
         self.observing = True
         self.weather = -1
         self.startNightTime = -1
+        self.night = night
         
         # touch a file in the current directory to enable cloud override
         self.cloudOverride = os.path.isfile('cloudOverride.txt') 
