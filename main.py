@@ -833,7 +833,7 @@ if __name__ == '__main__':
     # keep trying to open the aqawan every minute
     # (probably a stupid way of doing this)
     response = -1
-    while response == -1 or datetime.datetime.utcnow() > site.NautTwilBegin():
+    while response == -1 and datetime.datetime.utcnow() < site.NautTwilBegin():
         response = aqawanOpen(site, aqawan)
         if response == -1: time.sleep(60)
     if response <> -1: logger.info('Dome open')
@@ -852,8 +852,9 @@ if __name__ == '__main__':
         time.sleep(timeUntilTwilEnd)
 
     # find the best focus for the night
-    logger.info('Beginning autofocus')
-    telescope.autoFocus()
+    if datetime.datetime.utcnow() < site.NautTwilBegin():
+        logger.info('Beginning autofocus')
+        telescope.autoFocus()
 
     # read the target list
     with open('./schedule/' + site.night + '.txt', 'r') as targetfile:
