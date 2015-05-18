@@ -213,7 +213,7 @@ class aqawan:
     # get aqawan status
     def status(self):
         response = self.send('STATUS').split(',')
-        self.logger.info("Status: " + response)
+        self.logger.info("Status: " + str(response))
         status = {}
         for entry in response:
             if '=' in entry:
