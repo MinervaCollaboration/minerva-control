@@ -117,7 +117,7 @@ class imager:
         mail.send("Camera " + str(self.num) + " failed to connect","please do something",level="serious")
         sys.exit()
 
-    def connect(self):
+    def connect(self, cooler=True):
         settleTime = 1200
         oscillationTime = 120.0
 
@@ -169,34 +169,35 @@ class imager:
         self.cam.NumX = xsize # CENTER_SUBFRAME_WIDTH
         self.cam.NumY = ysize # CENTER_SUBFRAME_HEIGHT
 
-        self.logger.info('Turning cooler on')
-        self.cam.TemperatureSetpoint = self.setTemp
-        self.cam.CoolerOn = True
-        start = datetime.datetime.utcnow()
-        currentTemp = self.cam.Temperature
-        elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-        lastTimeNotAtTemp = datetime.datetime.utcnow() - datetime.timedelta(seconds=oscillationTime)
-        elapsedTimeAtTemp = oscillationTime
-        
-        # Wait for temperature to settle (timeout of 15 minutes)
-        while elapsedTime < settleTime and ((abs(self.setTemp - currentTemp) > self.maxdiff) or elapsedTimeAtTemp < oscillationTime):    
-            self.logger.info('Current temperature (' + str(currentTemp) +
-                             ') not at setpoint (' + str(self.setTemp) +
-                             '); waiting for CCD Temperature to stabilize (Elapsed time: '
-                             + str(elapsedTime) + ' seconds)')
-
-            # has to maintain temp within range for 1 minute
-            if (abs(self.setTemp - currentTemp) > self.maxdiff):
-                lastTimeNotAtTemp = datetime.datetime.utcnow()
-            elapsedTimeAtTemp = (datetime.datetime.utcnow() - lastTimeNotAtTemp).total_seconds()
-            
-            time.sleep(10)
+        if cooler:
+            self.logger.info('Turning cooler on')
+            self.cam.TemperatureSetpoint = self.setTemp
+            self.cam.CoolerOn = True
+            start = datetime.datetime.utcnow()
             currentTemp = self.cam.Temperature
             elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+            lastTimeNotAtTemp = datetime.datetime.utcnow() - datetime.timedelta(seconds=oscillationTime)
+            elapsedTimeAtTemp = oscillationTime
+            
+            # Wait for temperature to settle (timeout of 15 minutes)
+            while elapsedTime < settleTime and ((abs(self.setTemp - currentTemp) > self.maxdiff) or elapsedTimeAtTemp < oscillationTime):    
+                self.logger.info('Current temperature (' + str(currentTemp) +
+                                 ') not at setpoint (' + str(self.setTemp) +
+                                 '); waiting for CCD Temperature to stabilize (Elapsed time: '
+                                 + str(elapsedTime) + ' seconds)')
 
-        # Failed to reach setpoint
-        if (abs(self.setTemp - currentTemp)) > self.maxdiff:
-            self.logger.error('The camera was unable to reach its setpoint (' +
-                              str(self.setTemp) + ') in the elapsed time (' +
-                              str(elapsedTime) + ' seconds)')
+                # has to maintain temp within range for 1 minute
+                if (abs(self.setTemp - currentTemp) > self.maxdiff):
+                    lastTimeNotAtTemp = datetime.datetime.utcnow()
+                elapsedTimeAtTemp = (datetime.datetime.utcnow() - lastTimeNotAtTemp).total_seconds()
+                
+                time.sleep(10)
+                currentTemp = self.cam.Temperature
+                elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+
+            # Failed to reach setpoint
+            if (abs(self.setTemp - currentTemp)) > self.maxdiff:
+                self.logger.error('The camera was unable to reach its setpoint (' +
+                                  str(self.setTemp) + ') in the elapsed time (' +
+                                  str(elapsedTime) + ' seconds)')
       

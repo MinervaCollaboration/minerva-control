@@ -192,25 +192,33 @@ def heartbeat(site, aqawan):
 def endNight(site, aqawan, telescope, imager):
 
     # park the scope
+    logger.info("Parking Telescope")
     telescope.park()
 
     # Close the aqawan
+    logger.info("Closing aqawan")
     aqawan.close_both()
     
     # Compress the data
+    logger.info("Compressing data")
     compressData(imager.dataPath)
 
     # Turn off the camera cooler, disconnect
+    logger.info("Disconnecting imager")
     imager.disconnect()
 
     #TODO: Back up the data
     #site.backup()
 
     # copy schedule to data directory
-    shutil.copyfile("schedule/" + site.night + ".txt", imager.dataPath)
+    logger.info("Copying schedule file from ./schedule/" + site.night + ".txt to " + imager.dataPath)
+    shutil.copyfile("./schedule/" + site.night + ".txt", imager.dataPath + site.night + ".txt")
 
     # copy logs to data directory
-    shutil.copyfile("logs/" + site.night + "/*", imager.dataPath)
+    logs = glob.glob("./logs/" + site.night + "/*.log")
+    for log in logs:
+        logger.info("Copying log file " + log + " to " + imager.dataPath)
+        shutil.copyfile(log, imager.dataPath + os.path.basename(log))
 
 def compressData(dataPath):
     files = glob.glob(dataPath + "/*.fits")
@@ -801,7 +809,10 @@ if __name__ == '__main__':
     aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})
     aqawanThread.start()
 
-    imager.connect()
+    if datetime.datetime.utcnow() > site.NautTwilBegin():
+        cooler = False
+    else: cooler = True
+    imager.connect(cooler=cooler)
     telescope.initialize()
 
     # Open the target file and read the first line for calibration info
@@ -930,6 +941,8 @@ if __name__ == '__main__':
     aqawan.close_both()
 
     # Take biases and darks
+    if CalibEndInfo['nbiasEnd'] <> 0 or CalibEndInfo['ndarkEnd']:
+        imager.connect() # make sure the cooler is on
     doBias(site, aqawan, telescope, imager, num=CalibEndInfo['nbiasEnd'])
     doDark(site, aqawan, telescope, imager, num=CalibEndInfo['ndarkEnd'], exptime=CalibInfo['darkexptime'])
 
