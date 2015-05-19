@@ -173,11 +173,16 @@ class aqawan:
         timeout = 500
         elapsedTime = 0
         self.isOpen = False
-        status = self.status()
+        status = self.status()      
         if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
             self.logger.debug('Both shutters already closed')
             if self.mailsent:
                 mail.send("Aqawan " + str(self.num) + " closed!","Love,\nMINERVA",level="critical")
+                self.mailsent = False
+        elif status['EnclOpMode'] == "MANUAL":
+            self.logger.warning("Enclosure in manual; can't close")
+            if self.mailsent:
+                mail.send("Aqawan " + str(self.num) + " in manual","Please turn to 'AUTO' for computer control.\n Love,\nMINERVA")
                 self.mailsent = False
         else:
             response = self.send('CLOSE_SEQUENTIAL')
