@@ -14,6 +14,84 @@ import socket, threading
 import pyfits, ephem
 from scipy import stats
 
+def ten(string):
+    array = string.split()
+    if "-" in array[0]:
+        return float(array[0]) - float(array[1])/60.0 - float(array[2])/3600.0
+    return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
+
+def astrometry(imageName):
+
+    hdr = pyfits.getheader(imageName)
+    pixscale = float(hdr['PIXSCALE'])
+    ra = ten(hdr['RA'])*15.0
+    dec = ten(hdr['DEC'])
+    if dec > 90: dec = dec - 360
+    radius = 3.0*pixscale*float(hdr['NAXIS1'])/3600.0
+
+
+
+    cmd = 'solve-field --scale-units arcsecperpix' + \
+                     ' --scale-low ' + str(0.99*pixscale) + \
+                     ' --scale-high ' + str(1.01*pixscale) + \
+                     ' --ra ' + str(ra) + \
+                     ' --dec ' + str(dec) + \
+                     ' --radius ' + str(radius) +\
+                     ' --quad-size-min 0.5' + \
+                     ' --quad-size-max 0.5' + \
+                     ' --cpulimit 60' + \
+                     ' --no-verify' + \
+                     ' --crpix-center' + \
+                     ' --no-fits2fits' + \
+                     ' --no-plots' + \
+                     ' --overwrite ' + \
+                      imageName
+    #                     ' --use-sextractor' + \ #need to install sextractor
+
+    cmd = r'C:\cygwin\bin\bash --login -c "' + cmd + '"'
+    print cmd
+    os.system(cmd)
+
+def getPA(imageName):
+
+
+    imageName = 'D:/minerva/data/n20150511/n20150511.T1.OB150607.zp.0161.fits'
+
+
+    t0 = datetime.datetime.utcnow()
+    astrometry(imageName)
+
+    baseName = os.path.splitext(imageName)[0]
+    if os.path.exists(baseName + '.solved'):
+        hdr = pyfits.getheader(baseName + '.wcs')
+        cd11 = float(hdr['CD1_1'])
+        cd12 = float(hdr['CD1_2'])
+#        platescale = math.sqrt(cd11**2 + cd12**2)
+        PA2 = 180.0/math.pi*math.atan2(cd11,cd12)
+        PA3 = 180.0/math.pi*math.atan2(-cd11,cd12)
+        PA4 = 180.0/math.pi*math.atan2(cd11,-cd12)
+        PA5 = 180.0/math.pi*math.atan2(-cd11,-cd12)
+        PA6 = 180.0/math.pi*math.atan2(cd12,cd11)
+        PA7 = 180.0/math.pi*math.atan2(-cd12,cd11)
+        PA8 = 180.0/math.pi*math.atan2(cd12,-cd11)
+        PA = 180.0/math.pi*math.atan2(-cd12,-cd11)
+        print "PA2 = " + str(PA2)
+        print "PA3 = " + str(PA3)
+        print "PA4 = " + str(PA4)
+        print "PA5 = " + str(PA5)
+        print "PA6 = " + str(PA6)
+        print "PA7 = " + str(PA7)
+        print "PA8 = " + str(PA8)
+        print "PA = " + str(PA)
+        
+        
+#        PA = 180.0/math.pi*math.acos(-cd11/platescale) # position angle in degrees
+    else:
+        PA = None
+
+    print 'Finished in ' + str((datetime.datetime.utcnow()-t0).total_seconds()) + ' seconds'
+    return PA
+
 def getstars(imageName):
     
     d = getfitsdata(imageName)
@@ -57,7 +135,7 @@ def guide(filename, reference):
     hdr = pyfits.getheader(filename)
     platescale = float(hdr['PIXSCALE'])
     dec = float(hdr['CRVAL2'])*math.pi/180.0 # declination in radians
-    PA = math.acos(-float(hdr['CD1_1'])*3600.0/platescale) # position angle in radians
+    PA = math.acos(float(hdr['CD1_1'])*3600.0/platescale) # position angle in radians
     logger.info("Image PA=" + str(PA))
 
     m0 = 22
