@@ -151,7 +151,7 @@ class aqawan:
         if not 'Success=TRUE' in response:
             # did the command fail?
             self.logger.warning('Failed to open shutter ' + str(shutter) + ': ' + response)
-            ipdb.set_trace()
+            return -1
             # need to reset the PAC? ("Enclosure not in AUTO"?)
         
         # Wait for it to open
