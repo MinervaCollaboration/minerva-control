@@ -2,7 +2,9 @@ from configobj import ConfigObj
 from win32com.client import Dispatch
 import logging, datetime, ipdb, time, json
 import minerva_class_files.mail as mail
-import sys
+import minerva_class_files.powerswitch as powerswitch
+import sys, subprocess
+
 
 # See http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.htm
 
@@ -11,6 +13,7 @@ class imager:
     def __init__(self,camera_num, night, configfile=''):
 
         self.num = camera_num
+        self.night = night
 
         #set appropriate parameter based on aqawan_num
         #create configuration file object 
@@ -41,6 +44,9 @@ class imager:
         self.datapath = ''
         self.gitpath = ''
         self.currentStatusFile = 'logs/current_' + self.num + '.log'
+        self.PSPORT = imagerconfig['Setup']['PSPORT']
+        self.PSNAME = imagerconfig['Setup']['PSNAME']
+        self.nfailed = 0 # the number of consecutive times the camera has failed
         
         logger_name = imagerconfig['Setup']['LOGNAME']
         log_file = 'logs/' + night + '/' + imagerconfig['Setup']['LOGFILE']
@@ -64,20 +70,14 @@ class imager:
         self.logger.addHandler(fileHandler)
         self.logger.addHandler(console)
 
-	
-##	self.logger = logging.getLogger(logger_name)
-##        formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-##        formatter.converter = time.gmtime
-##	fileHandler = logging.FileHandler(log_file, mode='a')
-##	fileHandler.setFormatter(formatter)
-##	streamHandler = logging.StreamHandler()
-##	streamHandler.setFormatter(formatter)
-##
-##	self.logger.setLevel(logging.DEBUG)
-##	self.logger.addHandler(fileHandler)
-##	self.logger.addHandler(streamHandler)
-
         self.cam = Dispatch("MaxIm.CCDCamera")
+
+    # power cycle the camera
+    def powercycle(self):
+        ps = powerswitch.powerswitch(self.PSNAME,self.night,'minerva_class_files/powerswitch.ini')
+        ps.cycle(self.PSPORT)
+        time.sleep(30)
+        self.connect()
 
     def status(self):
 
@@ -112,10 +112,40 @@ class imager:
         self.logger.info('Disconnecting from the camera') 
         self.cam.LinkEnabled = False      
 
+    def restartmaxim(self):
+        self.logger.info('Killing maxim') 
+        subprocess.call(['Taskkill','/IM','MaxIm_DL.exe','/F'])
+
+        time.sleep(5)
+
+        self.logger.info('Reconnecting')
+        self.connect()
+
+    # in a series of escalating steps, automatically try to recover the camera connection
     def recoverCamera(self):
-        
-        mail.send("Camera " + str(self.num) + " failed to connect","please do something",level="serious")
-        sys.exit()
+
+        self.nfailed = self.nfailed + 1
+
+        if nfailed == 1:
+            # attempt to reconnect
+            self.logger.warning('Camera failed to connect; retrying') 
+            self.connect()
+        elif nfailed == 2:
+            # then restart maxim
+            self.logger.warning('Camera failed to connect; restarting maxim') 
+            self.restartmaxim()
+        elif nfailed == 3:
+            # then power cycle the camera
+            self.logger.warning('Camera failed to connect; powercycling the imager') 
+            self.powercycle()
+#        elif nfailed == 4:
+#            # reboot the computer
+#            self.logger.warning('Camera failed to connect; rebooting the machine')
+#            self.connect()
+        elif nfailed == 4:
+            self.logger.error('Camera failed to connect!') 
+            mail.send("Camera " + str(self.num) + " failed to connect","please do something",level="serious")
+            sys.exit()
 
     def connect(self, cooler=True):
         settleTime = 1200
@@ -130,6 +160,7 @@ class imager:
         self.logger.info('Connecting to camera')
         try:
             self.cam.LinkEnabled = True
+            self.nfailed = 0
         except:
             self.recoverCamera()
 
