@@ -135,7 +135,7 @@ def guide(filename, reference):
     hdr = pyfits.getheader(filename)
     platescale = float(hdr['PIXSCALE'])
     dec = float(hdr['CRVAL2'])*math.pi/180.0 # declination in radians
-    PA = math.acos(float(hdr['CD1_1'])*3600.0/platescale) # position angle in radians
+    PA = math.acos(float(-hdr['CD1_1'])*3600.0/platescale) # position angle in radians
     logger.info("Image PA=" + str(PA))
 
     m0 = 22
