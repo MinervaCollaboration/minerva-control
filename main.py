@@ -54,11 +54,7 @@ def astrometry(imageName):
 
 def getPA(imageName):
 
-
-    imageName = 'D:/minerva/data/n20150511/n20150511.T1.OB150607.zp.0161.fits'
-
-
-    t0 = datetime.datetime.utcnow()
+    logger.info('Finding PA for ' + imageName)
     astrometry(imageName)
 
     baseName = os.path.splitext(imageName)[0]
@@ -66,30 +62,16 @@ def getPA(imageName):
         hdr = pyfits.getheader(baseName + '.wcs')
         cd11 = float(hdr['CD1_1'])
         cd12 = float(hdr['CD1_2'])
-#        platescale = math.sqrt(cd11**2 + cd12**2)
-        PA2 = 180.0/math.pi*math.atan2(cd11,cd12)
-        PA3 = 180.0/math.pi*math.atan2(-cd11,cd12)
-        PA4 = 180.0/math.pi*math.atan2(cd11,-cd12)
-        PA5 = 180.0/math.pi*math.atan2(-cd11,-cd12)
-        PA6 = 180.0/math.pi*math.atan2(cd12,cd11)
-        PA7 = 180.0/math.pi*math.atan2(-cd12,cd11)
-        PA8 = 180.0/math.pi*math.atan2(cd12,-cd11)
-        PA = 180.0/math.pi*math.atan2(-cd12,-cd11)
-        print "PA2 = " + str(PA2)
-        print "PA3 = " + str(PA3)
-        print "PA4 = " + str(PA4)
-        print "PA5 = " + str(PA5)
-        print "PA6 = " + str(PA6)
-        print "PA7 = " + str(PA7)
-        print "PA8 = " + str(PA8)
-        print "PA = " + str(PA)
-        
-        
-#        PA = 180.0/math.pi*math.acos(-cd11/platescale) # position angle in degrees
+        PA = 180.0/math.pi*math.atan2(-cd12,-cd11) # this one?
+        PA = 180.0/math.pi*math.atan2(cd12,-cd11) # or this one?
     else:
         PA = None
 
-    print 'Finished in ' + str((datetime.datetime.utcnow()-t0).total_seconds()) + ' seconds'
+    logger.info('PA for ' + imageName + ': ' + str(PA))
+    if PA > 5 and PA < 355:
+        logger.error("PA out of range")
+#        mail.send("PA out of range","Please home/recalibrate the rotator",level='serious')
+
     return PA
 
 def getstars(imageName):
@@ -127,6 +109,11 @@ def guide(filename, reference):
     if len(stars[:,0]) < 6:
         logger.error("Not enough stars in frame")
         return reference
+
+    # run the aqawan heartbeat and weather checking asynchronously
+    logger.info("Running astrometry to find PA on " + filename)
+    astrometryThread = threading.Thread(target=getPA, args=(filename,), kwargs={})
+    astrometryThread.start()
 
     # proportional servo gain (apply this fraction of the offset)
     gain = 0.66

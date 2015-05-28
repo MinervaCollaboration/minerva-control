@@ -213,7 +213,37 @@ class aqawan:
                     if self.mailsent:
                         mail.send("Aqawan " + str(self.num) + " closed; crisis averted!","Love,\nMINERVA",level="critical")
                         self.mailsent = False
-    
+
+    # attempt to automatically recover from error state
+    def recover(self):
+        messages = ['HEARTBEAT','STOP','OPEN_SHUTTERS','CLOSE_SHUTTERS',
+                    'CLOSE_SEQUENTIAL','OPEN_SHUTTER_1','CLOSE_SHUTTER_1',
+                    'OPEN_SHUTTER_2','CLOSE_SHUTTER_2','LIGHTS_ON','LIGHTS_OFF',
+                    'ENC_FANS_HI','ENC_FANS_MED','ENC_FANS_LOW','ENC_FANS_OFF',
+                    'PANEL_LED_GREEN','PANEL_LED_YELLOW','PANEL_LED_RED',
+                    'PANEL_LED_OFF','DOOR_LED_GREEN','DOOR_LED_YELLOW',
+                    'DOOR_LED_RED','DOOR_LED_OFF','SON_ALERT_ON',
+                    'SON_ALERT_OFF','LED_STEADY','LED_BLINK',
+                    'MCB_RESET_POLE_FANS','MCB_RESET_TAIL_FANS',
+                    'MCB_RESET_OTA_BLOWER','MCB_RESET_PANEL_FANS',
+                    'MCB_TRIP_POLE_FANS','MCB_TRIP_TAIL_FANS',
+                    'MCB_TRIP_PANEL_FANS','STATUS','GET_ERRORS','GET_FAULTS',
+                    'CLEAR_ERRORS','CLEAR_FAULTS','RESET_PAC']
+        
+        self.logger.info('Aqawan attempting to recover itself')
+        status = self.status()
+        if status['Error'] <> "FALSE":
+            self.logger.info(self.send('GET_ERRORS'))
+            self.logger.info(self.send('CLEAR_ERRORS'))
+            status = self.status()
+
+        self.logger.info('Checking for faults')
+        faults = self.send('GET_FAULTS')
+        self.logger.info(faults)
+        self.logger.info(self.send('CLEAR_FAULTS'))
+
+        self.logger.info('Resetting the PAC')
+        self.logger.info(self.send('RESET_PAC'))
             
     # get aqawan status
     def status(self):
