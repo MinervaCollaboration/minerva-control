@@ -122,19 +122,24 @@ class imager:
         self.connect()
 
     # in a series of escalating steps, automatically try to recover the camera connection
-    def recoverCamera(self):
+    def recover(self):
 
         self.nfailed = self.nfailed + 1
 
-        if nfailed == 1:
+        try:
+            self.disconnect()
+        except:
+            pass
+
+        if self.nfailed == 1:
             # attempt to reconnect
             self.logger.warning('Camera failed to connect; retrying') 
             self.connect()
-        elif nfailed == 2:
+        elif self.nfailed == 2:
             # then restart maxim
             self.logger.warning('Camera failed to connect; restarting maxim') 
             self.restartmaxim()
-        elif nfailed == 3:
+        elif self.nfailed == 3:
             # then power cycle the camera
             self.logger.warning('Camera failed to connect; powercycling the imager') 
             self.powercycle()
@@ -142,7 +147,7 @@ class imager:
 #            # reboot the computer
 #            self.logger.warning('Camera failed to connect; rebooting the machine')
 #            self.connect()
-        elif nfailed == 4:
+        elif self.nfailed == 4:
             self.logger.error('Camera failed to connect!') 
             mail.send("Camera " + str(self.num) + " failed to connect","please do something",level="serious")
             sys.exit()
@@ -162,7 +167,7 @@ class imager:
             self.cam.LinkEnabled = True
             self.nfailed = 0
         except:
-            self.recoverCamera()
+            self.recover()
 
         # Prevent the camera from disconnecting when we exit
         self.logger.info('Preventing the camera from disconnecting when we exit') 
@@ -206,6 +211,11 @@ class imager:
             self.cam.CoolerOn = True
             start = datetime.datetime.utcnow()
             currentTemp = self.cam.Temperature
+            if currentTemp == -999.0:
+                self.logger.warning('The camera failed to connect properly; beginning recovery')
+                self.recover()
+                self.connect()
+                return
             elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
             lastTimeNotAtTemp = datetime.datetime.utcnow() - datetime.timedelta(seconds=oscillationTime)
             elapsedTimeAtTemp = oscillationTime

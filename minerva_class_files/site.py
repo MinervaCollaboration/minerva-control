@@ -138,7 +138,7 @@ class site:
             request = urllib2.Request(url)
             try:
                 response = urllib2.urlopen(request)
-            except HTTPError:
+            except urllib2.HTTPError:
                 self.logger.debug('HTTPError while reading the weather page')
                 self.weather = -1
                 return

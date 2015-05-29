@@ -285,6 +285,9 @@ def endNight(site, aqawan, telescope, imager):
         logger.info("Copying log file " + log + " to " + imager.dataPath)
         shutil.copyfile(log, imager.dataPath + os.path.basename(log))
 
+    # email completion notice
+    mail.send(telescope.name + ' done observing','Love,\nMINERVA')
+
 def compressData(dataPath):
     files = glob.glob(dataPath + "/*.fits")
     for filename in files:
@@ -336,6 +339,9 @@ def prepNight():
     if not os.path.exists(imager.dataPath):
         os.makedirs(imager.dataPath)
 
+    # email notice
+    mail.send(telescope.name + ' Starting observing','Love,\nMINERVA')
+
     return site, aqawan, telescope, imager
 
 def getIndex(dirname):
@@ -369,6 +375,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
    
     # Take flat fields
     logger.info("Taking " + str(exptime) + " second image")
+    t0 = datetime.datetime.utcnow()
     imager.cam.Expose(exptime, exptype, imager.filters[filterInd])
 
     # Get status info for headers while exposing/reading out
@@ -384,7 +391,13 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     gitNum = subprocess.check_output([imager.gitPath, "rev-list", "HEAD", "--count"]).strip()
 
     try:
-        while not imager.cam.ImageReady: time.sleep(0.01)
+        while not imager.cam.ImageReady:
+            if (datetime.datetime.utcnow()-t0).total_seconds() > (exptime  + 60):
+                logger.error("Imager has been reading out for over a minute; beginning recovery")
+                imager.nfailed=1
+                imager.recover()
+                imager.connect()
+            time.sleep(0.01)
     except:
         logger.error("Camera failure: " + str(sys.exc_info()[0]))
         mail.send("Camera failure on " + telescope.name,"Camera failure on " + telescope.name + ": " + str(sys.exc_info()[0]) + "\n\nPlease reconnect, power cycle the panel, or reboot the machine.\n\nLove,\n" + telescope.name, level='serious')
@@ -843,7 +856,86 @@ def doScience(site, aqawan, telescope, imager, target):
                 filename = takeImage(site, aqawan, telescope, imager, target['exptime'][j], target['filter'][j], target['name'])
                 if target['selfguide']:
                     reference = guide(filename, reference)
-                        
+
+def scheduleIsValid(targetFile):
+
+    if not os.path.exists(targetFile):
+        logger.error('No schedule file: ' + targetFile)
+        mail.send("No schedule file: " + targetFile,"Cannot observe!")
+        return False
+
+    emailbody = ''
+    with open(targetFile, 'r') as targetfile:
+        linenum = 1
+        line = targetfile.readline()
+        CalibInfo = parseCalib(line)
+   	# check for malformed JSON code
+        if CalibInfo == -1:
+            logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+            emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
+        else:
+            requiredKeys = ['nbias','ndark','nflat','darkexptime','flatFilters','WaitForMorning']
+            for key in requiredKeys:
+                if key not in CalibInfo.keys():
+                    logger.error('Line 1: Required key (' + key + ') not present: ' + line)
+                    emailbody = emailbody + 'Line 1: Required key (' + key + ') not present: ' + line + '\n'
+
+        linenum = 2
+        line = targetfile.readline()
+    	CalibEndInfo = parseCalib(line)
+    	# check for malformed JSON code
+        if CalibEndInfo == -1:
+            logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+            emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
+        else:
+            requiredKeys = ['nbiasEnd','ndarkEnd','nflatEnd']
+            for key in requiredKeys:
+                if key not in CalibEndInfo.keys():
+                    logger.error('Line 2: Required key (' + key + ') not present: ' + line)
+                    emailbody = emailbody + 'Line 2: Required key (' + key + ') not present: ' + line + '\n'
+
+        linenum = 3
+        for line in targetfile:
+            target = parseTarget(line)
+
+            # check for malformed JSON code
+            if target == -1:
+                logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+                emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
+            else:
+                # check to make sure all required keys are present
+                key = 'name'
+                if key not in target.keys():
+                    logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
+                    emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
+                else:
+                    if target['name'] == 'autofocus':
+                        requiredKeys = ['starttime','endtime']
+                    else:
+                        requiredKeys = ['starttime','endtime','ra','dec','filter','num','exptime','defocus','selfguide','guide','cycleFilter']
+
+                    for key in requiredKeys:
+                        if key not in target.keys():
+                            logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
+                            emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
+
+                    if target['name'] <> 'autofocus':
+                        try:
+                            nnum = len(target['num'])
+                            nexptime = len(target['exptime'])
+                            nfilter = len(target['filter'])
+                            if nnum <> nexptime or nnum <> nfilter:
+                                logger.error('Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
+                                emailbody = emailbody + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree\n'                            
+                        except:
+                            ipdb.set_trace()
+                            pass            
+            linenum = linenum + 1
+            if emailbody <> '':
+                mail.send("Errors in target file: " + targetFile,emailbody,level='serious')
+                return False
+    return True
+            
 if __name__ == '__main__':
 
     site, aqawan, telescope, imager = prepNight()
@@ -868,7 +960,10 @@ if __name__ == '__main__':
     logger.addHandler(fileHandler)
     logger.addHandler(console)
 
-    #ipdb.set_trace()
+    # verify the schedule file
+    if not scheduleIsValid('schedule/' + site.night + '.txt'):
+        logger.error("schedule file not valid; exiting")
+        sys.exit()
 
     # run the aqawan heartbeat and weather checking asynchronously
     aqawanThread = threading.Thread(target=heartbeat, args=(site, aqawan), kwargs={})

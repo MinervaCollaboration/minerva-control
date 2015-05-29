@@ -236,12 +236,12 @@ class aqawan:
             self.logger.info(self.send('GET_ERRORS'))
             self.logger.info(self.send('CLEAR_ERRORS'))
             status = self.status()
-
-        self.logger.info('Checking for faults')
-        faults = self.send('GET_FAULTS')
-        self.logger.info(faults)
-        self.logger.info(self.send('CLEAR_FAULTS'))
-
+            
+        if status['Fault'] <> "FALSE":
+            self.logger.info(self.send('GET_FAULTS'))
+            self.logger.info(self.send('CLEAR_FAULTS'))
+            status = self.status()
+            
         self.logger.info('Resetting the PAC')
         self.logger.info(self.send('RESET_PAC'))
             
