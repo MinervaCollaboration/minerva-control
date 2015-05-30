@@ -24,12 +24,9 @@ def astrometry(imageName):
 
     hdr = pyfits.getheader(imageName)
     pixscale = float(hdr['PIXSCALE'])
-    ra = ten(hdr['RA'])*15.0
-    dec = ten(hdr['DEC'])
-    if dec > 90: dec = dec - 360
+    ra = float(hdr['RA'])
+    dec = float(hdr['DEC'])
     radius = 3.0*pixscale*float(hdr['NAXIS1'])/3600.0
-
-
 
     cmd = 'solve-field --scale-units arcsecperpix' + \
                      ' --scale-low ' + str(0.99*pixscale) + \
@@ -62,15 +59,43 @@ def getPA(imageName):
         hdr = pyfits.getheader(baseName + '.wcs')
         cd11 = float(hdr['CD1_1'])
         cd12 = float(hdr['CD1_2'])
+        racen = float(hdr['CRVAL1'])*math.pi/180.0
+        deccen = float(hdr['CRVAL2'])*math.pi/180.0
+        
         PA = 180.0/math.pi*math.atan2(-cd12,-cd11) # this one?
         PA = 180.0/math.pi*math.atan2(cd12,-cd11) # or this one?
+
+        # is it close to what we thought?
+        orighdr = pyfits.getheader(imageName)
+        origcd11 = float(orighdr['CD1_1'])
+        origcd12 = float(orighdr['CD1_2'])
+        origPA = 180.0/math.pi*math.atan2(origcd12,-origcd11)
+        origracen = float(orighdr['CRVAL1'])*math.pi/180.0
+        origdeccen = float(orighdr['CRVAL2'])*math.pi/180.0
+
+        dPA = 180.0/math.pi*math.atan2(math.sin((PA-origPA)*math.pi/180.0), math.cos((PA-origPA)*math.pi/180.0))
+        dRA = 648000.0/math.pi*(racen-origracen)/math.cos(deccen)
+        dDec = 648000.0/math.pi*(deccen-origdeccen)
+        dtheta = 648000.0/math.pi*math.acos(math.sin(deccen)*math.sin(origdeccen) + math.cos(deccen)*math.cos(origdeccen)*math.cos(racen-origracen))
+
+        logger.info("Telescope PA = " + str(origPA) + '; solved PA = ' + str(PA) + '; offset = ' + str(dPA) + ' degrees')
+        logger.info("Telescope RA = " + str(origracen) + '; solved RA = ' + str(racen) + '; offset = ' + str(dRA) + ' arcsec')
+        logger.info("Telescope Dec = " + str(origdeccen) + '; solved Dec = ' + str(deccen) + '; offset = ' + str(dDec) + ' arcsec')
+        logger.info("Total pointing error = " + str(dtheta) + ' arcsec')
+
+        if abs(dPA) > 5:
+            logger.error("PA out of range")
+            if not os.path.exists("disableGuiding.txt"):
+                mail.send("PA error too large","The PA error (" + str(dPA) + " deg) is too large for " + imageName + "; disabling guiding. Please home/recalibrate the rotator and delete disableGuiding.txt",level='serious')
+                with open("disableGuiding.txt","w") as f:
+                    f.write(str(datetime.datetime.utcnow()))
+                            
+        if dtheta > 600:
+            logger.error("Pointing error too large")
+            mail.send("Pointing error too large","The pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + ". Please redo the pointing model",level='serious')
+
     else:
         PA = None
-
-    logger.info('PA for ' + imageName + ': ' + str(PA))
-    if PA > 5 and PA < 355:
-        logger.error("PA out of range")
-#        mail.send("PA out of range","Please home/recalibrate the rotator",level='serious')
 
     return PA
 
@@ -468,10 +493,19 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
 
     # Mount specific
     logger.debug('Inserting Mount keywords')
-    f[0].header['TELRA'] = (telescopeStatus.mount.ra_2000,"Telescope RA (J2000)")
-    f[0].header['TELDEC'] = (telescopeStatus.mount.dec_2000,"Telescope Dec (J2000)")
-    f[0].header['RA'] = (telescopeStatus.mount.ra_target, "Target RA (J2000)")
-    f[0].header['DEC'] =  (telescopeStatus.mount.dec_target, "Target Dec (J2000)")
+
+    telra = ten(telescopeStatus.mount.ra_2000)*15.0
+    f[0].header['TELRA'] = (telra,"Telescope RA (J2000 deg)")
+    teldec = ten(telescopeStatus.mount.dec_2000)
+    f[0].header['TELDEC'] = (telescopeStatus.mount.dec_2000,"Telescope Dec (J2000 deg)")
+
+    ra = ten(telescopeStatus.mount.ra_target)*15.0
+    f[0].header['RA'] = (ra, "Target RA (J2000 deg)")
+    
+    dec = ten(telescopeStatus.mount.dec_target)
+    if dec > 90.0: dec = dec -360 # fixes bug in PWI
+    f[0].header['DEC'] =  (dec, "Target Dec (J2000 deg)")
+    
     f[0].header['PMODEL'] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
 
     # Focuser Specific
