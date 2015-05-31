@@ -972,6 +972,11 @@ def scheduleIsValid(targetFile):
             
 if __name__ == '__main__':
 
+    # this file is created at the beginning and deleted at the end
+    # to enable automatic recovery
+    with open('running.txt','w') as f:
+        f.write(str(datetime.datetime.utcnow()))
+
     site, aqawan, telescope, imager = prepNight()
 
     # setting up main logger
@@ -1144,4 +1149,8 @@ if __name__ == '__main__':
     
     # Stop the aqawan thread
     site.observing = False
+
+    if os.path.exists('running.txt'):
+        os.remove('running.txt')
+    
     
