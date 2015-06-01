@@ -135,11 +135,6 @@ def guide(filename, reference):
         logger.error("Not enough stars in frame")
         return reference
 
-    # run the aqawan heartbeat and weather checking asynchronously
-    logger.info("Running astrometry to find PA on " + filename)
-    astrometryThread = threading.Thread(target=getPA, args=(filename,), kwargs={})
-    astrometryThread.start()
-
     # proportional servo gain (apply this fraction of the offset)
     gain = 0.66
 
@@ -426,7 +421,9 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     except:
         logger.error("Camera failure: " + str(sys.exc_info()[0]))
         mail.send("Camera failure on " + telescope.name,"Camera failure on " + telescope.name + ": " + str(sys.exc_info()[0]) + "\n\nPlease reconnect, power cycle the panel, or reboot the machine.\n\nLove,\n" + telescope.name, level='serious')
-        sys.exit(0)
+        imager.nfailed=1
+        imager.recover()
+        imager.connect()
 
     # Save the image
     filename = imager.dataPath + "/" + site.night + "." + telescope.name + "." + objname + "." + filterInd + "." + getIndex(imager.dataPath) + ".fits"
@@ -592,6 +589,11 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f.close()
     logger.debug('Done saving image: ' + filename)
 
+    # run the WCS solver/checking asynchronously if not a calibration image
+    if not objname in exptypes.keys():
+        logger.info("Running astrometry to find PA on " + filename)
+        astrometryThread = threading.Thread(target=getPA, args=(filename,), kwargs={})
+        astrometryThread.start()
     
     return filename
 
