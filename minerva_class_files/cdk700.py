@@ -1,4 +1,4 @@
-import urllib, urllib2, datetime, time, logging, json
+import urllib, urllib2, datetime, time, logging, json, math
 from configobj import ConfigObj
 import os, sys, psutil, subprocess, ipdb
 #import pwihelpers as pwi
@@ -489,9 +489,16 @@ class CDK700:
             status = self.getStatus()
 
         
-        self.logger.info('Updating best focus')
         status = self.getStatus()
         self.focus = float(status.focuser.position)
+        tm1 = str(status.temperature.primary)
+        tm2 = str(status.temperature.secondary)
+        tm3 = str(status.temperature.m3)
+        tamb = str(status.temperature.ambient)
+        tback = str(status.temperature.backplate)
+        alt = str(float(status.mount.alt_radian)*180.0/math.pi)
+        
+        self.logger.info('Updating best focus to ' + str(self.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
         f = open('focus.txt','w')
         f.write(str(self.focus))
         f.close()
@@ -500,4 +507,4 @@ class CDK700:
 
 
 if __name__ == "__main__":
-    t3 = CDK700('T3', configfile = 'twotelescopeconfig.ini')
+    t3 = CDK700('T3', 'n20150530',configfile = 'minerva_class_files/telescope.ini')

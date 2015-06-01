@@ -46,7 +46,6 @@ def astrometry(imageName):
     #                     ' --use-sextractor' + \ #need to install sextractor
 
     cmd = r'C:\cygwin\bin\bash --login -c "' + cmd + '"'
-    print cmd
     os.system(cmd)
 
 def getPA(imageName):
@@ -62,7 +61,7 @@ def getPA(imageName):
         racen = float(hdr['CRVAL1'])*math.pi/180.0
         deccen = float(hdr['CRVAL2'])*math.pi/180.0
         
-        PA = 180.0/math.pi*math.atan2(-cd12,-cd11) # this one?
+#        PA = 180.0/math.pi*math.atan2(-cd12,-cd11) # this one?
         PA = 180.0/math.pi*math.atan2(cd12,-cd11) # or this one?
 
         # is it close to what we thought?
@@ -95,6 +94,7 @@ def getPA(imageName):
             mail.send("Pointing error too large","The pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + ". Please redo the pointing model",level='serious')
 
     else:
+        logger.warning("WCS Failed for " + imageName)
         PA = None
 
     return PA
