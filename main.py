@@ -46,6 +46,7 @@ def astrometry(imageName):
     #                     ' --use-sextractor' + \ #need to install sextractor
 
     cmd = r'C:\cygwin\bin\bash --login -c "' + cmd + '"'
+    print cmd
     os.system(cmd)
 
 def getPA(imageName):
@@ -61,7 +62,7 @@ def getPA(imageName):
         racen = float(hdr['CRVAL1'])*math.pi/180.0
         deccen = float(hdr['CRVAL2'])*math.pi/180.0
         
-#        PA = 180.0/math.pi*math.atan2(-cd12,-cd11) # this one?
+        PA = 180.0/math.pi*math.atan2(-cd12,-cd11) # this one?
         PA = 180.0/math.pi*math.atan2(cd12,-cd11) # or this one?
 
         # is it close to what we thought?
@@ -94,7 +95,6 @@ def getPA(imageName):
             mail.send("Pointing error too large","The pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + ". Please redo the pointing model",level='serious')
 
     else:
-        logger.warning("WCS Failed for " + imageName)
         PA = None
 
     return PA
@@ -134,6 +134,11 @@ def guide(filename, reference):
     if len(stars[:,0]) < 6:
         logger.error("Not enough stars in frame")
         return reference
+
+    # run the aqawan heartbeat and weather checking asynchronously
+    logger.info("Running astrometry to find PA on " + filename)
+    astrometryThread = threading.Thread(target=getPA, args=(filename,), kwargs={})
+    astrometryThread.start()
 
     # proportional servo gain (apply this fraction of the offset)
     gain = 0.66
@@ -589,11 +594,6 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f.close()
     logger.debug('Done saving image: ' + filename)
 
-    # run the WCS solver/checking asynchronously if not a calibration image
-    if not objname in exptypes.keys():
-        logger.info("Running astrometry to find PA on " + filename)
-        astrometryThread = threading.Thread(target=getPA, args=(filename,), kwargs={})
-        astrometryThread.start()
     
     return filename
 
@@ -897,7 +897,7 @@ def scheduleIsValid(targetFile):
 
     if not os.path.exists(targetFile):
         logger.error('No schedule file: ' + targetFile)
-        mail.send("No schedule file: " + targetFile,"Cannot observe!")
+        mail.send("No schedule file: " + targetFile,"Cannot observe!",level='serious')
         return False
 
     emailbody = ''
