@@ -114,8 +114,8 @@ def getstars(imageName):
 
 def guide(filename, reference):
 
-    threshhold = 30.0 # maximum offset in X or Y (larger corrections will be ignored)
-    maxangle = 3.0 # maximum offset in theta (larger corrections will be ignored)
+    threshhold = 60.0 # maximum offset in X or Y (larger corrections will be ignored)
+    maxangle = 5.0 # maximum offset in theta (larger corrections will be ignored)
 
     if os.path.exists("disableGuiding.txt"):
         logger.info("Guiding disabled")
@@ -168,9 +168,6 @@ def guide(filename, reference):
     
     if abs(dx) > threshhold or abs(dy) > threshhold or abs(rot) > maxangle:
         logger.error("Offset too large; ignoring")
-        if not telescope.rotatorMailsent:
-            mail.send("Guiding offset is too large","Guiding offset is too large for " + filename + "; rotator probably needs to be homed/calibrated",level="serious")
-            telescope.rotatorMailsent = True
         return reference
 
     # adjust the rotator angle (sign?)
