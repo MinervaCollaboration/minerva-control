@@ -549,27 +549,20 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['OTAFAN'] = (telescopeStatus.fans.on,"OTA Fans on?")    
 
     # Telemetry
-    logger.debug('Inserting Telescope telemetry keywords')
-    if telescopeStatus.temperature == None:
-        f[0].header['M1TEMP'] = ("N/A","Primary Mirror Temp (C)")
-        f[0].header['M2TEMP'] = ("N/A","Secondary Mirror Temp (C)")
-        f[0].header['M3TEMP'] = ("N/A","Tertiary Mirror Temp (C)")
-        f[0].header['AMBTMP'] = ("N/A","Ambient Temp (C)")
-        f[0].header['BCKTMP'] = ("N/A","Backplate Temp (C)")
-    else:   
-        try: 
-            f[0].header['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
-            f[0].header['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
-            f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
-            f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
-            f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
-        except AttributeError:
-            f[0].header['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
-            f[0].header['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
-            f[0].header['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
-            f[0].header['AMBTMP'] = ("UNKNOWN","Ambient Temp (C)")
-            f[0].header['BCKTMP'] = ("UNKNOWN","Backplate Temp (C)")
-            logger.error('Failed getting the telescope telemetry keywords!')
+    logger.debug('Inserting Telescope telemetry keywords') 
+    try: 
+        f[0].header['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
+        f[0].header['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
+        f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
+        f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
+        f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
+    except AttributeError:
+        f[0].header['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
+        f[0].header['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
+        f[0].header['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
+        f[0].header['AMBTMP'] = ("UNKNOWN","Ambient Temp (C)")
+        f[0].header['BCKTMP'] = ("UNKNOWN","Backplate Temp (C)")
+        logger.error('Failed getting the telescope telemetry keywords!')
 
     # Weather station
     f[0].header['WJD'] = (str(weather['date']),"Last update of weather (UTC)")
