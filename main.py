@@ -556,7 +556,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         f[0].header['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
         f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
         f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
-    except AttributeError:
+    except:
         f[0].header['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
         f[0].header['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
         f[0].header['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
