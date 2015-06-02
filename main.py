@@ -408,6 +408,18 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         weather = copy.deepcopy(site.weather)
         
     telescopeStatus = telescope.getStatus()
+    telra = ten(telescopeStatus.mount.ra_2000)*15.0
+    teldec = ten(telescopeStatus.mount.dec_2000)
+    ra = ten(telescopeStatus.mount.ra_target)*15.0
+    dec = ten(telescopeStatus.mount.dec_target)
+    if dec > 90.0: dec = dec-360 # fixes bug in PWI
+
+    moonpos = site.moonpos()
+    moonra = moonpos[0]
+    moondec = moonpos[1]
+    moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
+    moonphase = site.moonphase()
+
     aqStatus = aqawan.status()    
 
     gitNum = subprocess.check_output([imager.gitPath, "rev-list", "HEAD", "--count"]).strip()
@@ -492,19 +504,14 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
 
     # Mount specific
     logger.debug('Inserting Mount keywords')
-
-    telra = ten(telescopeStatus.mount.ra_2000)*15.0
     f[0].header['TELRA'] = (telra,"Telescope RA (J2000 deg)")
-    teldec = ten(telescopeStatus.mount.dec_2000)
     f[0].header['TELDEC'] = (teldec,"Telescope Dec (J2000 deg)")
-
-    ra = ten(telescopeStatus.mount.ra_target)*15.0
-    f[0].header['RA'] = (ra, "Target RA (J2000 deg)")
-    
-    dec = ten(telescopeStatus.mount.dec_target)
-    if dec > 90.0: dec = dec -360 # fixes bug in PWI
+    f[0].header['RA'] = (ra, "Target RA (J2000 deg)")    
     f[0].header['DEC'] =  (dec, "Target Dec (J2000 deg)")
-    
+    f[0].header['MOONRA'] = (moonra, "Moon RA (J2000)")    
+    f[0].header['MOONDEC'] =  (moondec, "Moon Dec (J2000)")
+    f[0].header['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")    
+    f[0].header['MOONDIST'] =  (moonsep, "Distance between pointing and moon (deg)")
     f[0].header['PMODEL'] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
 
     # Focuser Specific

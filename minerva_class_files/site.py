@@ -333,3 +333,19 @@ class site:
         sun = ephem.Sun()
         sun.compute(self.obs)
         return float(sun.az)*180.0/math.pi
+
+    def moonpos(self):
+        moon = ephem.Moon()
+        moon.compute(datetime.datetime.utcnow())
+        moonpos = (moon.ra,moon.dec)
+        return moonpos
+    
+    def moonphase(self):
+        moon = ephem.Moon()
+        moon.compute(datetime.datetime.utcnow())
+        moonphase = moon.phase/100.0
+        return moonphase
+
+if __name__ == '__main__':
+    flwo = site('Mount_Hopkins','n20150511',configfile='minerva_class_files/site.ini')
+    ipdb.set_trace()
