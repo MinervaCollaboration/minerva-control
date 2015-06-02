@@ -499,7 +499,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     telra = ten(telescopeStatus.mount.ra_2000)*15.0
     f[0].header['TELRA'] = (telra,"Telescope RA (J2000 deg)")
     teldec = ten(telescopeStatus.mount.dec_2000)
-    f[0].header['TELDEC'] = (telescopeStatus.mount.dec_2000,"Telescope Dec (J2000 deg)")
+    f[0].header['TELDEC'] = (teldec,"Telescope Dec (J2000 deg)")
 
     ra = ten(telescopeStatus.mount.ra_target)*15.0
     f[0].header['RA'] = (ra, "Target RA (J2000 deg)")
