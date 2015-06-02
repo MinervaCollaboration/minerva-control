@@ -61,10 +61,10 @@ class dynapower:
         self.logger.info('Response code = ' + str(response.status_code))
         return response
 
-    def getoutletstr(self,outlet)
+    def getoutletstr(self,outlet):
         outletstr = ''
         for i in range(8):
-            if i == outlet: outletstr = outletstr + '1'
+            if str(i+1) == str(outlet): outletstr = outletstr + '1'
             else: outletstr = outletstr + '0'
         outletstr = outletstr + '00000000' + '00000000'
         return outletstr
@@ -93,5 +93,6 @@ class dynapower:
 if __name__ == '__main__':
 
     d2 = dynapower('D2','n20150521',configfile='minerva_class_files/dynapower.ini')
-    print d2.cycle(8)
+    print d2.off(7)
+    ipdb.set_trace()
     
