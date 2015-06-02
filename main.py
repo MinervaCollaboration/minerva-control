@@ -395,7 +395,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         logger.error("Requested filter (" + filterInd + ") not present")
         return
    
-    # Take flat fields
+    # Take image
     logger.info("Taking " + str(exptime) + " second image")
     t0 = datetime.datetime.utcnow()
     imager.cam.Expose(exptime, exptype, imager.filters[filterInd])
@@ -484,6 +484,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         f[0].header['AQINTMP'] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
         f[0].header['AQLITON'] = (aqStatus['LightsOn'],"Aqawan lights on?")
     except AttributeError:
+        logger.error('Failed to get enclosure keywords!')
         f[0].header['AQSOFTV'] = ("UNKNOWN","Aqawan software version number")
         f[0].header['AQSHUT1'] = ("UNKNOWN","Aqawan shutter 1 state")
         f[0].header['AQSHUT2'] = ("UNKNOWN","Aqawan shutter 2 state")
@@ -500,7 +501,6 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         f[0].header['AQEXTMP'] = ("UNKNOWN","Enclosure exhaust temperature (C)")
         f[0].header['AQINTMP'] = ("UNKNOWN","Enclosure intake temperature (C)")
         f[0].header['AQLITON'] = ("UNKNOWN","Aqawan lights on?")
-        logger.error('Failed getting the enclosure keywords!')
 
     # Mount specific
     logger.debug('Inserting Mount keywords')
@@ -557,12 +557,12 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         f[0].header['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
         f[0].header['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
     except:
+        logger.error('Failed to get the telescope telemetry keywords!')
         f[0].header['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
         f[0].header['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
         f[0].header['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
         f[0].header['AMBTMP'] = ("UNKNOWN","Ambient Temp (C)")
         f[0].header['BCKTMP'] = ("UNKNOWN","Backplate Temp (C)")
-        logger.error('Failed getting the telescope telemetry keywords!')
 
     # Weather station
     f[0].header['WJD'] = (str(weather['date']),"Last update of weather (UTC)")
@@ -581,10 +581,8 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f.flush()
     f.close()
     logger.debug('Done saving image: ' + filename)
-
     
     return filename
-
 
 def doBias(site, aqawan, telescope, imager, num=11):
     doDark(site, aqawan, telescope, imager,exptime=0,num=num)
@@ -599,7 +597,7 @@ def doDark(site, aqawan, telescope, imager, exptime=60, num=11):
             takeImage(site, aqawan, telescope, imager, exptime,'V',objectName)
     else:
         objectName = 'Dark'
-    # Take num Dark frames and loop over more than one exptime
+        # Take num Dark frames and loop over more than one exptime
         for time in exptime:
             for x in range(num):    
                 logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(time) + ')')
@@ -811,6 +809,10 @@ def doScience(site, aqawan, telescope, imager, target):
         time.sleep(waittime)
 
     if target['name'] == 'autofocus':
+        try:
+            telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+        except:
+            pass
         telescope.autoFocus()
         return
 
