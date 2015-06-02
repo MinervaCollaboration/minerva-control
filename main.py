@@ -530,18 +530,9 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     f[0].header['CTYPE1'] = ("RA---TAN","TAN projection")
     f[0].header['CTYPE2'] = ("DEC--TAN","TAN projection")
     f[0].header['CUNIT1'] = ("deg","X pixel scale units")
-    f[0].header['CUNIT2'] = ("deg","Y pixel scale units")
-
-    raarr = telescopeStatus.mount.ra_2000.split()
-    radeg = (float(raarr[0]) + float(raarr[1])/60.0 + float(raarr[2])/3600.0)*15.0
-    decarr = telescopeStatus.mount.dec_2000.split()
-    if "-" in decarr[0]:
-        decdeg = float(decarr[0]) - float(decarr[1])/60.0 - float(decarr[2])/3600.0
-    else:
-        decdeg = float(decarr[0]) + float(decarr[1])/60.0 + float(decarr[2])/3600.0
-    
-    f[0].header['CRVAL1'] = (radeg,"RA of reference point")
-    f[0].header['CRVAL2'] = (decdeg,"DEC of reference point")
+    f[0].header['CUNIT2'] = ("deg","Y pixel scale units")    
+    f[0].header['CRVAL1'] = (telra,"RA of reference point")
+    f[0].header['CRVAL2'] = (teldec,"DEC of reference point")
     f[0].header['CRPIX1'] = (imager.xcenter,"X reference pixel")
     f[0].header['CRPIX2'] = (imager.ycenter,"Y reference pixel")
     f[0].header['CD1_1'] = -platescale*math.cos(PA)
