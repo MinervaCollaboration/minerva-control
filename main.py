@@ -908,6 +908,7 @@ def scheduleIsValid(targetFile):
         return False
 
     emailbody = ''
+    hostname = str(socket.gethostname())
     with open(targetFile, 'r') as targetfile:
         linenum = 1
         line = targetfile.readline()
@@ -975,7 +976,7 @@ def scheduleIsValid(targetFile):
                             pass            
             linenum = linenum + 1
             if emailbody <> '':
-                mail.send("Errors in target file: " + targetFile,emailbody,level='serious')
+                mail.send("Errors in target file on " + hostname + ": " + targetFile,emailbody,level='serious')
                 return False
     return True
             
