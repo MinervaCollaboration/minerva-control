@@ -1097,31 +1097,31 @@ if __name__ == '__main__':
                 body._dec = str(target['dec'])
                 body._epoch = '2000.0'
                 body.compute()
-                """
+
                 try:
                     risetime = site.obs.next_rising(body,start=site.NautTwilEnd()).datetime()
-                except AlwaysUpError:
+                except ephem.AlwaysUpError:
                     # if it's always up, don't modify the start time
                     risetime = target['starttime']
-                except NeverUpError:
+                except ephem.NeverUpError:
                     # if it's never up, skip the target
                     risetime = target['endtime']
                 try:
                     settime = site.obs.next_setting(body,start=site.NautTwilEnd()).datetime()
-                except AlwaysUpError:
+                except ephem.AlwaysUpError:
                     # if it's always up, don't modify the end time
                     settime = target['endtime']
-                except NeverUpError:
+                except ephem.NeverUpError:
                     # if it's never up, skip the target
                     settime = target['starttime']
 
                 if risetime > settime:
                     try:
                         risetime = site.obs.next_rising(body,start=site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
-                    except AlwaysUpError:
+                    except ephem.AlwaysUpError:
                         # if it's always up, don't modify the start time
                         risetime = target['starttime']
-                    except NeverUpError:
+                    except ephem.NeverUpError:
                         # if it's never up, skip the target
                         risetime = target['endtime']
                     
@@ -1130,7 +1130,7 @@ if __name__ == '__main__':
                     target['starttime'] = risetime
                 if target['endtime'] > settime:
                     target['endtime'] = settime
-                """
+
                 if target['starttime'] < target['endtime']:
                     doScience(site, aqawan, telescope, imager, target)
                 else:
