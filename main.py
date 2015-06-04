@@ -449,7 +449,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
                 imager.recover()
                 imager.connect()
                 # try again
-                return takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
+                return takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname)
             time.sleep(0.01)
     except:
         logger.error("Camera failure: " + str(sys.exc_info()[0]))
