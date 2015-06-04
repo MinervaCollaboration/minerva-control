@@ -445,9 +445,11 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
         while not imager.cam.ImageReady:
             if (datetime.datetime.utcnow()-t0).total_seconds() > (exptime  + 60):
                 logger.error("Imager has been reading out for over a minute; beginning recovery")
-                imager.nfailed=1
+                imager.nfailed=max([1,imager.nfailed])
                 imager.recover()
                 imager.connect()
+                # try again
+                return takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
             time.sleep(0.01)
     except:
         logger.error("Camera failure: " + str(sys.exc_info()[0]))
