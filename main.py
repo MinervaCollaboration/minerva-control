@@ -86,7 +86,24 @@ def getPA(imageName):
         if abs(dPA) > 5:
             logger.error("PA out of range")
             if not os.path.exists("disableGuiding.txt"):
-                mail.send("PA error too large","The PA error (" + str(dPA) + " deg) is too large for " + imageName + "; disabling guiding. Please home/recalibrate the rotator and delete disableGuiding.txt",level='serious')
+                body = "Dear benevolent humans,\n\n" + \
+                       "The PA error (" + str(dPA) + " deg) is too large for " + imageName + "." + \
+                       "I have disabled the guiding, but I require your assistance to recalibrate the rotator and restart the guider. Please:\n\n" + \
+                       "1) In the PWI rotate tab, click 'calibrate'\n" + \
+                       "2) In the window that pops up, click 'Open PlateSolve...'\n" + \
+                       "3) File->Open Image...\n" + \
+                       "4) Browse for the most recent image (must be taken at the current position), click open\n" + \
+                       "5) If the RA/Dec don't automatically populate (e.g., if it's not an image saved by our script), enter them manually\n" + \
+                       "6) Click Plate Match\n" + \
+                       "7) Remember the 'angle' it solved for in the 'plate geometry' frame\n" + \
+                       "8) Exit PlateSolve\n" + \
+                       "9) In the Current Image position angle, enter the opposite of the angle in #7 (i.e., if the angle was 50, enter -50).\n" + \
+                       "10) Click ok.\n" + \
+                       "11) Scroll to the bottom of the Rotate tab and click 'Save Settings'\n" + \
+                       "12) Delete 'minerva-control/disableGuiding.txt'\n\n" + \
+                       "Love,\n" + \
+                       "MINERVA"
+                mail.send("PA error too large",body,level='serious')
                 with open("disableGuiding.txt","w") as f:
                     f.write(str(datetime.datetime.utcnow()))
                             
