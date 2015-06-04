@@ -1079,6 +1079,7 @@ if __name__ == '__main__':
                 body._dec = str(target['dec'])
                 body._epoch = '2000.0'
                 body.compute()
+                """
                 try:
                     risetime = site.obs.next_rising(body,start=site.NautTwilEnd()).datetime()
                 except AlwaysUpError:
@@ -1111,7 +1112,7 @@ if __name__ == '__main__':
                     target['starttime'] = risetime
                 if target['endtime'] > settime:
                     target['endtime'] = settime
-
+                """
                 if target['starttime'] < target['endtime']:
                     doScience(site, aqawan, telescope, imager, target)
                 else:
