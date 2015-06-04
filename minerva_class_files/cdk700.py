@@ -461,7 +461,29 @@ class CDK700:
         self.logger.info('Turning rotator tracking off')
         self.rotatorStopDerotating()
 
+    def recoverFocuser(self):
+        timeout = 60.0
+        self.focuserStop()
+        self.focuserDisconnect()
+        time.sleep(5)
+        self.focuserConnect()
+        self.focuserMove(self.focus)
+        t0 = datetime.datetime.utcnow()
+
+        while status.focuser.moving == 'True':
+            self.logger.info('Focuser moving (' + str(status.focuser.position) + ')')
+            time.sleep(0.3)
+            status = self.getStatus()
+            if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+                self.logger.error('Focus timed out')
+                mail.send("Focuser timed out on " + str(self.name),"Try powercycling?",level='serious')
+                return
+        self.logger.info("Focuser recovered")
+        
+
     def autoFocus(self):
+
+        timeout = 180.0
 
         self.initialize()
 
@@ -482,12 +504,16 @@ class CDK700:
 
 
         self.logger.info('Starting Autofocus')
+        t0 = datetime.datetime.utcnow()
         self.startAutoFocus()
         status = self.getStatus()
         while status.focuser.auto_focus_busy == 'True':
             time.sleep(1)
             status = self.getStatus()
-
+            if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+                self.logger.error('autofocus timed out')
+                self.recoverFocuser()
+                break
         
         status = self.getStatus()
         self.focus = float(status.focuser.position)
