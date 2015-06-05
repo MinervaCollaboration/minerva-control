@@ -4,7 +4,7 @@ import minerva_class_files.mail as mail
 hostname = socket.gethostname()
 
 body = "Dear benevolent humans,\n\n" + \
-       "I require your assistence to recover from a recent power outage. Please:\n\n" + \
+       "I require your assistance to recover from a recent power outage. Please:\n\n" + \
        "1) Make sure the telescope is connected, the drives are enabled, and the tracking is off.\n" + \
        "2) Home the telescope\n" + \
        "   * If this fails, you may need to power cycle the 'T# panel' and start over:\n" + \
