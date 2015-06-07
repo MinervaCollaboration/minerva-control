@@ -3,6 +3,8 @@ from configobj import ConfigObj
 import os, sys, psutil, subprocess, ipdb
 #import pwihelpers as pwi
 from xml.etree import ElementTree
+import minerva_class_files.mail as mail
+
 
 #HELPER CLASSES
 class Status: 
@@ -332,13 +334,13 @@ class CDK700:
                     p.kill()
 
                     self.logger.info('Restarting now')
-                    subprocess.Popen(["C:\Program Files\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+                    self.startPWI()
                     return
             except psutil.Error:
                 pass
 
         self.logger.info('PWI not running, starting now')
-        subprocess.Popen(["C:\Program Files\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+        self.startPWI()
 
     def startPWI(self):
         for p in psutil.process_iter():
@@ -355,6 +357,8 @@ class CDK700:
             subprocess.Popen(["C:\Program Files\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
         except:
             subprocess.Popen(["C:\Program Files (x86)\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
+
+        mail.send("PWI restarted on " + self.name,"Autofocus parameters will not be respected until manually run once") 
 
         time.sleep(5)   
             
@@ -463,13 +467,21 @@ class CDK700:
 
     def recoverFocuser(self):
         timeout = 60.0
+
+        self.logger.info('Beginning focuser recovery')
+
         self.focuserStop()
+        self.rotatorStopDerotating()
         self.focuserDisconnect()
+        self.restartPWI()
         time.sleep(5)
+
+        self.initialize()
         self.focuserConnect()
         self.focuserMove(self.focus)
         t0 = datetime.datetime.utcnow()
 
+        status = self.getStatus()
         while status.focuser.moving == 'True':
             self.logger.info('Focuser moving (' + str(status.focuser.position) + ')')
             time.sleep(0.3)
@@ -517,12 +529,20 @@ class CDK700:
         
         status = self.getStatus()
         self.focus = float(status.focuser.position)
-        tm1 = str(status.temperature.primary)
-        tm2 = str(status.temperature.secondary)
-        tm3 = str(status.temperature.m3)
-        tamb = str(status.temperature.ambient)
-        tback = str(status.temperature.backplate)
         alt = str(float(status.mount.alt_radian)*180.0/math.pi)
+
+        try:
+            tm1 = str(status.temperature.primary)
+            tm2 = str(status.temperature.secondary)
+            tm3 = str(status.temperature.m3)
+            tamb = str(status.temperature.ambient)
+            tback = str(status.temperature.backplate)
+        except:
+            tm1 = 'UNKNOWN'
+            tm2 = 'UNKNOWN'
+            tm3 = 'UNKNOWN'
+            tamb = 'UNKNOWN'
+            tback = 'UNKNOWN'
         
         self.logger.info('Updating best focus to ' + str(self.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
         f = open('focus.txt','w')
