@@ -108,8 +108,21 @@ def getPA(imageName):
                     f.write(str(datetime.datetime.utcnow()))
                             
         if dtheta > 600:
+            body =  "Dear benevolent humans,\n\n" + \
+                    "The pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + "." + \
+                    "A new pointing model must be created. Please:\n\n" + \
+                    "1) Power up the telescope and enable the axes'\n" + \
+                    "2) From the Commands menu under the Mount tab, click Edit Location and verify that the latitude and longitude are correct\n" + \
+                    "3) Go to http://time.is/ and make sure the computer clock is correct\n" + \
+                    "4) From the Commands menu, home the telescope\n" + \
+                    "5) From the Commands menu, Remove all cal points (to delete the old mount model)\n" + \
+                    "6) In the Mount tab, scroll down to Auto Mount and click the 'START' button next to Auto Mount\n" + \
+                    "7) When complete, from the Commands menu, click 'Save Model as Default'\n" + \
+                    "8) From the Commands menu, click 'Calibrate Home Sensors'\n\n" + \
+                    "Love,\n" + \
+                    "MINERVA"
             logger.error("Pointing error too large")
-            mail.send("Pointing error too large","The pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + ". Please redo the pointing model",level='serious')
+            mail.send("Pointing error too large",body,level='serious')
 
     else:
         PA = None
@@ -330,7 +343,7 @@ def endNight(site, aqawan, telescope, imager):
 def compressData(dataPath):
     files = glob.glob(dataPath + "/*.fits")
     for filename in files:
-#        logger.info('Compressing ' + filename)
+        logger.info('Compressing ' + filename)
         subprocess.call(['cfitsio/fpack.exe','-D',filename])
 
 def prepNight():
@@ -423,6 +436,7 @@ def takeImage(site, aqawan, telescope, imager, exptime, filterInd, objname):
     while weather == -1:
         site.getWeather()
         weather = copy.deepcopy(site.weather)
+        if weather == -1: time.sleep(0.25) # don't hammer the page
         
     telescopeStatus = telescope.getStatus()
     telra = ten(telescopeStatus.mount.ra_2000)*15.0
