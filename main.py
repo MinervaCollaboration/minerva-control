@@ -55,23 +55,66 @@ def getPA(imageName):
     astrometry(imageName)
 
     baseName = os.path.splitext(imageName)[0]
-    if os.path.exists(baseName + '.solved'):
-        hdr = pyfits.getheader(baseName + '.wcs')
-        cd11 = float(hdr['CD1_1'])
-        cd12 = float(hdr['CD1_2'])
-        racen = float(hdr['CRVAL1'])*math.pi/180.0
-        deccen = float(hdr['CRVAL2'])*math.pi/180.0
-        
-        PA = 180.0/math.pi*math.atan2(-cd12,-cd11) # this one?
-        PA = 180.0/math.pi*math.atan2(cd12,-cd11) # or this one?
+    f = pyfits.open(imageName, mode='update')
+    if os.path.exists(baseName + '.new'):
 
         # is it close to what we thought?
         orighdr = pyfits.getheader(imageName)
-        origcd11 = float(orighdr['CD1_1'])
-        origcd12 = float(orighdr['CD1_2'])
+        origcd11 = float(f[0].header['CD1_1'])
+        origcd12 = float(f[0].header['CD1_2'])
         origPA = 180.0/math.pi*math.atan2(origcd12,-origcd11)
-        origracen = float(orighdr['CRVAL1'])*math.pi/180.0
-        origdeccen = float(orighdr['CRVAL2'])*math.pi/180.0
+        origracen = float(f[0].header['CRVAL1'])*math.pi/180.0
+        origdeccen = float(f[0].header['CRVAL2'])*math.pi/180.0
+
+        f[0].header['WCSSOLVE'] = 'True'
+
+        # copy the WCS solution to the file
+        newhdr = pyfits.getheader(basename + '.new')
+        f[0].header['WCSAXES'] = newhdr['WCSAXES']
+        f[0].header['CTYPE1'] = newhdr['CTYPE1']
+        f[0].header['CTYPE2'] = newhdr['CTYPE2']
+        f[0].header['EQUINOX'] = newhdr['EQUINOX']
+        f[0].header['LONPOLE'] = newhdr['LONPOLE']
+        f[0].header['LATPOLE'] = newhdr['LATPOLE']
+        f[0].header['CRVAL1'] = newhdr['CRVAL1']
+        f[0].header['CRVAL2'] = newhdr['CRVAL2']
+        f[0].header['CRPIX1'] = newhdr['CRPIX1']
+        f[0].header['CRPIX2'] = newhdr['CRPIX2']
+        f[0].header['CUNIT1'] = newhdr['CUNIT1']
+        f[0].header['CUNIT2'] = newhdr['CUNIT2']
+        f[0].header['CD1_1'] = newhdr['CD1_1']
+        f[0].header['CD1_2'] = newhdr['CD1_2']
+        f[0].header['CD2_1'] = newhdr['CD2_1']
+        f[0].header['CD2_2'] = newhdr['CD2_2']
+        f[0].header['IMAGEW'] = newhdr['IMAGEW']
+        f[0].header['IMAGEH'] = newhdr['IMAGEH']
+        f[0].header['A_ORDER'] = newhdr['A_ORDER']
+        f[0].header['A_0_2'] = newhdr['A_0_2']
+        f[0].header['A_1_1'] = newhdr['A_1_1']
+        f[0].header['A_2_0'] = newhdr['A_2_0']
+        f[0].header['B_ORDER'] = newhdr['B_ORDER']
+        f[0].header['B_0_2'] = newhdr['B_0_2']
+        f[0].header['B_1_1'] = newhdr['B_1_1']
+        f[0].header['B_2_0'] = newhdr['B_2_0']
+        f[0].header['AP_ORDER'] = newhdr['AP_ORDER']
+        f[0].header['AP_0_1'] = newhdr['AP_0_1']
+        f[0].header['AP_0_2'] = newhdr['AP_0_2']
+        f[0].header['AP_1_0'] = newhdr['AP_1_0']
+        f[0].header['AP_1_1'] = newhdr['AP_1_1']
+        f[0].header['AP_2_0'] = newhdr['AP_2_0']
+        f[0].header['BP_ORDER'] = newhdr['BP_ORDER']
+        f[0].header['BP_0_1'] = newhdr['BP_0_1']
+        f[0].header['BP_0_2'] = newhdr['BP_0_2']
+        f[0].header['BP_1_0'] = newhdr['BP_1_0']
+        f[0].header['BP_1_1'] = newhdr['BP_1_1']
+        f[0].header['BP_2_0'] = newhdr['BP_2_0']
+
+        cd11 = float(newhdr['CD1_1'])
+        cd12 = float(newhdr['CD1_2'])
+        racen = float(newhdr['CRVAL1'])*math.pi/180.0
+        deccen = float(newhdr['CRVAL2'])*math.pi/180.0       
+#        PA = 180.0/math.pi*math.atan2(-cd12,-cd11) # this one?
+        PA = 180.0/math.pi*math.atan2(cd12,-cd11) # or this one?
 
         dPA = 180.0/math.pi*math.atan2(math.sin((PA-origPA)*math.pi/180.0), math.cos((PA-origPA)*math.pi/180.0))
         dRA = 648000.0/math.pi*(racen-origracen)/math.cos(deccen)
@@ -109,7 +152,7 @@ def getPA(imageName):
                             
         if dtheta > 600:
             body =  "Dear benevolent humans,\n\n" + \
-                    "The pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + "." + \
+                    "My pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + "." + \
                     "A new pointing model must be created. Please:\n\n" + \
                     "1) Power up the telescope and enable the axes'\n" + \
                     "2) From the Commands menu under the Mount tab, click Edit Location and verify that the latitude and longitude are correct\n" + \
@@ -125,7 +168,18 @@ def getPA(imageName):
             mail.send("Pointing error too large",body,level='serious')
 
     else:
+        # insert keyword to indicated WCS failed
+        f[0].header['WCSSOLVE'] = 'False'
         PA = None
+
+    f.flush()
+    f.close()
+
+    # clean up extra files
+    extstodelete = ['-indx.png','-indx.xyls','-ngc.png','-objs.png','.axy','.corr','.match','.new','.rdls','.solved','.wcs']
+    for ext in extstodelete:
+        if os.path.exists(baseName + ext):
+            os.remove(baseName + ext)
 
     return PA
 
