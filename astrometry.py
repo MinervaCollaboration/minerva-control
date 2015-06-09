@@ -131,6 +131,7 @@ for filename in files:
                 print "No astrometric solution for " + filename
                 subprocess.call(['cfitsio/funpack.exe','-D',filename])
                 baseName2 = baseName.replace("\\" , "/")
-                main.getPA(baseName2 + '.fits',email=False)
+                try: main.getPA(baseName2 + '.fits',email=False)
+                except: pass
                 subprocess.call(['cfitsio/fpack.exe','-D',baseName2 + '.fits'])
    
