@@ -23,9 +23,15 @@ def ten(string):
 def astrometry(imageName):
 
     hdr = pyfits.getheader(imageName)
-    pixscale = float(hdr['PIXSCALE'])
-    ra = float(hdr['RA'])
-    dec = float(hdr['DEC'])
+    try: pixscale = float(hdr['PIXSCALE'])
+    except: pixscale = 0.61
+
+    try: ra = float(hdr['RA'])
+    except: ra = ten(hdr['RA'])*15.0
+    
+    try: dec = float(hdr['DEC'])
+    except: dec = ten(hdr['DEC'])
+    
     radius = 3.0*pixscale*float(hdr['NAXIS1'])/3600.0
 
     cmd = 'solve-field --scale-units arcsecperpix' + \
@@ -46,12 +52,13 @@ def astrometry(imageName):
     #                     ' --use-sextractor' + \ #need to install sextractor
 
     cmd = r'C:\cygwin\bin\bash --login -c "' + cmd + '"'
-    print cmd
     os.system(cmd)
 
-def getPA(imageName):
+def getPA(imageName, email=True):
 
-    logger.info('Finding PA for ' + imageName)
+    try: logger.info('Finding PA for ' + imageName)
+    except: pass
+    
     astrometry(imageName)
 
     baseName = os.path.splitext(imageName)[0]
@@ -69,7 +76,7 @@ def getPA(imageName):
         f[0].header['WCSSOLVE'] = 'True'
 
         # copy the WCS solution to the file
-        newhdr = pyfits.getheader(basename + '.new')
+        newhdr = pyfits.getheader(baseName + '.new')
         f[0].header['WCSAXES'] = newhdr['WCSAXES']
         f[0].header['CTYPE1'] = newhdr['CTYPE1']
         f[0].header['CTYPE2'] = newhdr['CTYPE2']
@@ -121,16 +128,21 @@ def getPA(imageName):
         dDec = 648000.0/math.pi*(deccen-origdeccen)
         dtheta = 648000.0/math.pi*math.acos(math.sin(deccen)*math.sin(origdeccen) + math.cos(deccen)*math.cos(origdeccen)*math.cos(racen-origracen))
 
-        logger.info("Telescope PA = " + str(origPA) + '; solved PA = ' + str(PA) + '; offset = ' + str(dPA) + ' degrees')
-        logger.info("Telescope RA = " + str(origracen) + '; solved RA = ' + str(racen) + '; offset = ' + str(dRA) + ' arcsec')
-        logger.info("Telescope Dec = " + str(origdeccen) + '; solved Dec = ' + str(deccen) + '; offset = ' + str(dDec) + ' arcsec')
-        logger.info("Total pointing error = " + str(dtheta) + ' arcsec')
+        try: logger.info("Telescope PA = " + str(origPA) + '; solved PA = ' + str(PA) + '; offset = ' + str(dPA) + ' degrees')
+        except: pass
+        try: logger.info("Telescope RA = " + str(origracen) + '; solved RA = ' + str(racen) + '; offset = ' + str(dRA) + ' arcsec')
+        except: pass
+        try: logger.info("Telescope Dec = " + str(origdeccen) + '; solved Dec = ' + str(deccen) + '; offset = ' + str(dDec) + ' arcsec')
+        except: pass
+        try: logger.info("Total pointing error = " + str(dtheta) + ' arcsec')
+        except: pass
 
         if abs(dPA) > 5:
-            logger.error("PA out of range")
-            if not os.path.exists("disableGuiding.txt"):
+            try: logger.error("PA out of range")
+            except: pass
+            if not os.path.exists("disableGuiding.txt") and email:
                 body = "Dear benevolent humans,\n\n" + \
-                       "The PA error (" + str(dPA) + " deg) is too large for " + imageName + "." + \
+                       "The PA error (" + str(dPA) + " deg) is too large for " + imageName + ". " + \
                        "I have disabled the guiding, but I require your assistance to recalibrate the rotator and restart the guider. Please:\n\n" + \
                        "1) In the PWI rotate tab, click 'calibrate'\n" + \
                        "2) In the window that pops up, click 'Open PlateSolve...'\n" + \
@@ -152,9 +164,9 @@ def getPA(imageName):
                             
         if dtheta > 600:
             body =  "Dear benevolent humans,\n\n" + \
-                    "My pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + "." + \
+                    "My pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + ". " + \
                     "A new pointing model must be created. Please:\n\n" + \
-                    "1) Power up the telescope and enable the axes'\n" + \
+                    "1) Power up the telescope and enable the axes\n" + \
                     "2) From the Commands menu under the Mount tab, click Edit Location and verify that the latitude and longitude are correct\n" + \
                     "3) Go to http://time.is/ and make sure the computer clock is correct\n" + \
                     "4) From the Commands menu, home the telescope\n" + \
@@ -164,8 +176,10 @@ def getPA(imageName):
                     "8) From the Commands menu, click 'Calibrate Home Sensors'\n\n" + \
                     "Love,\n" + \
                     "MINERVA"
-            logger.error("Pointing error too large")
-            mail.send("Pointing error too large",body,level='serious')
+            
+            try: logger.error("Pointing error too large")
+            except: pass
+            if email: mail.send("Pointing error too large",body,level='serious')
 
     else:
         # insert keyword to indicated WCS failed
