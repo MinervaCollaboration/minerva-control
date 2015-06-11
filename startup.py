@@ -26,7 +26,7 @@ body = "Dear benevolent humans,\n\n" + \
 
 if os.path.exists("running.txt"):
     mail.send(hostname + " rebooted during observations",body,level="serious")
-    subprocess.call(['python','main.py'],shell=True)
+#    subprocess.call(['python','main.py'],shell=True)
 else:
     mail.send(hostname + " rebooted", body,level="serious")
 
