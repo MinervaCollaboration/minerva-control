@@ -431,7 +431,21 @@ def endNight(site, aqawan, telescope, imager):
 
     # scrape the logs to summarize the weather and errors
     errors = {}
-    weatherstats = {}
+    weatherstats = {
+        'totalRain':[],
+        'wxt510Rain':[],
+        'barometer':[],
+        'windGustSpeed':[],
+#        'cloudDate':[],
+        'outsideHumidity':[],
+        'outsideDewPt':[],
+        'relativeSkyTemp':[],
+        'outsideTemp':[],
+        'windSpeed':[],
+        'windDirectionDegrees':[],
+#        'date':[],
+#        'sunAltitude':[],
+        }
     for log in logs:
         with open(log,'r') as f:
             for line in f:
@@ -441,8 +455,14 @@ def endNight(site, aqawan, telescope, imager):
                     if errmsg not in errors.keys():
                         errors[errmsg] = 1
                     else: errors[errmsg] += 1
-#                elif re.search('',line):
-#                    weatherstats[
+                elif re.search('=',line):
+                    key = line.split('=')[-2].split()[-1]
+                    if key in weatherstats.keys():
+                        time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S")
+                        try:
+                            value = float(line.split('=')[-1].strip())
+                            weatherstats[key].append((time,value))
+                        except: pass
 
     # compose the observing report
     body = "Dear humans,\n\n" + \
@@ -457,9 +477,10 @@ def endNight(site, aqawan, telescope, imager):
 
     body += '\nThe weather for tonight was:\n\n'
     for key in weatherstats:
-        body += key + ': min =' + str(weatherstats[key]['min']) + \
-                      ', max =' + str(weatherstats[key]['max']) + \
-                      ', ave =' + str(weatherstats[key]['ave']) + '\n\n'
+        arr = [x[1] for x in weatherstats[key]]       
+        body += key + ': min=' + str(min(arr)) + \
+                      ', max=' + str(max(arr)) + \
+                      ', ave=' + str(sum(arr)/float(len(arr))) + '\n'
 
     body += "\nPlease see the webpage for movies and another diagnostics:\n" + \
             "https://www.cfa.harvard.edu/minerva/site/" + site.night + "/movie.html\n\n" + \

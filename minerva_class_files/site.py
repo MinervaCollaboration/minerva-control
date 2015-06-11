@@ -57,7 +57,7 @@ class site:
             'windDirectionDegrees':[0.0,360.0],
             'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
             'sunAltitude':[-90,6],
-            'relativeSkyTemp':[-999,-37],
+            'relativeSkyTemp':[-999,-35],
             'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
             }
 
@@ -73,7 +73,7 @@ class site:
             'windDirectionDegrees':[0.0,360.0],
             'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
             'sunAltitude':[-90,6],
-            'relativeSkyTemp':[-999,-40],
+            'relativeSkyTemp':[-999,-38],
             'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
             }
         
@@ -268,6 +268,10 @@ class site:
 
         # if everything checks out, store the weather
         if not pageError: self.weather = weather
+
+        for key in weather.keys():
+            self.logger.debug(key + '=' + str(weather[key]))
+
 
     def oktoopen(self, open=False):
 
