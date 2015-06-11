@@ -6,7 +6,7 @@ import minerva_class_files.segments as segments
 import minerva_class_files.mail as mail
 import numpy as np
 from minerva_class_files.get_all_centroids import *
-import shutil
+import shutil, re
 
 import datetime, logging, os, sys, time, subprocess, glob, math, json, copy
 import ipdb
@@ -356,8 +356,12 @@ def parseTarget(line):
         return -1
     
     # convert strings to datetime objects
-    target['starttime'] = datetime.datetime.strptime(target['starttime'],'%Y-%m-%d %H:%M:%S')
-    target['endtime'] = datetime.datetime.strptime(target['endtime'],'%Y-%m-%d %H:%M:%S')
+    try: target['starttime'] = datetime.datetime.strptime(target['starttime'],'%Y-%m-%d %H:%M:%S')
+    except: return -1
+
+    try: target['endtime'] = datetime.datetime.strptime(target['endtime'],'%Y-%m-%d %H:%M:%S')
+    except: return -1
+    
     return target
 
 # should do this asychronously and continuously
@@ -377,36 +381,93 @@ def heartbeat(site, aqawan):
 def endNight(site, aqawan, telescope, imager):
 
     # park the scope
-    logger.info("Parking Telescope")
+    try: logger.info("Parking Telescope")
+    except: pass
     telescope.park()
 
     # Close the aqawan
-    logger.info("Closing aqawan")
+    try: logger.info("Closing aqawan")
+    except: pass
     aqawan.close_both()
     
     # Compress the data
-    logger.info("Compressing data")
+    try: logger.info("Compressing data")
+    except: pass
     compressData(imager.dataPath)
 
     # Turn off the camera cooler, disconnect
-    logger.info("Disconnecting imager")
-    imager.disconnect()
+    try: logger.info("Disconnecting imager")
+    except: pass
+    try: imager.disconnect()
+    except: pass
 
     #TODO: Back up the data
     #site.backup()
 
     # copy schedule to data directory
-    logger.info("Copying schedule file from ./schedule/" + site.night + ".txt to " + imager.dataPath)
+    try: logger.info("Copying schedule file from ./schedule/" + site.night + ".txt to " + imager.dataPath)
+    except: pass
     shutil.copyfile("./schedule/" + site.night + ".txt", imager.dataPath + site.night + ".txt")
 
     # copy logs to data directory
     logs = glob.glob("./logs/" + site.night + "/*.log")
     for log in logs:
-        logger.info("Copying log file " + log + " to " + imager.dataPath)
+        try: logger.info("Copying log file " + log + " to " + imager.dataPath)
+        except: pass
         shutil.copyfile(log, imager.dataPath + os.path.basename(log))
 
-    # email completion notice
-    mail.send(telescope.name + ' done observing','Love,\nMINERVA')
+    #### create an observing report ####
+
+    # summarize the observed targets
+    filenames = glob.glob(imager.dataPath + '/*.fits*')
+    objects = {}
+    for filename in filenames:
+        obj = filename.split('.')[2]
+        if obj <> 'Bias' and obj <> 'Dark':
+            obj += ' ' + filename.split('.')[3]
+        if obj not in objects.keys():
+            objects[obj] = 1
+        else: objects[obj] += 1
+
+    # scrape the logs to summarize the weather and errors
+    errors = {}
+    weatherstats = {}
+    for log in logs:
+        with open(log,'r') as f:
+            for line in f:
+                if re.search('WARNING',line) or re.search("ERROR",line):
+                    if re.search('WARNING',line): errmsg = line.split('WARNING: ')[1].strip()
+                    else: errmsg = line.split('ERROR: ')[1].strip()
+                    if errmsg not in errors.keys():
+                        errors[errmsg] = 1
+                    else: errors[errmsg] += 1
+#                elif re.search('',line):
+#                    weatherstats[
+
+    # compose the observing report
+    body = "Dear humans,\n\n" + \
+           "While you were sleeping, I observed:\n\n"
+
+    for key in objects.keys():
+        body += key + ': '+ str(objects[key]) + '\n'
+
+    body += '\nI encountered the following errors and warnings:\n\n'
+    for key in errors.keys():
+        body += key + ': ' + str(errors[key]) + '\n'
+
+    body += '\nThe weather for tonight was:\n\n'
+    for key in weatherstats:
+        body += key + ': min =' + str(weatherstats[key]['min']) + \
+                      ', max =' + str(weatherstats[key]['max']) + \
+                      ', ave =' + str(weatherstats[key]['ave']) + '\n\n'
+
+    body += "\nPlease see the webpage for movies and another diagnostics:\n" + \
+            "https://www.cfa.harvard.edu/minerva/site/" + site.night + "/movie.html\n\n" + \
+            "Love,\n" + \
+            "MINERVA"
+
+    # email observing report
+    mail.send(telescope.name + ' done observing',body)
 
 def compressData(dataPath):
     files = glob.glob(dataPath + "/*.fits")
@@ -414,7 +475,7 @@ def compressData(dataPath):
         logger.info('Compressing ' + filename)
         subprocess.call(['cfitsio/fpack.exe','-D',filename])
 
-def prepNight():
+def prepNight(email=True):
 
     # reset the night at 10 am local
     today = datetime.datetime.utcnow()
@@ -460,7 +521,7 @@ def prepNight():
         os.makedirs(imager.dataPath)
 
     # email notice
-    mail.send(telescope.name + ' Starting observing','Love,\nMINERVA')
+    if email: mail.send(telescope.name + ' Starting observing','Love,\nMINERVA')
 
     return site, aqawan, telescope, imager
 
@@ -1072,6 +1133,7 @@ if __name__ == '__main__':
         f.write(str(datetime.datetime.utcnow()))
 
     site, aqawan, telescope, imager = prepNight()
+    #site,aqawan,telescope,imager = main.prepNight(email=False)
 
     # setting up main logger
     fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
