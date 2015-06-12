@@ -384,6 +384,7 @@ def endNight(site, aqawan, telescope, imager):
     try: logger.info("Parking Telescope")
     except: pass
     telescope.park()
+    telescope.shutdown()
 
     # Close the aqawan
     try: logger.info("Closing aqawan")
@@ -898,7 +899,7 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                 # keep slewing to the optimally flat part of the sky (dithers too)
                 # DeltaPos is here to check if we're within DeltaPosLimit of the target pos.
                 DeltaPos = 90.
-                DeltaPosLimit = 5.0
+                DeltaPosLimit = 1.0
                 SlewRepeat = 0
                 while DeltaPos > DeltaPosLimit:
                     logger.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
@@ -915,13 +916,14 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                         time.sleep(10)
 
                     telescopeStatus = telescope.getStatus()
-                    ActualAz = float(telescopeStatus.mount.azm_radian)*(180./3.14159265358979626)
-                    ActualAlt = float(telescopeStatus.mount.alt_radian)*(180./3.14159265358979626)
-                    DeltaPos = math.sqrt((Alt-ActualAlt)**2.+(Az-ActualAz)**2.)
+                    ActualAz = float(telescopeStatus.mount.azm_radian)
+                    ActualAlt = float(telescopeStatus.mount.alt_radian)
+                    DeltaPos = math.acos( math.sin(ActualAlt)*math.sin(Alt)+math.cos(ActualAlt)*math.cos(ActualAlt)*math.cos(ActualAz-Az) )*(180./math.pi)
                     if DeltaPos > DeltaPosLimit:
-                        logger.error("Telescope reports it is more than " + str(DeltaPos) + " deg. away from the target postion. Reslewing...") 
+                        logger.error("Telescope reports it is " + str(DeltaPos) + " deg. away from the target postion; beginning telescope recovery")
+                        telescope.recover()
                         SlewRepeat += 1
-                    if SlewRepeat>10:
+                    if SlewRepeat>3:
                         logger.error("Repeated slewing is not getting us to the flat-field target position; skipping.")
                         break
 

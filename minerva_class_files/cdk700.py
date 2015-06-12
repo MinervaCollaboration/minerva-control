@@ -4,7 +4,7 @@ import os, sys, psutil, subprocess, ipdb
 #import pwihelpers as pwi
 from xml.etree import ElementTree
 import minerva_class_files.mail as mail
-
+import minerva_class_files.powerswitch as powerswitch
 
 #HELPER CLASSES
 class Status: 
@@ -46,6 +46,7 @@ class CDK700:
     def __init__(self, name, night, configfile=''):
         
         self.name = name
+        self.night = night
 
         #check for configuration file 
         if not os.path.isfile(configfile): 
@@ -70,6 +71,9 @@ class CDK700:
         self.guider = CDKconfig['Setup']['GUIDER']
         self.fau = CDKconfig['Setup']['FAU']
         self.rotatorMailsent=False
+        self.nfailed=0
+        self.PSNAME = CDKconfig['Setup']['PSNAME']
+        self.PSPORT = CDKconfig['Setup']['PSPORT']
 
         # initialize to the most recent best focus
         if os.path.isfile('focus.txt'):
@@ -325,20 +329,19 @@ class CDK700:
     def m3Stop(self):
         return self.pwiRequestAndParse(device="m3", cmd="stop")
 
-    def restartPWI(self):
+    def killPWI(self):
         for p in psutil.process_iter():
             try:
                 pinfo = p.as_dict(attrs=['pid','name'])
                 if pinfo['name'] == 'PWI.exe':
                     self.logger.info('Killing PWI')
                     p.kill()
-
-                    self.logger.info('Restarting now')
-                    self.startPWI()
                     return
             except psutil.Error:
                 pass
-
+            
+    def restartPWI(self):
+        self.killPWI()
         self.logger.info('PWI not running, starting now')
         self.startPWI()
 
@@ -378,17 +381,75 @@ class CDK700:
         # turning on mount tracking
         self.logger.info('Turning mount tracking on')
         self.mountTrackingOn()
+
+        self.focuserConnect()
     
         # turning on rotator tracking
         self.logger.info('Turning rotator tracking on')
         self.rotatorStartDerotating()
 
-    def attemptRecovery(self):
-        self.logger.info('Telescope in error state; attempting recovery')
-        self.mountEnableMotors()
+    def shutdown(self):
+        self.rotatorStopDerotating()
+        self.focuserDisconnect()
+        self.mountTrackingOff()
+        self.mountDisconnect()
+        self.mountDisableMotors()
 
+    def powercycle(self):
         
-#        self.
+        ps = powerswitch.powerswitch(self.PSNAME,self.night,'minerva_class_files/powerswitch.ini')
+        ps.cycle(self.PSPORT, cycletime=60)
+        time.sleep(30) # wait for the panel to initialize
+        
+    def recover(self):
+
+        self.nfailed = self.nfailed + 1
+        if self.nfailed >= 3:  
+            body = "Dear benevolent humans,\n\n" + \
+                   "I'm broken. I power cycled myself, but I need your help to finish the recovery (and investigate):\n\n" + \
+                   "1) Make sure the telescope is connected, the drives are enabled, and the tracking is off.\n" + \
+                   "2) Home the telescope\n" + \
+                   "   * If this fails, you may need to power cycle the 'T# panel' and start over:\n" + \
+                   "   * T1 - 192.168.1.36\n" + \
+                   "   * T2 - 192.168.1.37\n" + \
+                   "   * T3 - 192.168.1.38\n" + \
+                   "   * T4 - 192.168.1.39\n" + \
+                   "3) Make sure the rotator is connected and the 'Alt Az Derotate' is off.\n" + \
+                   "4) Home the rotator\n" + \
+                   "5) Check the rotator zero points (PWI rotate tab)\n" + \
+                   "   * T1 - 56.42\n" + \
+                   "   * T2 - 182.70\n" + \
+                   "   * T3 - 198.75\n" + \
+                   "   * T4 - 224.18\n" + \
+                   "   If those aren't the same, don't change them, but note it, and don't be surprised if you get an email after the first science image that the rotator is screwed up.\n" + \
+                   "6) Start an autofocus sequence, wait 30 seconds, and cancel it (if you don't do this, the scripted autofocus will use the default values which don't span enough range).\n" + \
+                   "7) type 'c' in the command window to resume operations.\n\n" + \
+                   "Love,\n" + \
+                   "MINERVA"
+            
+            self.logger.error("Telescope has failed more than 3 times; something probably seriously wrong...")
+            mail.send(self.name + " has failed " + str(self.nfailed) + " times",body,level='serious')
+
+            try: self.shutdown()
+            except: pass
+            self.killPWI()
+            self.powercycle()
+            self.startPWI()
+            self.mountConnect()
+            self.mountEnableMotors()
+            self.focuserConnect()
+            
+#            self.initialize()           
+    
+            ipdb.set_trace()
+
+        self.logger.info('Telescope in error state; attempting recovery')
+
+        try: self.shutdown()
+        except: pass
+        self.restartPWI()
+        self.initialize()
+            
 
     def inPosition(self):
         # Wait for telescope to complete motion
@@ -410,11 +471,11 @@ class CDK700:
 
             if telescopeStatus.mount.alt_motor_error_code <> '0':
                 self.logger.error('Error with altitude drive: ' + telescopeStatus.mount.alt_motor_error_message)
-                self.attemptRecovery()
+                self.recover()
 
             if telescopeStatus.mount.azm_motor_error_code <> '0':
                 self.logger.info('Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
-                self.attemptRecovery()
+                self.recover()
 
         self.logger.info('Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
         while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
