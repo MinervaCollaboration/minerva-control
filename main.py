@@ -918,7 +918,7 @@ def doSkyFlat(site, aqawan, telescope, imager, filters, morning=False, num=11):
                     telescopeStatus = telescope.getStatus()
                     ActualAz = float(telescopeStatus.mount.azm_radian)
                     ActualAlt = float(telescopeStatus.mount.alt_radian)
-                    DeltaPos = math.acos( math.sin(ActualAlt)*math.sin(Alt)+math.cos(ActualAlt)*math.cos(ActualAlt)*math.cos(ActualAz-Az) )*(180./math.pi)
+                    DeltaPos = math.acos( math.sin(ActualAlt)*math.sin(Alt*math.pi/180.0)+math.cos(ActualAlt)*math.cos(ActualAlt)*math.cos(ActualAz-Az*math.pi/180.0) )*(180./math.pi)
                     if DeltaPos > DeltaPosLimit:
                         logger.error("Telescope reports it is " + str(DeltaPos) + " deg. away from the target postion; beginning telescope recovery")
                         telescope.recover()
