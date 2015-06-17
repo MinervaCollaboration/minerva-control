@@ -330,7 +330,7 @@ def aqawanOpen(site, aqawan):
         logger.info('Aqawan closed at ' + str(aqawan.lastClose) + '; waiting 20 minutes for conditions to improve')
         return response
     
-    if site.oktoopen():
+    if site.oktoopen(open=aqawan.isOpen):
         logger.info('Weather is good; opening telescope')
         response = aqawan.open_both()
     else:
@@ -993,6 +993,8 @@ def doScience(site, aqawan, telescope, imager, target):
         logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
         time.sleep(waittime)
 
+    
+
     if target['name'] == 'autofocus':
         try:
             telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
@@ -1140,7 +1142,6 @@ def scheduleIsValid(targetFile):
                                 logger.error('Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
                                 emailbody = emailbody + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree\n'                            
                         except:
-                            ipdb.set_trace()
                             pass            
             linenum = linenum + 1
             if emailbody <> '':

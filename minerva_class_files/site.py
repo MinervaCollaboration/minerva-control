@@ -276,9 +276,14 @@ class site:
     def oktoopen(self, open=False):
 
         retval = True
-        
-        if open: weatherLimits = self.closeLimits
-        else: weatherLimits = self.openLimits
+
+        # if it's open, use the limits to close
+        if open:
+            self.logger.debug("Enclosure open; using the close limits")
+            weatherLimits = self.closeLimits
+        else:
+            self.logger.debug("Enclosure closed; using the open limits")
+            weatherLimits = self.openLimits
 
         if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]
         if self.cloudOverride: weatherLimits['relativeSkyTemp'] = [-999,999]

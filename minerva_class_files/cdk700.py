@@ -451,7 +451,7 @@ class CDK700:
         self.initialize()
             
 
-    def inPosition(self):
+    def inPosition(self, ra=None, dec=None, alt=None, az=None):
         # Wait for telescope to complete motion
         timeout = 360.0
         start = datetime.datetime.utcnow()
@@ -507,9 +507,11 @@ class CDK700:
 
         if self.inPosition():
             self.logger.info("Finished slew to J2000 " + str(ra) + ',' + str(dec))
-        else:
-            self.logger.error("Slew failed to J2000 " + str(ra) + ',' + str(dec))
-
+        else:        
+            self.logger.error("Slew failed to J2000 " + str(ra) + ',' + str(dec) + '; attempting recovery')
+            self.recover()
+            self.acquireTarget(ra,dec,pa=pa)
+            return
 
     def park(self):
         # park the scope (no danger of pointing at the sun if opened during the day)
