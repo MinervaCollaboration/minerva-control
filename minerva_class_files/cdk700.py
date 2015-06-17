@@ -340,12 +340,12 @@ class CDK700:
             except psutil.Error:
                 pass
             
-    def restartPWI(self):
+    def restartPWI(self, email=True):
         self.killPWI()
         self.logger.info('PWI not running, starting now')
-        self.startPWI()
+        self.startPWI(email=email)
 
-    def startPWI(self):
+    def startPWI(self, email=True):
         for p in psutil.process_iter():
             try:
                 pinfo = p.as_dict(attrs=['pid','name'])
@@ -361,7 +361,7 @@ class CDK700:
         except:
             subprocess.Popen(["C:\Program Files (x86)\PlaneWave Instruments\PlaneWave Interface\PWI.exe"])
 
-        mail.send("PWI restarted on " + self.name,"Autofocus parameters will not be respected until manually run once") 
+        if email: mail.send("PWI restarted on " + self.name,"Autofocus parameters will not be respected until manually run once") 
 
         time.sleep(5)   
             
@@ -534,7 +534,7 @@ class CDK700:
         self.focuserStop()
         self.rotatorStopDerotating()
         self.focuserDisconnect()
-        self.restartPWI()
+        self.restartPWI(email=False)
         time.sleep(5)
 
         self.initialize()
@@ -586,7 +586,8 @@ class CDK700:
             if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
                 self.logger.error('autofocus timed out')
                 self.recoverFocuser()
-                break
+                self.autoFocus()
+                return
         
         status = self.getStatus()
         self.focus = float(status.focuser.position)

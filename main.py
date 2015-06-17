@@ -1217,6 +1217,8 @@ if __name__ == '__main__':
     timeUntilSunset = (site.sunset() - datetime.datetime.utcnow()).total_seconds()
     if timeUntilSunset > 0:
         logger.info('Waiting for sunset (' + str(timeUntilSunset) + 'seconds)')
+        telescope.rotatorStopDerotating()
+        telescope.mountTrackingOff()
         time.sleep(timeUntilSunset)
 
     # keep trying to open the aqawan every minute
@@ -1232,17 +1234,22 @@ if __name__ == '__main__':
 
     # Take Evening Sky flats
     logger.info('Beginning sky flats')
+    telescope.initialize()
     doSkyFlat(site, aqawan, telescope, imager, flatFilters, num=CalibInfo['nflat'])
    
     # Wait until nautical twilight ends 
     timeUntilTwilEnd = (site.NautTwilEnd() - datetime.datetime.utcnow()).total_seconds()
     if timeUntilTwilEnd > 0:
         logger.info('Waiting for nautical twilight to end (' + str(timeUntilTwilEnd) + 'seconds)')
+        telescope.rotatorStopDerotating()
+        telescope.mountTrackingOff()
         time.sleep(timeUntilTwilEnd)
 
     # find the best focus for the night
     if datetime.datetime.utcnow() < site.NautTwilBegin():
         logger.info('Beginning autofocus')
+        telescope.initialize()
+        telescope.inPosition()
         telescope.autoFocus()
 
     # read the target list
