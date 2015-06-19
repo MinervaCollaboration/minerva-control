@@ -24,10 +24,7 @@ body = "Dear benevolent humans,\n\n" + \
        "Love,\n" + \
        "MINERVA"
 
-if os.path.exists("running.txt"):
-    mail.send(hostname + " rebooted during observations",body,level="serious")
-#    subprocess.call(['python','main.py'],shell=True)
-else:
-    mail.send(hostname + " rebooted", body,level="serious")
+mail.send(hostname + " rebooted during observations",body,level="serious")
+subprocess.call(['python','C:\minerva_control\telcom.py'],shell=True)
 
 time.sleep(60)
