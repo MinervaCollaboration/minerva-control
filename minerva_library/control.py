@@ -40,7 +40,7 @@ class control:
 		
 		self.logger_lock = threading.Lock()
 		self.setup_loggers()
-		self.telcom_disable()
+		self.telcom_enable()
 		
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
@@ -79,7 +79,30 @@ class control:
 			
 		log_path = self.base_directory + '/log/' + night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
-		
+
+		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+		datefmt = "%Y-%m-%dT%H:%M:%S"
+
+		self.logger = logging.getLogger(self.logger_name)
+		self.logger.setLevel(logging.DEBUG)
+		formatter = logging.Formatter(fmt,datefmt=datefmt)
+		formatter.converter = time.gmtime
+        
+		#clear handlers before setting new ones
+		self.logger.handlers = []
+
+		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
+		fileHandler.setFormatter(formatter)
+		self.logger.addHandler(fileHandler)
+
+		# add a separate logger for the terminal (don't display debug-level messages)
+		console = logging.StreamHandler()
+		console.setFormatter(formatter)
+		console.setLevel(logging.INFO)
+		self.logger.setLevel(logging.DEBUG)
+		self.logger.addHandler(console)
+
+		'''
 		self.logger = logging.getLogger(self.logger_name)
 		self.logger.setLevel(logging.DEBUG)
 
@@ -98,7 +121,8 @@ class control:
 		streamHandler = logging.StreamHandler()
 		streamHandler.setFormatter(formatter)
 		self.logger.addHandler(streamHandler)
-		
+		'''
+
 	#set logger path for all control objects
 	def setup_loggers(self,night='dump'):
 	
@@ -307,9 +331,11 @@ class control:
 
 	#load calibration file
 	def loadCalibInfo(self,num):
-		
+
+		telescope_name = 'T(' + str(num) +'): '
+
 		file = self.site.night + '.T' + str(num) + '.txt'
-		self.logger.info('loading calib file: ' + file)
+		self.logger.info(telescope_name + 'loading calib file: ' + file)
 		try:
 			with open(self.base_directory + '/schedule/' + file, 'r') as calibfile:
 				calibline = calibfile.readline()
@@ -317,16 +343,16 @@ class control:
 			
 				calibinfo = json.loads(calibline)
 				calibendinfo = json.loads(calibendline)
-				self.logger.info('calib info loaded: ' + self.site.night + '.T' + str(num) + '.txt')
+				self.logger.info(telescope_name + 'calib info loaded: ' + self.site.night + '.T' + str(num) + '.txt')
 				return [calibinfo,calibendinfo]
 		except:
-			self.logger.info('error loading calib info: ' + self.site.night + '.T' + str(num) + '.txt')
+			self.logger.info(telescope_name + 'error loading calib info: ' + self.site.night + '.T' + str(num) + '.txt')
 			sys.exit()
 		
 	#open dome with weather check
 	def domeOpen(self):
 		if (datetime.datetime.utcnow() - self.domes[0].lastClose) < datetime.timedelta(minutes=20):
-			self.logger.info('Dome closed at ' + str(self.domes[0].lastClose) + '; waiting 20 minutes for conditions to improve')
+			self.logger.info('Domes closed at ' + str(self.domes[0].lastClose) + '; waiting 20 minutes for conditions to improve')
 		else:
 			if self.site.oktoopen():
 				self.logger.debug('Weather is good; opening dome')
@@ -340,13 +366,24 @@ class control:
 	#periodically check weather condition, decide weather to open/close dome
 	def domeControl(self):
 		while self.observing:
+			t0 = datetime.datetime.utcnow()
 			if not self.site.oktoopen(open=True):
 				self.dome_close()
 			else:
 				self.domeOpen()
-			time.sleep(15)
+				# only send heartbeats when it's ok to open
+				for i in range(len(self.domes)):
+					self.domes[i].heartbeat()
+
+			# does this create a problem if domes[*].isOpen changes as other threads access it?
 			for i in range(len(self.domes)):
-				self.domes[i].heartbeat()
+				status = self.domes[i].status()
+				if status['Shutter1'] == 'OPEN' and status['Shutter2'] == 'OPEN': self.domes[i].isOpen = True
+				else: self.domes[i].isOpen = False
+
+			# ensure 4 hearbeats before timeout
+			sleeptime = max(14.0-(datetime.datetime.utcnow() - t0).total_seconds(),0)
+			time.sleep(sleeptime)
 		self.dome_close()
 		
 	def domeControlThread(self):
@@ -396,7 +433,9 @@ class control:
 
 	def getPA(self,imageName, email=True):
 
-		self.logger.info('Finding PA for ' + imageName)
+		telescope_name = 'T(' + os.path.splitext(imageName)[0].split('.')[1][1] + '): '
+		
+		self.logger.info(telescope_name + 'Finding PA for ' + imageName)
 		self.astrometry(imageName)
 		
 		baseName = os.path.splitext(imageName)[0]
@@ -404,7 +443,7 @@ class control:
 		if os.path.exists(baseName + '.new'):
 
 			
-			self.logger.info('Astrometry successful for ' + imageName)
+			self.logger.info(telescope_name + 'Astrometry successful for ' + imageName)
 
 			# is it close to what we thought?
 			orighdr = pyfits.getheader(imageName)
@@ -469,28 +508,41 @@ class control:
 			dRA = 648000.0/math.pi*(racen-origracen)/math.cos(deccen)
 			dDec = 648000.0/math.pi*(deccen-origdeccen)
 			dtheta = 648000.0/math.pi*math.acos(math.sin(deccen)*math.sin(origdeccen) + math.cos(deccen)*math.cos(origdeccen)*math.cos(racen-origracen))
-			self.logger.info("Telescope PA = " + str(origPA) + '; solved PA = ' + str(PA) + '; offset = ' + str(dPA) + ' degrees')
-			self.logger.info("Telescope RA = " + str(origracen) + '; solved RA = ' + str(racen) + '; offset = ' + str(dRA) + ' arcsec')
-			self.logger.info("Telescope Dec = " + str(origdeccen) + '; solved Dec = ' + str(deccen) + '; offset = ' + str(dDec) + ' arcsec')
-			self.logger.info("Total pointing error = " + str(dtheta) + ' arcsec')
+			self.logger.info(telescope_name + "Telescope PA = " + str(origPA) + '; solved PA = ' + str(PA) + '; offset = ' + str(dPA) + ' degrees')
+			self.logger.info(telescope_name + "Telescope RA = " + str(origracen) + '; solved RA = ' + str(racen) + '; offset = ' + str(dRA) + ' arcsec')
+			self.logger.info(telescope_name + "Telescope Dec = " + str(origdeccen) + '; solved Dec = ' + str(deccen) + '; offset = ' + str(dDec) + ' arcsec')
+			self.logger.info(telescope_name + "Total pointing error = " + str(dtheta) + ' arcsec')
 			
+			telname = f[0].header['TELESCOP']
+			guideFile = "disableGuiding." + telname + ".txt"
 			if abs(dPA) > 5:
-				self.logger.error("PA out of range")
-				if not os.path.exists("disableGuiding.txt") and email:
-					body = "Dear benevolent humans,\n\n" + \
-					    "The PA error (" + str(dPA) + " deg) is too large for " + imageName + ". " + \
-					    "I have disabled the guiding, but I require your assistance to re-home the rotator. Please:\n\n" + \
-					    "1) In the PWI rotate tab, make sure the 'alt az derotate' box is unchecked\n" + \
-					    "2) Click home in the 'comands' pull down menu\n" + \
-					    "3) Wait for it to complete and move back to 359.0\n" + \
-					    "4) If it stalls, press stop and start the procedure over again (it'll go faster this time)\n" + \
-					    "5) Delete 'minerva-control/disableGuiding.txt'\n\n" + \
-					    "Love,\n" + \
-					    "MINERVA"
-					mail.send("PA error too large",body,level='serious')
-					with open("disableGuiding.txt","w") as fh:
+				self.logger.error(telescope_name + "PA out of range")
+				if not os.path.exists(guideFile):
+					with open(guideFile,"w") as fh:
 						fh.write(str(datetime.datetime.utcnow()))
-                            
+					if email:
+						body = "Dear benevolent humans,\n\n" + \
+						    "The PA error (" + str(dPA) + " deg) is too large for " + imageName + ". " + \
+						    "I have disabled the guiding, but I require your assistance to re-home the rotator. Please:\n\n" + \
+						    "1) In the PWI rotate tab, make sure the 'alt az derotate' box is unchecked\n" + \
+						    "2) Click home in the 'comands' pull down menu\n" + \
+						    "3) Wait for it to complete and move back to 359.0\n" + \
+						    "4) If it stalls, press stop and start the procedure over again (it'll go faster this time)\n" + \
+						    "5) Delete 'minerva-control/" + guideFile + "\n\n" + \
+						    "Love,\n" + \
+						    "MINERVA"
+						mail.send("PA error too large",body,level='serious')
+			else:
+				if os.path.exists(guideFile):
+					self.logger.error(telescope_name + "PA in range, re-enabling guiding")
+					os.remove(guideFile)
+					if email:
+						body = "Dear benevolent humans,\n\n" + \
+						    "The PA error is within range again. Re-enabling guiding.\n\n" + \
+						    "Love,\n" + \
+						    "MINERVA"
+						mail.send("PA error fixed",body,level='serious')
+					                            
 			if dtheta > 600:
 				body =  "Dear benevolent humans,\n\n" + \
 				    "My pointing error (" + str(dtheta) + " arcsec) is too large for " + imageName + ". " + \
@@ -506,7 +558,7 @@ class control:
 				    "Love,\n" + \
 				    "MINERVA"
 				
-				try: self.logger.error("Pointing error too large")
+				try: self.logger.error(telescope_name + "Pointing error too large")
 				except: pass
 				if email: mail.send("Pointing error too large",body,level='serious')
 
@@ -545,22 +597,38 @@ class control:
 		threshhold = 60.0 # maximum offset in X or Y (larger corrections will be ignored)
 		maxangle = 5.0 # maximum offset in theta (larger corrections will be ignored)
 
-		if os.path.exists("disableGuiding.txt"):
-			self.logger.info("Guiding disabled")
+		# which telescope is this?
+		match = False
+		for telescope in self.telescopes:
+			if telescope.logger_name.split('_')[-1] == filename.split('.')[1][1]:
+				match = True
+				break
+		if not match: 
+			self.logger.error("Could not match filename to telescope name: filename=" + filename)
+			return
+
+		num = telescope.logger_name.split('_')[-1]
+		telname = "T" + num
+		
+		telescope_name = 'T(' + str(num) +'): '
+
+
+		if os.path.exists("disableGuiding." + telname + ".txt"):
+			self.logger.info(telescope_name + "Guiding disabled")
 			return None
 
 		if reference == None:
-			self.logger.info("No reference frame defined yet; using " + filename)
+			self.logger.info(telescope_name + "No reference frame defined yet; using " + filename)
 			reference = self.getstars(filename)
 			if len(reference[:,0]) < 6:
-				self.logger.error("Not enough stars in reference frame")
+				self.logger.error(telescope_name + "Not enough stars in reference frame")
 				return None
 			return reference
 
-		self.logger.info("Extracting stars for " + filename)
+		self.logger.info(telescope_name + "Extracting stars for " + filename)
 		stars = self.getstars(filename)
 		if len(stars[:,0]) < 6:
-			self.logger.error("Not enough stars in frame")
+			self.logger.error(telescope_name + "Not enough stars in frame")
 			return reference
 
 		# proportional servo gain (apply this fraction of the offset)
@@ -571,7 +639,7 @@ class control:
 		platescale = float(hdr['PIXSCALE'])
 		dec = float(hdr['CRVAL2'])*math.pi/180.0 # declination in radians
 		PA = math.acos(-float(hdr['CD1_1'])*3600.0/platescale) # position angle in radians
-		self.logger.info("Image PA=" + str(PA))
+		self.logger.info(telescope_name + "Image PA=" + str(PA))
 
 		m0 = 22
 		x = stars[:,0]
@@ -582,33 +650,25 @@ class control:
 		yref = reference[:,1]
 		magref = -2.5*np.log10(reference[:,2])+m0
 
-		self.logger.info("Getting offset for " + filename)
+		self.logger.info(telescope_name + "Getting offset for " + filename)
 		dx,dy,scale,rot,flag,rmsf,nstf = self.findoffset(x, y, mag, xref, yref, magref)
 
-		self.logger.info("dx=" + str(dx) + ", dy=" + str(dy) + ", scale=" + str(scale) +
+		self.logger.info(telescope_name + "dx=" + str(dx) + ", dy=" + str(dy) + ", scale=" + str(scale) +
 			    ", rot=" + str(rot) + ", flag=" + str(flag) +
 			    ", rmsf=" + str(rmsf) + ", nstf=" + str(nstf))
     
 		if abs(dx) > threshhold or abs(dy) > threshhold or abs(rot) > maxangle:
-			self.logger.error("Offset too large; ignoring")
+			self.logger.error(telescope_name + "Offset too large; ignoring")
 			return reference
 
-		match = False
-		for telescope in self.telescopes:
-			if telescope.logger_name.split('_')[-1] == filename.split('.')[1][1]:
-				match = True
-				break
-		if not match: 
-			self.logger.error("Could not match filename to telescope name: filename=" + filename)
-
 		# adjust the rotator angle (sign?)
-		self.logger.info("Adjusting the rotator by " + str(rot*gain) + " degrees")
+		self.logger.info(telescope_name + "Adjusting the rotator by " + str(rot*gain) + " degrees")
 		telescope.rotatorIncrement(rot*gain)
 
 		# adjust RA/Dec (need to calibrate PA)
 		deltaRA = -(dx*math.cos(PA) - dy*math.sin(PA))*math.cos(dec)*platescale*gain
 		deltaDec = (dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
-		self.logger.info("Adjusting the RA,Dec by " + str(deltaRA) + "," + str(deltaDec))
+		self.logger.info(telescope_name + "Adjusting the RA,Dec by " + str(deltaRA) + "," + str(deltaDec))
 		telescope.mountOffsetRaDec(deltaRA,deltaDec)
 
 		# correction sent
@@ -684,17 +744,18 @@ class control:
 		domeStatus = dome.status()
 
 		
-		telra = self.ten(telescopeStatus.mount.ra_2000)*15.0
-		teldec = self.ten(telescopeStatus.mount.dec_2000)
-		ra = self.ten(telescopeStatus.mount.ra_target)*15.0
+		telra = str(self.ten(telescopeStatus.mount.ra_2000)*15.0)
+		teldec = str(self.ten(telescopeStatus.mount.dec_2000))
+		ra = str(self.ten(telescopeStatus.mount.ra_target)*15.0)
 		dec = self.ten(telescopeStatus.mount.dec_target)
 		if dec > 90.0: dec = dec-360 # fixes bug in PWI
+		dec = str(dec)
 
 		moonpos = self.site.moonpos()
-		moonra = moonpos[0]
-		moondec = moonpos[1]
-		moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
-		moonphase = self.site.moonphase()		
+		moonra = str(moonpos[0])
+		moondec = str(moonpos[1])
+		moonsep = str(ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi)
+		moonphase = str(self.site.moonphase())
 
 		#get header info into json format and pass it to imager's write_header method
 		f = collections.OrderedDict()
@@ -702,7 +763,7 @@ class control:
 		# Static Keywords
 		f['SITELAT'] = str(self.site.obs.lat)
 		f['SITELONG'] = (str(self.site.obs.lon),"East Longitude of the imaging location")
-		f['SITEALT'] = (self.site.obs.elevation,"Site Altitude (m)")
+		f['SITEALT'] = (str(self.site.obs.elevation),"Site Altitude (m)")
 		f['OBSERVER'] = ('MINERVA Robot',"Observer")
 		f['TELESCOP'] = "T" + str(camera_num)
 		f['OBJECT'] = objname
@@ -851,20 +912,22 @@ class control:
 		return 'error'
 		
 	def doBias(self,num=11,camera_num=0):
+		telescope_name = 'T(' + str(camera_num) +'): '
 		objectName = 'Bias'
 		for x in range(num):
 			filename = 'error'
 			while filename =='error':
-				self.logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + '0' + ')')
+				self.logger.info(telescope_name + 'Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + '0' + ')')
 				filename = self.takeImage(0,'V',objectName,camera_num)
 			
 	def doDark(self,num=11, exptime=60,camera_num=0):
+		telescope_name = 'T(' + str(camera_num) +'): '
 		objectName = 'Dark'
 		for time in exptime:
 			for x in range(num):
 				filename = 'error'
 				while filename == 'error':
-					self.logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(time) + ')')
+					self.logger.info(telescope_name + 'Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(time) + ')')
 					filename = self.takeImage(time,'V',objectName,camera_num)
 		
 	#doSkyFlat for specified telescope
@@ -885,9 +948,9 @@ class control:
 		minSunAlt = -12
 		maxSunAlt = -2
 
-		biasLevel = 300
 		targetCounts = 30000
-		saturation = 55000
+		biasLevel = imager.biaslevel
+		saturation = imager.saturation
 		maxExpTime = 60
 		minExpTime = 10
 	   
@@ -923,6 +986,13 @@ class control:
 		if secondsUntilTwilight > 0 and (self.site.sunalt() < minSunAlt or self.site.sunalt() > maxSunAlt):
 			self.logger.info(telescope_name + 'Waiting ' +  str(secondsUntilTwilight) + ' seconds until Twilight')
 			time.sleep(secondsUntilTwilight)
+
+		# wait for the dome to open
+		while not dome.isOpen:
+			# exit if outside of twilight
+			if self.site.sunalt() > maxSunAlt or self.site.sunalt() < minSunAlt: return
+			self.logger.info("Dome closed; waiting for conditions to improve")
+			time.sleep(30)
 
 		# Now it's within 5 minutes of twilight flats
 		self.logger.info(telescope_name + 'Beginning twilight flats')
@@ -975,7 +1045,7 @@ class control:
 						ActualAlt = float(telescopeStatus.mount.alt_radian)
 						DeltaPos = math.acos( math.sin(ActualAlt)*math.sin(Alt*math.pi/180.0)+math.cos(ActualAlt)*math.cos(Alt*math.pi/180.0)*math.cos(ActualAz-Az*math.pi/180.0) )*(180./math.pi)
 						if DeltaPos > DeltaPosLimit:
-							logger.error(telescope_name + "Telescope reports it is " + str(DeltaPos) + " degrees away from the target postion; beginning telescope recovery (ActualAlt=" + str(ActualAlt*180.0/math.pi) + ", Requested Alt=" + str(Alt) + ", (ActualAz=" + str(ActualAz*180.0/math.pi) + ", Requested Az=" + str(Az))
+							self.logger.error(telescope_name + "Telescope reports it is " + str(DeltaPos) + " degrees away from the target postion; beginning telescope recovery (ActualAlt=" + str(ActualAlt*180.0/math.pi) + ", Requested Alt=" + str(Alt) + ", (ActualAz=" + str(ActualAz*180.0/math.pi) + ", Requested Az=" + str(Az))
 							telescope.recover()
 							SlewRepeat += 1
 						if SlewRepeat>10:
@@ -1037,13 +1107,18 @@ class control:
 					i += 1
 
 
-	def scheduleIsValid(self, num):
+	def scheduleIsValid(self, num, night=None, email=True):
 
-		targetFile = self.site.night + '.T' + str(num) + '.txt'
+		if night == None:
+			night = self.site.night
+
+		targetFile = night + '.T' + str(num) + '.txt'
+		telescope_name = 'T(' + str(num) +'): '
+
 
 		if not os.path.exists(self.base_directory + '/schedule/' + targetFile):
-			self.logger.error('No schedule file: ' + targetFile)
-			mail.send("No schedule file: " + targetFile,"Cannot observe!",level='serious')
+			self.logger.error(telescope_name + 'No schedule file: ' + targetFile)
+			if email: mail.send("No schedule file: " + targetFile,"Cannot observe!",level='serious')
 			return False
 
 		emailbody = ''
@@ -1054,13 +1129,13 @@ class control:
 			except: CalibInfo = -1
 			# check for malformed JSON code
 			if CalibInfo == -1:
-				self.logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+				self.logger.error(telescope_name + 'Line ' + str(linenum) + ': malformed JSON: ' + line)
 				emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
 			else:
 				requiredKeys = ['nbias','ndark','nflat','darkexptime','flatFilters','WaitForMorning']
 				for key in requiredKeys:
 					if key not in CalibInfo.keys():
-						self.logger.error('Line 1: Required key (' + key + ') not present: ' + line)
+						self.logger.error(telescope_name + 'Line 1: Required key (' + key + ') not present: ' + line)
 						emailbody = emailbody + 'Line 1: Required key (' + key + ') not present: ' + line + '\n'
 
 			linenum = 2
@@ -1069,13 +1144,13 @@ class control:
 			except: CalibEndInfo = -1
 			# check for malformed JSON code
 			if CalibEndInfo == -1:
-				self.logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+				self.logger.error(telescope_name + 'Line ' + str(linenum) + ': malformed JSON: ' + line)
 				emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
 			else:
 				requiredKeys = ['nbiasEnd','ndarkEnd','nflatEnd']
 				for key in requiredKeys:
 					if key not in CalibEndInfo.keys():
-						self.logger.error('Line 2: Required key (' + key + ') not present: ' + line)
+						self.logger.error(telescope_name + 'Line 2: Required key (' + key + ') not present: ' + line)
 						emailbody = emailbody + 'Line 2: Required key (' + key + ') not present: ' + line + '\n'
 						
 			linenum = 3
@@ -1084,13 +1159,13 @@ class control:
 				
 				# check for malformed JSON code
 				if target == -1:
-					self.logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+					self.logger.error(telescope_name + 'Line ' + str(linenum) + ': malformed JSON: ' + line)
 					emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
 				else:
 					# check to make sure all required keys are present
 					key = 'name'
 					if key not in target.keys():
-						self.logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
+						self.logger.error(telescope_name + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
 						emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
 					else:
 						if target['name'] == 'autofocus':
@@ -1100,7 +1175,7 @@ class control:
 							
 						for key in requiredKeys:
 							if key not in target.keys():
-								self.logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
+								self.logger.error(telescope_name + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
 								emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
 									
 						if target['name'] <> 'autofocus':
@@ -1109,13 +1184,13 @@ class control:
 								nexptime = len(target['exptime'])
 								nfilter = len(target['filter'])
 								if nnum <> nexptime or nnum <> nfilter:
-									self.logger.error('Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
+									self.logger.error(telescope_name + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
 									emailbody = emailbody + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree\n'                            
 							except:
 								pass            
 				linenum = linenum + 1
 				if emailbody <> '':
-					mail.send("Errors in target file: " + targetFile,emailbody,level='serious')
+					if email: mail.send("Errors in target file: " + targetFile,emailbody,level='serious')
 					return False
 		return True
 
@@ -1133,8 +1208,9 @@ class control:
 			dome = self.domes[1]
 		else:
 			dome = self.domes[0]
+
 		#used for testing
-		dome.isOpen = True
+#		dome.isOpen = True
 		telescope = self.telescopes[telescope_num-1]
 		
 		# if after end time, return
@@ -1219,6 +1295,7 @@ class control:
 
 	#prepare logger and set imager data path
 	def prepNight(self,num=0,email=True):
+
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
 		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
@@ -1232,18 +1309,19 @@ class control:
 	
 		if email: mail.send('T' + str(num) + ' Starting observing','Love,\nMINERVA')
 
-#	#close all instrument
-#	def endNight(self,num=0):
-#		# park the scope
-#		self.logger.info('parking telescopes')
-#		self.telescope_park(num)
-#		# Compress the data
-#		self.logger.info('compressing data')
-#		self.imager_compressData(num)
-#		#TODO: Back up the data
+	def backup(self, num):
+		
+		dataPath = '/Data/t' + str(num) + '/' + self.site.night + '/'
+		backupPath = '/home/minerva/backup/t' + str(num) + '/' + self.site.night + '/'
+		if not os.path.exists(backupPath):
+			os.mkdir(backupPath)
+
+		files = glob.glob(dataPath + '*')
+		for f in files:
+			shutil.copyfile(f, backupPath + os.path.basename(f))
 
 
-	def endNight(self, num=0):
+	def endNight(self, num=0, email=True):
 
 		dataPath = '/Data/t' + str(num) + '/' + self.site.night + '/'
 
@@ -1261,7 +1339,7 @@ class control:
 #		self.imager_disconnect()
 
                 #TODO: Back up the data
-#		self.imager_backup(num)
+		self.backup(num)
 
 		# copy schedule to data directory
 		self.logger.info("Copying schedule file from ./schedule/" + self.site.night + ".txt to " + dataPath)
@@ -1348,9 +1426,7 @@ class control:
 		    "MINERVA"
 
 		# email observing report
-		mail.send("T" + str(num) + ' done observing',body)
-
-
+		if email: mail.send("T" + str(num) + ' done observing',body)
 
 	def parseTarget(self,line):
 		try:
@@ -1375,8 +1451,16 @@ class control:
 			
 		#set up night's directory
 		self.prepNight(telescope_num)
-
 		self.scheduleIsValid(telescope_num)
+
+		# home and initialize the telescope
+		self.telescopes[telescope_num-1].home()
+		self.telescopes[telescope_num-1].home_rotator()
+		self.telescopes[telescope_num-1].initialize_autofocus()
+		time.sleep(360)
+
+		# wait for the camera to cool down
+		self.cameras[telescope_num-1].cool()
 
 		CalibInfo,CalibEndInfo = self.loadCalibInfo(telescope_num)
 		# Take biases and darks
@@ -1501,11 +1585,10 @@ class control:
 			if telescope_num > 2: dome = self.domes[1]
 			else: dome = self.domes[0]
 
+			# wait for the dome to close (the heartbeat thread will update its status)
 			while dome.isOpen and (datetime.datetime.utcnow()-t0).total_seconds() < timeout:
 				self.logger.info(telescope_name + 'Waiting for dome to close')
-				status = dome.status()
-				if status['Shutter1'] == 'CLOSED' and status['Shutter2'] == 'CLOSED': dome.isOpen = False
-				else: time.sleep(60)
+				time.sleep(60)
 				
 			self.doBias(CalibEndInfo['nbiasEnd'],telescope_num)
 			self.doDark(CalibEndInfo['ndarkEnd'], CalibInfo['darkexptime'],telescope_num)

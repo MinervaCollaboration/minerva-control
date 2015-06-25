@@ -39,7 +39,7 @@ class site:
 
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
-		if datetime.datetime.now().hour > 10 and datetime.datetime.now().hour < 17:
+		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
 			today = today + datetime.timedelta(days=1)
 		self.night = 'n' + today.strftime('%Y%m%d')
 		self.startNightTime = datetime.datetime(today.year, today.month, today.day, 17) - datetime.timedelta(days=1)
@@ -87,24 +87,28 @@ class site:
 		log_path = self.base_directory + '/log/' + night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
 		
-		self.logger = logging.getLogger(self.logger_name)
-		self.logger.setLevel(logging.INFO)
+                # setting up aqawan logger                                                                                            
+                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+                datefmt = "%Y-%m-%dT%H:%M:%S"
 
-		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-		datefmt = "%Y-%m-%dT%H:%M:%S"
-		formatter = logging.Formatter(fmt,datefmt=datefmt)
-		formatter.converter = time.gmtime
-		
-		#clear handlers before setting new ones
-		self.logger.handlers = []
-		
-		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a+')
-		fileHandler.setFormatter(formatter)
-		self.logger.addHandler(fileHandler)
-		
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-		self.logger.addHandler(streamHandler)
+                self.logger = logging.getLogger(self.logger_name)
+                self.logger.setLevel(logging.DEBUG)
+                formatter = logging.Formatter(fmt,datefmt=datefmt)
+                formatter.converter = time.gmtime
+
+                #clear handlers before setting new ones                                                                               
+                self.logger.handlers = []
+
+                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
+                fileHandler.setFormatter(formatter)
+                self.logger.addHandler(fileHandler)
+
+                # add a separate logger for the terminal (don't display debug-level messages)                                         
+                console = logging.StreamHandler()
+                console.setFormatter(formatter)
+                console.setLevel(logging.INFO)
+                self.logger.setLevel(logging.DEBUG)
+                self.logger.addHandler(console)
 
 	def getWeather(self):
 
@@ -184,6 +188,10 @@ class site:
 		# if everything checks out, store the weather
 		if not pageError: self.weather = weather
 
+		# write the weather to the log for nightly summaries
+		for key in weather.keys():
+			self.logger.debug(key + '=' + str(weather[key]))
+
 	def oktoopen(self, open=False):
 		
 		retval = True
@@ -195,6 +203,10 @@ class site:
 		else:
 			self.logger.debug("Enclosure closed; using the open limits")
 			weatherLimits = self.openLimits
+			
+		# change it during execution
+		if os.path.exists('sunOverride.txt'): self.sunOverride = True
+		if os.path.exists('cloudOverride.txt'): self.cloudOverride = True
 
 		if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]
 		if self.cloudOverride: weatherLimits['relativeSkyTemp'] = [-999,999]

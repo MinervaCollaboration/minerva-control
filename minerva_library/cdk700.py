@@ -11,6 +11,8 @@ import mail
 import math
 import powerswitch
 import telcom_client
+import threading
+
 from configobj import ConfigObj
 #import pwihelpers as pwi
 from xml.etree import ElementTree
@@ -61,6 +63,9 @@ class CDK700:
 		self.setup_logger()
 		self.nps = powerswitch.powerswitch(self.nps_config,base)
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
+		self.status_lock = threading.RLock()
+		# threading.Thread(target=self.write_status_thread).start()
+		
 		# initialize to the most recent best focus
 		if os.path.isfile('focus.' + self.logger_name + '.txt'):
 			f = open('focus.' + self.logger_name + '.txt','r')
@@ -112,24 +117,28 @@ class CDK700:
 		log_path = self.base_directory + '/log/' + night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
 		
-		self.logger = logging.getLogger(self.logger_name)
-		self.logger.setLevel(logging.INFO)
+                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+                datefmt = "%Y-%m-%dT%H:%M:%S"
 
-		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-		datefmt = "%Y-%m-%dT%H:%M:%S"
-		formatter = logging.Formatter(fmt,datefmt=datefmt)
-		formatter.converter = time.gmtime
-		
-		#clear handlers before setting new ones
-		self.logger.handlers = []
-		
-		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a+')
-		fileHandler.setFormatter(formatter)
-		self.logger.addHandler(fileHandler)
-		
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-		self.logger.addHandler(streamHandler)
+		self.logger = logging.getLogger(self.logger_name)
+                self.logger.setLevel(logging.DEBUG)
+                formatter = logging.Formatter(fmt,datefmt=datefmt)
+                formatter.converter = time.gmtime
+
+                #clear handlers before setting new ones                                                                                                                                                 
+                self.logger.handlers = []
+
+                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
+                fileHandler.setFormatter(formatter)
+                self.logger.addHandler(fileHandler)
+
+                # add a separate logger for the terminal (don't display debug-level messages)                                                                                                           
+                console = logging.StreamHandler()
+                console.setFormatter(formatter)
+                console.setLevel(logging.INFO)
+                self.logger.setLevel(logging.DEBUG)
+                self.logger.addHandler(console)
+
 	
 	# SUPPORT FUNCITONS
 	def makeUrl(self, **kwargs):
@@ -210,6 +219,26 @@ class CDK700:
 		"""
 		return self.parseXml(self.getStatusXml())
 
+	def write_status(self):
+		pass
+		
+	#status thread, exit when main thread stops
+	def write_status_thread(self):
+		
+		for i in threading.enumerate():
+				if i.name == "MainThread":
+					main_thread = i
+					break
+		n = 15
+		while True:
+			if main_thread.is_alive() == False:
+				break
+			n+= 1
+			if n > 14:
+				self.write_status()
+				n = 0
+			time.sleep(1)
+			
 	### FOCUSER ###
 	def focuserConnect(self, port=1):
 		"""
@@ -571,12 +600,40 @@ class CDK700:
 		self.nps.cycle(self.nps_port,cycletime = 60)
 		time.sleep(30) # wait for the panel to initialize
 
+	def home(self):
+		# turning on mount tracking
+		self.logger.info('Connecting to mount')
+		self.mountConnect()
+
+		self.logger.info('Enabling motors')
+		self.mountEnableMotors()
+		
+		self.logger.info('Homing the telscope')
+		if self.telcom.home():return True
+		else: return False
+		
+	def home_rotator(self):
+		self.logger.info('Connecting to rotator')
+		self.focuserConnect()
+
+		self.logger.info('Turning rotator tracking off')
+		self.rotatorStopDerotating()
+
+		self.logger.info('Homing rotator')
+		if self.telcom.home_rotator():return True
+		else: return False
+		
+	def initialize_autofocus(self):
+		if self.telcom.initialize_autofocus():return True
+		else: return False
+
 	def killPWI(self):
 		if self.telcom.killPWI():return True
 		else: return False
 	def startPWI(self,email=True):
 		if self.telcom.startPWI():
-			mail.send("PWI restarted on " + self.logger_name,"Autofocus parameters will not be respected until manually run once") 
+			return self.initialize_autofocus()
+#			mail.send("PWI restarted on " + self.logger_name,"Autofocus parameters will not be respected until manually run once") 
 			return True
 		else: return False
 	def restartPWI(self,email=True):

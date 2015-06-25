@@ -74,6 +74,24 @@ class telcom_client:
 			return 'fail'
 		if data_ret == 'fail':self.logger.error("command failed("+command+')')
 		return data
+
+	def home(self):
+		if (self.send('home none',15)).split()[0] == 'success':
+			return True
+		else:
+			return False
+
+	def home_rotator(self):
+		if (self.send('home_rotator none',15)).split()[0] == 'success':
+			return True
+		else:
+			return False
+
+	def initialize_autofocus(self):
+		if (self.send('initialize_autofocus none',15)).split()[0] == 'success':
+			return True
+		else:
+			return False
 			
 	def startPWI(self):
 		if (self.send('start_pwi none',15)).split()[0] == 'success':

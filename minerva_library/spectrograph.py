@@ -34,22 +34,30 @@ class spectrograph:
 	#set up logger object
 	def setup_logger(self,night='dump'):
 		
-		self.logger = logging.getLogger(self.logger_name)
-		formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
 		log_path = self.base_directory + '/log/' + night
-		if os.path.exists(log_path) == False:
-			os.mkdir(log_path)
-		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name +'.log', mode='a')
-		fileHandler.setFormatter(formatter)
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
+                if os.path.exists(log_path) == False:os.mkdir(log_path)
 
-		#clear handlers before setting new ones
-		self.logger.handlers = []
-		
-		self.logger.setLevel(logging.DEBUG)
-		self.logger.addHandler(fileHandler)
-		self.logger.addHandler(streamHandler)
+                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+                datefmt = "%Y-%m-%dT%H:%M:%S"
+
+                self.logger = logging.getLogger(self.logger_name)
+                self.logger.setLevel(logging.DEBUG)
+                formatter = logging.Formatter(fmt,datefmt=datefmt)
+                formatter.converter = time.gmtime
+
+                #clear handlers before setting new ones                                                                               
+                self.logger.handlers = []
+
+                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
+                fileHandler.setFormatter(formatter)
+                self.logger.addHandler(fileHandler)
+
+                # add a separate logger for the terminal (don't display debug-level messages)                                         
+                console = logging.StreamHandler()
+                console.setFormatter(formatter)
+                console.setLevel(logging.INFO)
+                self.logger.setLevel(logging.DEBUG)
+                self.logger.addHandler(console)
 		
 	def create_class_objects(self):
 		pass

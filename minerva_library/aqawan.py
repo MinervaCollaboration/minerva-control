@@ -27,7 +27,8 @@ class aqawan:
 		
 		self.initialized = False
 		self.lock = threading.Lock()
-		self.status_lock = threading.Lock()
+		self.status_lock = threading.RLock()
+		# threading.Thread(target=self.write_status_thread).start()
 		
 	def load_config(self):
 		#create configuration file object
@@ -42,7 +43,6 @@ class aqawan:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit() 
 		
-		self.isOpen = False
 		self.lastClose = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 		
 	def setup_logger(self,night='dump'):
@@ -50,24 +50,27 @@ class aqawan:
 		log_path = self.base_directory + '/log/' + night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
 		
-		self.logger = logging.getLogger(self.logger_name)
-		self.logger.setLevel(logging.INFO)
+                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+                datefmt = "%Y-%m-%dT%H:%M:%S"
 
-		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-		datefmt = "%Y-%m-%dT%H:%M:%S"
-		formatter = logging.Formatter(fmt,datefmt=datefmt)
-		formatter.converter = time.gmtime
+		self.logger = logging.getLogger(self.logger_name)
+                self.logger.setLevel(logging.DEBUG)
+                formatter = logging.Formatter(fmt,datefmt=datefmt)
+                formatter.converter = time.gmtime
 		
-		#clear handlers before setting new ones
-		self.logger.handlers = []
+                #clear handlers before setting new ones                                                                                                                                                 
+                self.logger.handlers = []
 		
-		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a+')
-		fileHandler.setFormatter(formatter)
-		self.logger.addHandler(fileHandler)
+                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
+                fileHandler.setFormatter(formatter)
+                self.logger.addHandler(fileHandler)
 		
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-		self.logger.addHandler(streamHandler)
+                # add a separate logger for the terminal (don't display debug-level messages)                                                                                                           
+                console = logging.StreamHandler()
+                console.setFormatter(formatter)
+                console.setLevel(logging.INFO)
+                self.logger.setLevel(logging.DEBUG)
+                self.logger.addHandler(console)
 		
 	def setup_command_lib(self):
 		self.messages = ['HEARTBEAT','STOP','OPEN_SHUTTERS','CLOSE_SHUTTERS',
@@ -150,7 +153,24 @@ class aqawan:
 		status_file.write(json.dumps(response))
 		status_file.close()
 		self.status_lock.release()
+
+	#status thread, exit when main thread stops
+	def write_status_thread(self):
 		
+		for i in threading.enumerate():
+				if i.name == "MainThread":
+					main_thread = i
+					break
+		n = 15
+		while True:
+			if main_thread.is_alive() == False:
+				break
+			n+= 1
+			if n > 14:
+				self.write_status()
+				n = 0
+			time.sleep(1)
+			
 	def open_shutter(self,shutter):
 		# make sure this is an allowed shutter
 		if shutter not in [1,2]:
@@ -185,7 +205,7 @@ class aqawan:
 
 		# Did it fail to open?
 		if status['Shutter' + str(shutter)] <> 'OPEN':
-			self.logger.error('Error opening Shutter ' + str(shutter) )
+			self.logger.error('Error opening Shutter ' + str(shutter) + ', status=' + status['Shutter' + str(shutter)] )
 			return -1
 
 		self.logger.info('Shutter ' + str(shutter) + ' open')
@@ -207,9 +227,6 @@ class aqawan:
 		response = self.open_shutter(2)
 		if response == -1: return -1
 		self.logger.debug('Shutter 2 open')
-
-		self.isOpen = True
-			
 
 	def close_shutter(self,shutter):
 		# make sure this is an allowed shutter
@@ -249,11 +266,19 @@ class aqawan:
 
 			self.logger.info('Shutter ' + str(shutter) + ' open')
 			
+	'''
+	too slow!
+	def isOpen(self):
+		status = self.status()
+		if status['Shutter1'] == "OPEN" and status['Shutter2'] == "OPEN":
+			return True
+		return False
+	'''
+
 	#close both shutter
 	def close_both(self):
 		timeout = 500
 		elapsedTime = 0
-		self.isOpen = False
 		status = self.status()      
 		if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
 			self.logger.debug('Both shutters already closed')
@@ -269,7 +294,6 @@ class aqawan:
 			response = self.send('CLOSE_SEQUENTIAL')
 			if not 'Success=TRUE' in response:
 				self.logger.error('Aqawan failed to close!')
-				self.isOpen = True
 				if not self.mailsent:
 					mail.send("Aqawan " + str(self.num) + " failed to close!","Love,\nMINERVA",level="critical")
 					self.mailsent = True
@@ -283,7 +307,6 @@ class aqawan:
 					status = self.status()
 				if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
 					self.logger.error('Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
-					self.isOpen = True
 					if not self.mailsent:
 						mail.send("Aqawan " + str(self.num) + " failed to within the timeout!","Love,\nMINERVA",level="critical")
 						self.mailsent = True
