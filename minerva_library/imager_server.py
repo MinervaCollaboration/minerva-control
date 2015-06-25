@@ -15,7 +15,15 @@ class server:
 		self.base_directory = base
 		self.data_path_base = 'D:\minerva\data'
 		self.load_config()
-		self.setup_logger()
+
+		
+		# reset the night at 10 am local                                                                                                 
+		today = datetime.datetime.utcnow()
+		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+                        today = today + datetime.timedelta(days=1)
+		night = 'n' + today.strftime('%Y%m%d')
+
+		self.setup_logger(night=night)
 		self.set_data_path()
 		self.connect_camera()
 		
@@ -37,7 +45,33 @@ class server:
 
 		
 	def setup_logger(self,night ='dump'):
-		
+
+		log_path = self.base_directory + '/log/' + night
+                if os.path.exists(log_path) == False:os.mkdir(log_path)
+
+                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
+                datefmt = "%Y-%m-%dT%H:%M:%S"
+
+                self.logger = logging.getLogger(self.logger_name)
+                self.logger.setLevel(logging.DEBUG)
+                formatter = logging.Formatter(fmt,datefmt=datefmt)
+                formatter.converter = time.gmtime
+
+                #clear handlers before setting new ones                                                                               
+                self.logger.handlers = []
+
+                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
+                fileHandler.setFormatter(formatter)
+                self.logger.addHandler(fileHandler)
+
+                # add a separate logger for the terminal (don't display debug-level messages)                                         
+                console = logging.StreamHandler()
+                console.setFormatter(formatter)
+                console.setLevel(logging.INFO)
+                self.logger.setLevel(logging.DEBUG)
+                self.logger.addHandler(console)
+
+		'''
 		log_directory = self.base_directory + '/log/' + night
 		self.logger = logging.getLogger(self.logger_name)
 		formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
@@ -51,7 +85,8 @@ class server:
 		self.logger.setLevel(logging.DEBUG)
 		self.logger.addHandler(fileHandler)
 		self.logger.addHandler(streamHandler)
-		
+		'''
+
 	def get_index(self,param):
 		files = glob.glob(self.data_path + "/*.fits*")
 		return 'success ' + str(len(files)+1)
@@ -78,18 +113,18 @@ class server:
 		
 		try:
 			setTemp = param.split()
-			print setTemp
 			if len(setTemp) != 1:
 				self.logger.error('parameter error')
 				return 'fail'
-			setTemp = int(setTemp[0])
+			setTemp = float(setTemp[0])
 			self.cam.TemperatureSetpoint = setTemp
 			self.cam.CoolerOn = True
 			return 'success'
 		except:
+			self.logger.exception("Failed to set the temperature")
 			return 'fail'
 		
-	def get_temperature(self,param):
+	def get_temperature(self):
 		try:
 			return 'success '+ str(self.cam.Temperature)
 		except:
@@ -213,7 +248,13 @@ class server:
 		return 'success'
 		
 	def write_header_done(self,param):
-		
+
+		try: 
+			self.logger.info("Writing header for " + self.file_name)
+		except: 
+			self.logger.error("self.file_name not defined; saving failed earlier")
+			return 'fail'
+
 		try:
 			header_info = self.header_buffer + param
 			self.header_buffer = ''
@@ -243,7 +284,6 @@ class server:
 				subprocess.call([self.base_directory + '/cfitsio/fpack.exe','-D',filename])
 			return 'success'
 		except:
-			import ipdb; ipdb.set_trace()
 			return 'fail'
 
 	def getMean(self):
@@ -371,18 +411,18 @@ class server:
 		elif tokens[0] == 'set_temperature':
 			response = self.set_temperature(tokens[1])
 		elif tokens[0] == 'get_temperature':
-			response = self.get_temperature(tokens[1])
+			response = self.get_temperature()
 		elif tokens[0] == 'restart_maxim':
 			response = self.restart_maxim()
 		else:
+			self.logger.info('command not recognized: (' + tokens[0] +')')
 			response = 'fail'
-			
 		try:
 			conn.settimeout(3)
 			conn.sendall(response)
 			conn.close()
 		except:
-			self.logger.error('failed to send response, connection lost')
+			self.logger.exception('failed to send response, connection lost')
 			return
 			
 		if response.split()[0] == 'fail':
@@ -390,12 +430,15 @@ class server:
 		else:
 			self.logger.info('command succeeded(' + tokens[0] +')')
 			
-			
 	#server loop that handles incoming command
 	def run_server(self):
 		
 		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		s.bind((self.host, self.port))
+		try: s.bind((self.host, self.port))
+		except: 
+			self.logger.exception("Error connecting to server")
+			return False
+
 		s.listen(True)
 		while True:
 			print 'listening to incoming connection on port ' + str(self.port)
@@ -412,7 +455,7 @@ class server:
 
 if __name__ == '__main__':
 	config_file = 'imager_server.ini'
-	base_directory = 'C:\minerva_control'
+	base_directory = 'D:\minerva_control'
 	
 	test_server = server(config_file,base_directory)
 	test_server.run_server()

@@ -1,0 +1,8 @@
+glob:*.pyc
+glob:Copy of *
+glob:.buildinfo
+glob:.doctrees
+glob:docs/_sources
+glob:controlspy0798/*
+glob:Coverage_report/*
+glob:ref_controls.xml
