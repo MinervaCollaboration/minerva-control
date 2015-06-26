@@ -93,18 +93,23 @@ class server:
 			
 	def get_status(self,param):
 
-		status = {}
-		status['CoolerOn'] = self.cam.CoolerOn
-		status['CurrentTemp'] = self.cam.Temperature
-		status['SetTemp'] = self.cam.TemperatureSetpoint
-		status['BinX'] = self.cam.BinX
-		status['BinY'] = self.cam.BinY
-		status['filter'] = self.cam.Filter
-		status['connected'] = self.cam.LinkEnabled
-		status['X1'] = self.cam.StartX
-		status['X2'] = self.cam.StartX + self.cam.NumX - 1
-		status['Y1'] = self.cam.StartY
-		status['Y2'] = self.cam.StartY + self.cam.NumY - 1
+                try:
+                        status = {}
+                        status['CoolerOn'] = self.cam.CoolerOn
+                        status['CurrentTemp'] = self.cam.Temperature
+                        status['SetTemp'] = self.cam.TemperatureSetpoint
+                        status['BinX'] = self.cam.BinX
+                        status['BinY'] = self.cam.BinY
+                        status['filter'] = self.cam.Filter
+                        status['connected'] = self.cam.LinkEnabled
+                        status['X1'] = self.cam.StartX
+                        status['X2'] = self.cam.StartX + self.cam.NumX - 1
+                        status['Y1'] = self.cam.StartY
+                        status['Y2'] = self.cam.StartY + self.cam.NumY - 1
+		except:
+                        self.logger.exception("error getting camera status")
+                        self.connect_camera()
+                        return self.get_status(param)
 
 		return 'success ' + json.dumps(status)
 		
@@ -437,8 +442,7 @@ class server:
 		try: s.bind((self.host, self.port))
 		except: 
 			self.logger.exception("Error connecting to server")
-			return False
-
+			raise
 		s.listen(True)
 		while True:
 			print 'listening to incoming connection on port ' + str(self.port)
