@@ -70,9 +70,11 @@ class server:
 			ctrl.Click()
 			ctrl.Select(0)
 
-			# press OK on the pop up menu
-			time.sleep(3)
-			SendKeys.SendKeys("{ENTER}")
+			# click OK on the "home" pop up window
+                        w_handle2 = pywinauto.findwindows.find_windows(title=u'Home')[0]
+                        window2 = pwa_app.window_(handle=w_handle2)
+                        window2.SetFocus()
+                        SendKeys.SendKeys("{ENTER}")
 
 			return 'success'
 		except:
