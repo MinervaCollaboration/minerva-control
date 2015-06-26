@@ -1454,7 +1454,7 @@ class control:
 		self.scheduleIsValid(telescope_num)
 
 		# home and initialize the telescope
-		self.telescopes[telescope_num-1].home()
+#		self.telescopes[telescope_num-1].home()
 		self.telescopes[telescope_num-1].home_rotator()
 		self.telescopes[telescope_num-1].initialize_autofocus()
 		time.sleep(360)
