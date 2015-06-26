@@ -1,0 +1,7 @@
+./log/
+./credentials/
+./status/
+./schedule/
+*.pyc
+*.txt
+*.log
