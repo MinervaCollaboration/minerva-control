@@ -171,7 +171,7 @@ class spectrograph:
 		
 if __name__ == '__main__':
 	
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	test_spectrograph = spectrograph('S1',base_directory)
 	while True:
 		print 'camera_control test program'

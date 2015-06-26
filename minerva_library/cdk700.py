@@ -644,7 +644,7 @@ class CDK700:
 #test program
 if __name__ == "__main__":
 
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	telescope = CDK700('telescope_3.ini', base_directory)
 	while True:
 		print telescope.logger_name + ' test program'

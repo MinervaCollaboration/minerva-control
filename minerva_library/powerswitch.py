@@ -96,7 +96,7 @@ class powerswitch:
 if __name__ == '__main__':
 
 	config_file = 'powerswitch_1.ini'
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	p1 = powerswitch(config_file,base_directory)
 	print p1.cycle(4)
 	

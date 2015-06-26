@@ -6,7 +6,7 @@ from minerva_library import control
 
 if __name__ == '__main__':
 
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 	
 	#run observing script on all telescopes with their own schedule file

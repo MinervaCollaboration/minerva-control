@@ -7,7 +7,7 @@ sets up instrument servers and listen for incoming command"""
 
 if __name__ == '__main__':
 
-	base_directory = 'C:\minerva_control'
+	base_directory = 'C:\minerva-control'
 	
 	telcom_server = telcom_server.server('telcom_server.ini',base_directory)
 	threading.Thread(target = telcom_server.run_server).start()

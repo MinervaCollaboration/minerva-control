@@ -440,7 +440,7 @@ class imager:
 #test program, edit camera name to test desired camera
 if __name__ == '__main__':
 	
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	test_imager = imager('imager_t1.ini',base_directory)
 	while True:
 		print 'camera_control test program'

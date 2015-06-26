@@ -112,7 +112,7 @@ class telcom_client:
 if __name__ == '__main__':
 	
 	config_file = 'telcom_client_2.ini'
-	base_d = '/home/minerva/minerva_control'
+	base_d = '/home/minerva/minerva-control'
 	
 	client = telcom_client(config_file,base_d)
 	if client.restartPWI():

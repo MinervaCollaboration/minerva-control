@@ -281,7 +281,7 @@ class site:
 	
 if __name__ == '__main__':
 
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	test_site = Site('Mt_Hopkins',base_directory)
 	print test_site.night
 	

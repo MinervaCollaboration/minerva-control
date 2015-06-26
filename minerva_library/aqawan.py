@@ -320,7 +320,7 @@ class aqawan:
 			
 if __name__ == '__main__':
 
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	dome = aqawan('aqawan_1.ini',base_directory)
 	# while True:
 		# print dome.logger_name + ' test program'

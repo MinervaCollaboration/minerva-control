@@ -459,7 +459,7 @@ class server:
 
 if __name__ == '__main__':
 	config_file = 'imager_server.ini'
-	base_directory = 'D:\minerva_control'
+	base_directory = 'D:\minerva-control'
 	
 	test_server = server(config_file,base_directory)
 	test_server.run_server()

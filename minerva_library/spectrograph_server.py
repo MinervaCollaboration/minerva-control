@@ -138,7 +138,7 @@ class server:
 		
 if __name__ == '__main__':
 	
-	base_directory = 'C:\minerva_control'
+	base_directory = 'C:\minerva-control'
 	test_server = server('S_S',base_directory)
 	test_server.run_server()
 	

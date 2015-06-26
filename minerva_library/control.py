@@ -1626,7 +1626,7 @@ class control:
 		
 if __name__ == '__main__':
 
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	ctrl = control('control.ini',base_directory)
 
 	# ctrl.doBias(1,2)
