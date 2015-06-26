@@ -1,5 +1,5 @@
 import subprocess, os, socket, time
-import minerva_libary.mail as mail
+import mail
 
 hostname = socket.gethostname()
 

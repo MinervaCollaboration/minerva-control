@@ -4,12 +4,17 @@ import datetime
 import random
 import ipdb
 import sys
+import socket
 from email.mime.text import MIMEText
 sys.dont_write_bytecode = True
 
 def send(subject,body,level='normal',attachment=None):
-	
-	credential_directory = '/home/minerva/minerva-control/credentials/'
+
+	host = socket.gethostname()
+	if host == 'Main':
+        	credential_directory = '/home/minerva/minerva-control/credentials/'
+        else:
+                credential_directory = 'C:/minerva-control/credentials/'
 	# read in the contacts directory (proprietary)
 	with open(credential_directory + 'directory.txt') as dirfile:
 		directory = json.load(dirfile)
