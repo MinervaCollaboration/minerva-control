@@ -1,0 +1,11 @@
+
+- GetStatusFromCamera doesn´t return correct temperature
+- ImageAcquisition and Acquire doesn´t set correct SaveAs parameter, images are always returned as 32 bit floats.
+  SaveAs seems to be only relative to the format on the server. More tests needed.
+
+- SetNumberOfFrames is used both for multiple images and multiple frames modes.
+  If in multiple frames modes, ccd will open the shutter and do n readout (frame transfering).
+  If in multuple images modes, ccd will open the shutter and do n readout (frame transfering) and repeat this n times.
+
+- if SetMultipleFrameBufferMode is set to single frame buffer only the first frame will be transfered.
+  

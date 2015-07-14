@@ -1,0 +1,8 @@
+
+* add constant values to command (1 means what?)
+* add header data structure and GetImageHeader Command
+* add support for modes (user can choose single or multiple frame) 
+* better image packet handling
+* support for interruptions
+* exposure status (x% done and counting)
+* more doc

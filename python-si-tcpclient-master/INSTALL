@@ -1,0 +1,9 @@
+
+The SI frame grabber is a standad Python package using distutils.
+
+Use setup.py to install it.
+
+Eg.
+
+$ python setupp.py install # require root password, see distutils documentation for non-root installations.
+

@@ -1,0 +1,100 @@
+if __name__ == "__main__":
+
+	import sys
+	import time
+	import os
+	from optparse import OptionParser
+	import logging
+	import socket
+	
+	#sys.path.insert (0, os.path.join (os.getcwd(), '..'))
+
+	from si import __progname__, __description__, __copyleft__
+
+	from si.client import SIClient
+	from si.imager import Imager
+
+	# verbosity level
+	logging.basicConfig(level=logging.INFO,
+						format='%(asctime)s %(levelname)s %(module)s:%(lineno)d %(message)s',
+						datefmt='%d-%m-%Y %H:%M:%S (%j)')
+
+	parser = OptionParser(prog=__progname__, version=__copyleft__, description=__description__)
+
+	parser.add_option("-H", "--host", dest="host", default="localhost", type="string",
+				  help="HOST where SI Image SGL is running", metavar="HOST")
+	
+	parser.add_option("-p", "--port", dest="port", default=2055, type="int",
+				  help="PORT of the SI Image SGL server on HOST", metavar="PORT")
+
+	parser.add_option("-t", "--texp", dest="texp", default=1.0, type="float",
+				  help="time of exposure in seconds")
+	
+	parser.add_option("-n", "--nexp", dest="nexp", default=1, type="int",
+				  help="number of exposures")
+
+	parser.add_option("-s", "--saveto", dest="saveto", default="image", type="string",
+				  help="name of the image to be saved (without index, only the basename)")
+
+	parser.add_option("-v", "--verbose", action="store_true", dest='verbose', default=False,
+					  help="Increase screen log level.")
+
+	parser.add_option("-d", "--dark", action="store_true", dest='dark', default=False,
+					  help="Dark exposure (closed shutter).")
+
+	parser.add_option("-f", "--frame-transfer", action="store_true", dest='frametransfer', default=False,
+					  help="Use frame transfer mode. See README for information about DATE headers.")    
+	
+	parser.add_option("-g", "--get-camera-parameters", action="store_true", dest='getpars', default=False,
+					  help="Get camera parameters and print on the screen.")
+
+	(options, args) = parser.parse_args(sys.argv)
+
+	if options.verbose:
+	   logging.getLogger().setLevel(logging.DEBUG)
+   
+	client = SIClient (options.host, options.port)
+
+	imager = Imager (client)
+	imager.nexp = options.nexp
+	imager.texp = options.texp
+	imager.nome = options.saveto
+	imager.dark = options.dark
+	imager.frametransfer = options.frametransfer
+	imager.getpars = options.getpars
+	#t0 = time.time ()
+
+	try:
+
+		ret = ""
+		
+		shutter = ""
+		if options.dark:
+			shutter = "closed"
+		else:
+			shutter = "opened"
+
+		frametransfer = ""
+		if options.frametransfer:
+			frametransfer = "with"
+		else:
+			frametransfer = "without"
+
+			
+		print "Taking %d image(s) of %f seconds each and saving to '%s' with the shutter %s ... (%s frame transfer)" % (options.nexp,
+																														options.texp,
+																														options.saveto,
+																														shutter,
+																														frametransfer),
+		ret = imager.do ()
+		
+	except socket.error, e:
+		print "Socket error: %s" % e
+		print "ERROR"
+		sys.exit (1)
+
+	if ret:
+		print "DONE"
+	else:
+		print "INTERRUPTED"
+	  
