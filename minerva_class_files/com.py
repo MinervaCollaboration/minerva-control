@@ -103,6 +103,7 @@ if __name__ == "__main__":
 #    ipdb.set_trace()
 
     expmeter = com('expmeter','n20150521')
+    ipdb.set_trace()
     expmeter.send('R' + chr(1))
     expmeter.send('P' + chr(100))
     expmeter.send('D')
