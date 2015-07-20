@@ -7,6 +7,10 @@ import threading
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
 
+from si.client import SIClient
+from si.imager import Imager
+import ipdb
+
 # spectrograph control class, control all spectrograph hardware
 class spectrograph:
 
@@ -18,15 +22,16 @@ class spectrograph:
 		self.setup_logger()
 		self.create_class_objects
 		self.status_lock = threading.RLock()
+		self.file_name = ''
 		# threading.Thread(target=self.write_status_thread).start()
 	#load configuration file
 	def load_config(self):
 	
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
-			self.ip = config['Setup']['SERVER_IP']
-			self.port = int(config['Setup']['SERVER_PORT'])
-			self.logger_name = config['Setup']['LOGNAME']
+			self.ip = config['SERVER_IP']
+			self.port = int(config['SERVER_PORT'])
+			self.logger_name = config['LOGNAME']
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
@@ -160,29 +165,78 @@ class spectrograph:
 		threading.Thread(target = self.send,args=('settle_temp ' + self.setTemp,910)).start()
 		
 	#start exposure
-	def expose(self, exptime=1, exptype=0, filterInd=1):
-		if (self.send('expose ' + str(exptime) + ' ' + str(exptype) + ' ' + str(filterInd),5)).split()[0] == 'success': return True
-		else: return False
+	def expose(self, exptime=1.0, exptype=0, filterInd=1):
+
+        	host = "localhost"
+                port = 2055
+                client = SIClient (host, port)
+
+
+                imager = Imager(client)
+                imager.nexp = 1		        # number of exposures
+                imager.texp = exptime		# exposure time, float number
+                imager.nome = "image"		# file name to be saved
+                imager.dark = False		# dark frame?
+                imager.frametransfer = False	# frame transfer?
+                imager.getpars = False		# Get camera parameters and print on the screen
+
+                for t in dir(imager): print t
+                import ipdb
+#                ipdb.set_trace()
+                
+                return imager.do()
+ 
 	#block until image is ready, then save it to file_name
-	def save_image(self,file_name):
-		if self.send('save_image ' + file_name,5) == 'success': return True
+      	def save_image(self,file_name):
+        	if self.send('save_image ' + file_name,30) == 'success': return True
 		else: return False
+
+	#write fits header for self.file_name, header_info must be in json format
+	def write_header(self, header_info):
+		if self.file_name == '':
+			return False
+		i = 800
+		length = len(header_info)
+		while i < length:
+			if self.send('write_header ' + header_info[i-800:i],3) == 'success':
+				i+=800
+			else:
+				return False
+
+		if self.send('write_header_done ' + header_info[i-800:length],10) == 'success':
+			return True
+		else:
+			return False
 	
-		
+	#block until image is ready, then save it to file_name
+	def get_vacuum_pressure(self):
+                response = self.send('get_vacuum_pressure None',5)
+                if response == 'fail':
+                        return 'UNKNOWN'
+		return float(response.split()[1].split('\\')[0])
+
+        ### doesn't work!###
+        def get_atmospheric_pressure(self):
+                response = self.send('get_atmospheric_pressure None',5)
+                return float(response.split()[1].split('\\')[0])
+
+        
+	
 if __name__ == '__main__':
 	
 	base_directory = '/home/minerva/minerva-control'
-	test_spectrograph = spectrograph('S1',base_directory)
+        if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
+	test_spectrograph = spectrograph('spectrograph.ini',base_directory)
 	while True:
-		print 'camera_control test program'
+		print 'spectrograph_control test program'
 		print ' a. take_image'
 		print ' b. expose'
 		print ' c. set_data_path'
 		print ' d. set_binning'
 		print ' e. set_size'
 		print ' f. settle_temp'
-		print ' g. dummy'
-		print ' h. dummy'
+		print ' g. vacuum pressure'
+		print ' h. atmospheric pressure'
 		print ' i. dummy'
 		print '----------------------------'
 		choice = raw_input('choice:')
@@ -190,17 +244,19 @@ if __name__ == '__main__':
 		if choice == 'a':
 			pass
 		elif choice == 'b':
-			test_imager.expose()
+			test_spectrograph.expose()
 		elif choice == 'c':
-			test_imager.set_data_path()
+			test_spectrograph.set_data_path()
 		elif choice == 'd':
-			test_imager.set_binning()
+			test_spectrograph.set_binning()
 		elif choice == 'e':
-			test_imager.set_size()
+			test_spectrograph.set_size()
 		elif choice == 'f':
-			test_imager.settle_temp()
+			test_spectrograph.settle_temp()
 		elif choice == 'g':
-			pass
+			print test_spectrograph.get_vacuum_pressure()
+		elif choice == 'h':
+			print test_spectrograph.get_atmospheric_pressure()
 		else:
 			print 'invalid choice'
 			

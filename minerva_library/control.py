@@ -14,6 +14,7 @@ import pyfits
 import shutil
 import re
 import collections
+import subprocess
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
 
@@ -45,8 +46,14 @@ class control:
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
 	
-		self.site = env.site('site_mtHopkins.ini',self.base_directory)
 		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+                self.domes = []
+                self.telescopes = []
+                self.cameras = []
+		self.site = env.site('site_Wellington.ini',self.base_directory)
+                return
+
+		self.site = env.site('site_mtHopkins.ini',self.base_directory)
 		
 		self.domes = [
 		aqawan.aqawan('aqawan_1.ini',self.base_directory),
@@ -63,9 +70,9 @@ class control:
 		imager.imager('imager_t2.ini',self.base_directory),
 		imager.imager('imager_t3.ini',self.base_directory),
 		imager.imager('imager_t4.ini',self.base_directory)]
-		
+                        
 	def load_config(self):
-		
+
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.logger_name = config['LOGNAME']
@@ -77,6 +84,7 @@ class control:
 	#create logger object and link to log file, if night is not specified, log files will go into /log/dump directory
 	def setup_logger(self,night='dump'):
 			
+                self.night = night
 		log_path = self.base_directory + '/log/' + night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
 
@@ -715,7 +723,229 @@ class control:
 
 		return dx,dy,scale,rot,flag,rmsf,nstf
 	
+        def takeSpectrum(self,exptime,objname,template=False):
+                
+                #start imaging process in a different thread
+                kwargs = {'exptime':exptime}
+#                self.spectrograph.expose(exptime=exptime)
+                imaging_thread = threading.Thread(target = self.spectrograph.expose, kwargs = kwargs)
+                imaging_thread.start()
+                        
+                # Get status info for headers while exposing/reading out
+                # (needs error handling)
+                while self.site.getWeather() == -1: pass
 
+                moonpos = self.site.moonpos()
+                moonra = moonpos[0]
+                moondec = moonpos[1]
+                moonphase = self.site.moonphase()
+
+                gitPath = "C:/Users/Kiwispec/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
+                gitNum = subprocess.check_output([gitPath, "rev-list", "HEAD", "--count"]).strip()
+
+                # emulate MaximDL header for consistency
+		f = collections.OrderedDict()
+
+                f['SIMPLE'] = True
+                f['BITPIX'] = (16,'8 unsigned int, 16 & 32 int, -32 & -64 real')
+                f['NAXIS'] = (2,'number of axes')
+                f['NAXIS1'] = (0,'Length of Axis 1 (Columns)')
+                f['NAXIS2'] = (0,'Length of Axis 2 (Rows)')
+                f['BSCALE'] = (1,'physical = BZERO + BSCALE*array_value')
+                f['BZERO'] = (0,'physical = BZERO + BSCALE*array_value')
+                f['DATE-OBS'] = ("","UTC at exposure start")
+                f['EXPTIME'] = ("","Exposure time in seconds")                  # PARAM24/1000
+#                f['EXPSTOP'] = ("","UTC at exposure end")
+                f['SET-TEMP'] = ("",'CCD temperature setpoint in C')            # PARAM62 (in comments!)
+                f['CCD-TEMP'] = ("",'CCD temperature at start of exposure in C')#PARAM0
+                f['BACKTEMP'] = ("","Backplace Temperature in C")               # PARAM1
+                f['XPIXSZ'] = ("",'Pixel Width in microns (after binning)')
+                f['YPIXSZ'] = ("",'Pixel Height in microns (after binning)')
+                f['XBINNING'] = ("","Binning factor in width")                  # PARAM18
+                f['YBINNING'] = ("","Binning factor in height")                 # PARAM22
+                f['XORGSUBF'] = (0,'Subframe X position in binned pixels')      # PARAM16
+                f['YORGSUBF'] = (0,'Subframe Y position in binned pixels')      # PARAM20
+                f['IMAGETYP'] = ("",'Type of image')
+                f['SITELAT'] = (str(self.site.obs.lat),"Site Latitude")
+                f['SITELONG'] = (str(self.site.obs.lon),"East Longitude of the imaging location")
+                f['SITEALT'] = (self.site.obs.elevation,"Site Altitude (m)")
+                f['JD'] = (0.0,"Julian Date at the start of exposure")
+                f['FOCALLEN'] = (4560.0,"Focal length of the telescope in mm")
+                f['APTDIA'] = (700,"")
+                f['APTAREA'] = (490000,"")
+                f['SWCREATE'] = ("SI2479E 2011-12-02","Name of the software that created the image")
+                f['INSTRUME'] = ('KiwiSpec','Name of the instrument')
+                f['OBSERVER'] = ('MINERVA Robot',"Observer")
+                f['SHUTTER'] = ("","Shuter Status")             # PARAM8
+                f['XIRQA'] = ("",'XIRQA status')                # PARAM9
+                f['COOLER'] = ("","Cooler Status")              # PARAM10
+                f['CONCLEAR'] = ("","Continuous Clear")         # PARAM25
+                f['DSISAMP'] = ("","DSI Sample Time")           # PARAM26
+                f['ANLGATT'] = ("","Analog Attenuation")        # PARAM27
+                f['PORT1OFF'] = ("","Port 1 Offset")            # PARAM28
+                f['PORT2OFF'] = ("","Port 2 Offset")            # PARAM29
+                f['TDIDELAY'] = ("","TDI Delay,us")             # PARAM32
+                f['CMDTRIG'] = ("","Command on Trigger")        # PARAM39
+                f['ADCOFF1'] = ("","Port 1 ADC Offset")         # PARAM44
+                f['ADCOFF2'] = ("","Port 2 ADC Offset")         # PARAM45
+                f['MODEL'] = ("","Instrument Model")            # PARAM48
+                f['SN'] = ("","Instrument SN")                  # PARAM49
+                f['HWREV'] = ("","Hardware Revision")           # PARAM50
+                f['SERIALP'] =("","Serial Phasing")             # PARAM51
+                f['SERIALSP'] = ("","Serial Split")             # PARAM52
+                f['SERIALS'] = ("","Serial Size,Pixels")        # PARAM53
+                f['PARALP'] = ("","Parallel Phasing")           # PARAM54
+                f['PARALSP'] = ("","Parallel Split")            # PARAM55
+                f['PARALS'] = ("","Parallel Size,Pixels")       # PARAM56
+                f['PARDLY'] = ("","Parallel Shift Delay, ns")   # PARAM57
+                f['NPORTS'] = ("","Number of Ports")            # PARAM58
+                f['SHUTDLY'] = ("","Shutter Close Delay, ms")   # PARAM59
+                f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
+                f['MOONRA'] = (moonra,"Moon RA (J2000)")
+                f['MOONDEC'] = (moondec,"Moon DEC (J2000)")
+                f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")
+                                        
+        #PARAM60 =                   74 / CCD Temp. Setpoint Offset,0.1 C               
+        #PARAM61 =               1730.0 / Low Temp Limit,(-100.0 C)                      
+        #PARAM62 =               1830.0 / CCD Temperature Setpoint,(-90.0 C)             
+        #PARAM63 =               1880.0 / Operational Temp,(-85.0 C)                     
+        #PARAM65 =                    0 / Port Select,(A)                                
+        #PARAM73 =                    0 / Acquisition Mode,(Normal)                      
+        #PARAM76 =                    0 / UART 100 byte Ack,(Off)                        
+        #PARAM79 =                  900 / Pixel Clear,ns                                 
+        #COMMENT  Temperature is above set limit, Light Exposure, Exp Time= 10, Saved as:
+        #COMMENT   overscan.FIT                                
+                                     
+                                         
+                # need object for each telescope
+
+                # loop over each telescope and insert the appropriate keywords
+                for telescope in self.telescopes:
+                    telescop += telescope.name
+                    telnum = telescope.name[-1]
+                    telescopeStatus = telescope.getStatus()
+                    telra = ten(telescopeStatus.mount.ra_2000)*15.0
+                    teldec = ten(telescopeStatus.mount.dec_2000)
+                    ra = ten(telescopeStatus.mount.ra_target)*15.0
+                    dec = ten(telescopeStatus.mount.dec_target)
+                    if dec > 90.0: dec = dec-360 # fixes bug in PWI
+                    f['TELRA' + telnum] = (telra,"Telescope RA (J2000 deg)")
+                    f['TELDEC' + telnum] = (teldec,"Telescope Dec (J2000 deg)")
+                    f['RA' + telnum] = (ra, "Target RA (J2000 deg)")
+                    f['DEC'+ telnum] = (dec,"Target Dec (J2000 deg)")
+
+                    moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
+                    f['MOONDIS' + telnum] = (moonsep, "Distance between pointing and moon (deg)")
+                    f['PMODEL' + telnum] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
+                    
+                    f['FOCPOS' + telnum] = (telescopeStatus.focuser.position,"Focus Position (microns)")
+                    f['ROTPOS' + telnum] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
+
+                    # M3 Specific
+                    f['PORT' + telnum] = (telescopeStatus.m3.port,"Selected port for " + telescope.name)
+                    f['OTAFAN' + telnum] = (telescopeStatus.fans.on,"OTA Fans on?")
+
+                    try: m1temp = telescopeStatus.temperature.primary
+                    except: m1temp = 'UNKNOWN'
+                    f['M1TEMP'+telnum] = (m1temp,"Primary Mirror Temp (C)")
+
+                    try: m2temp = telescopeStatus.temperature.secondary
+                    except: m2temp = 'UNKNOWN'
+                    f['M2TEMP'+telnum] = (m2temp,"Secondary Mirror Temp (C)")
+
+                    try: m3temp = telescopeStatus.temperature.m3
+                    except: m3temp = 'UNKNOWN'
+                    f['M3TEMP'+telnum] = (m3temp,"Tertiary Mirror Temp (C)")
+
+                    try: ambtemp = telescopeStatus.temperature.ambient
+                    except: ambtemp = 'UNKNOWN'
+                    f['AMBTEMP'+telnum] = (ambtemp,"Ambient Temp (C)")
+                               
+                    try: bcktemp = telescopeStatus.temperature.backplate
+                    except: bcktemp = 'UNKNOWN'
+                    f['BCKTEMP'+telnum] = (bcktemp,"Backplate Temp (C)")
+
+                # loop over each aqawan and insert the appropriate keywords
+                for aqawan in self.domes:
+                    aqStatus = aqawan.status()
+                    aqnum = aqawan.name[-1]
+
+                    f['AQSOFTV'+aqnum] = (aqStatus['SWVersion'],"Aqawan software version number")
+                    f['AQSHUT1'+aqnum] = (aqStatus['Shutter1'],"Aqawan shutter 1 state")
+                    f['AQSHUT2'+aqnum] = (aqStatus['Shutter2'],"Aqawan shutter 2 state")
+                    f['INHUMID'+aqnum] = (aqStatus['EnclHumidity'],"Humidity inside enclosure")
+                    f['DOOR1'  +aqnum] = (aqStatus['EntryDoor1'],"Door 1 into aqawan state")
+                    f['DOOR2'  +aqnum] = (aqStatus['EntryDoor2'],"Door 2 into aqawan state")
+                    f['PANELDR'+aqnum] = (aqStatus['PanelDoor'],"Aqawan control panel door state")
+                    f['HRTBEAT'+aqnum] = (aqStatus['Heartbeat'],"Heartbeat timer")
+                    f['AQPACUP'+aqnum] = (aqStatus['SystemUpTime'],"PAC uptime (seconds)")
+                    f['AQFAULT'+aqnum] = (aqStatus['Fault'],"Aqawan fault present?")
+                    f['AQERROR'+aqnum] = (aqStatus['Error'],"Aqawan error present?")
+                    f['PANLTMP'+aqnum] = (aqStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
+                    f['AQTEMP' +aqnum] = (aqStatus['EnclTemp'],"Enclosure temperature (C)")
+                    f['AQEXTMP'+aqnum] = (aqStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
+                    f['AQINTMP'+aqnum] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
+                    f['AQLITON'+aqnum] = (aqStatus['LightsOn'],"Aqawan lights on?")
+
+                # Weather station
+                f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
+                f['RAIN'] = (self.site.weather['wxt510Rain'],"Current Rain (mm?)")
+                f['TOTRAIN'] = (self.site.weather['totalRain'],"Total rain since ?? (mm?)")
+                f['OUTTEMP'] = (self.site.weather['outsideTemp'],"Outside Temperature (C)")
+                f['SKYTEMP'] = (self.site.weather['relativeSkyTemp'],"Sky - Ambient (C)")
+                f['DEWPOINT'] = (self.site.weather['outsideDewPt'],"Dewpoint (C)")
+                f['WINDSPD'] = (self.site.weather['windSpeed'],"Wind Speed (mph)")
+                f['WINDGUST'] = (self.site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
+                f['WINDIR'] = (self.site.weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
+                f['PRESSURE'] = (self.site.weather['barometer'],"Outside Pressure (mmHg?)")
+                f['SUNALT'] = (self.site.weather['sunAltitude'],"Sun Altitude (deg)")
+
+                '''
+                # spectrograph information
+                EXPTYPE = 'Time-Based'         / Exposure Type                                  
+                DETECTOR= 'SI850'              / Detector Name                                  
+                '''
+
+                f['CCDMODE'] = (0,'CCD Readout Mode')
+                f['FIBER'] = ('','Fiber Bundle Used')
+                f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
+                f['VAC_PRES'] = (self.spectrograph.get_vacuum_pressure(),"Vacuum Tank Pressure (mbar)")
+                f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
+                for i in range(16): f['TEMP' + str(i+1)] = ('UNKNOWN','UNKNOWN Temperature (C)')
+                f['I2TEMPA'] = ('UNKNOWN','Iodine Cell Actual Temperature (C)')
+                f['I2TEMPS'] = ('UNKNOWN','Iodine Cell Set Temperature (C)')
+                f['I2POS'] = ('UNKNOWN','Iodine Stage Position')
+                f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+
+                objname = 'overscan'
+                path = "C:/minerva/data/" + self.night + "/"
+                images = glob.glob(path + "*.fits*")
+                index = str(len(images)+1).zfill(4)
+                filename = path + self.night + "." + objname + '.' + index + '.fits'
+
+                # Wait for exposure to finish            
+		imaging_thread.join()
+		
+                t0 = datetime.datetime.utcnow()
+
+                
+                print (datetime.datetime.utcnow() - t0).total_seconds()
+                
+		header = json.dumps(f)
+		
+		self.logger.info('Waiting for spectrograph imaging thread')
+		# wait for imaging process to complete
+		imaging_thread.join()
+
+                self.spectrograph.file_name = 'test.fits'
+		
+		# write header for image
+		if self.spectrograph.write_header(header):
+			self.logger.info('Finished writing spectrograph header')
+			return self.spectrograph.image_name()
+
+		self.logger.error('takeSpectrum failed: ' + self.spectrograph.file_name)
+		return 'error'
 
 	#take one image based on parameter given, return name of the image, return 'error' if fail
 	#image is saved on remote computer's data directory set by imager.set_data_path()
@@ -732,7 +962,6 @@ class control:
 			
 		telescope = self.telescopes[camera_num-1]
 		imager = self.cameras[camera_num-1]
-
 		self.logger.info(telescope_name + 'starting imaging thread')
 		#start imaging process in a different thread
 		imaging_thread = threading.Thread(target = imager.take_image, args = (exptime, filterInd, objname))
@@ -1627,6 +1856,7 @@ class control:
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
+        if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	ctrl = control('control.ini',base_directory)
 
 	# ctrl.doBias(1,2)

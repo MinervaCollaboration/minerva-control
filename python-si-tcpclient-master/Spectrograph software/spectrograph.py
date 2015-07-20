@@ -100,6 +100,8 @@ class spectrograph():
     def takeDark(self):
         self.configure()
 
+    
+
     def takeImage(self):#, site, aqawans, telescopes, exptime, objnames, signal):
 
         # start the exposure asynchronously

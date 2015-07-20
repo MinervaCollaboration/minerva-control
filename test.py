@@ -3,16 +3,21 @@
 import sys
 sys.dont_write_bytecode = True
 from minerva_library import control
-
-import ipdb, datetime, time
+import ipdb, datetime, time, socket
+#from si.client import SIClient
+#from si.imager import Imager
 
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva_control'
+	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+        minerva.takeSpectrum(1.0,'test')
 
+        ipdb.set_trace()
 	tel = 4
+	
 	minerva.telescopes[tel-1].home()
 	minerva.telescopes[tel-1].home_rotator()
 	minerva.telescopes[tel-1].initialize_autofocus()
