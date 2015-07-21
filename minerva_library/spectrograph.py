@@ -4,6 +4,7 @@ import socket
 import logging
 import time
 import threading
+import datetime
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
 
@@ -32,6 +33,21 @@ class spectrograph:
 			self.ip = config['SERVER_IP']
 			self.port = int(config['SERVER_PORT'])
 			self.logger_name = config['LOGNAME']
+			self.exptypes = {'Template':0,
+                                         'Flat':0,
+                                         'Arc':0,
+                                         'FiberArc': 0,
+                                         'FiberFlat':0,
+                                         'Bias':0,
+                                         'Dark':0,
+                                         }
+
+			# reset the night at 10 am local                                                                                                 
+                        today = datetime.datetime.utcnow()
+                        if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+                                today = today + datetime.timedelta(days=1)
+                        self.night = 'n' + today.strftime('%Y%m%d')
+
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
@@ -72,7 +88,7 @@ class spectrograph:
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			s.settimeout(1)
 			s.connect((self.ip, self.port))
-			self.logger.info('succefully connected to spectrograph server')
+			self.logger.info('successfully connected to spectrograph server')
 		except:
 			self.logger.error('failed to connect to spectrograph server')
 		return s
@@ -170,9 +186,10 @@ class spectrograph:
         	host = "localhost"
                 port = 2055
                 client = SIClient (host, port)
-
+                self.logger.info("Connected to SI client")
 
                 imager = Imager(client)
+                self.logger.info("Connected to SI imager")
                 imager.nexp = 1		        # number of exposures
                 imager.texp = exptime		# exposure time, float number
                 imager.nome = "image"		# file name to be saved
@@ -180,20 +197,23 @@ class spectrograph:
                 imager.frametransfer = False	# frame transfer?
                 imager.getpars = False		# Get camera parameters and print on the screen
 
-                for t in dir(imager): print t
-                import ipdb
-#                ipdb.set_trace()
-                
-                return imager.do()
+                imager.do()
+
+                return self.save_image(self.file_name)
  
 	#block until image is ready, then save it to file_name
-      	def save_image(self,file_name):
+      	def set_file_name(self,file_name):
+        	if self.send('set_file_name ' + file_name,30) == 'success': return True
+		else: return False
+	def save_image(self,file_name):
         	if self.send('save_image ' + file_name,30) == 'success': return True
 		else: return False
-
+	def image_name(self):
+                return self.file_name
 	#write fits header for self.file_name, header_info must be in json format
 	def write_header(self, header_info):
 		if self.file_name == '':
+                        self.logger.error("self.file_name is undefined")
 			return False
 		i = 800
 		length = len(header_info)
@@ -201,14 +221,60 @@ class spectrograph:
 			if self.send('write_header ' + header_info[i-800:i],3) == 'success':
 				i+=800
 			else:
+                                self.logger.error("write_header command failed")
 				return False
 
 		if self.send('write_header_done ' + header_info[i-800:length],10) == 'success':
 			return True
 		else:
+                        self.logger.error("write_header_done command failed")
 			return False
-	
-	#block until image is ready, then save it to file_name
+
+        def recover(self):
+                sys.exit()
+        
+	def take_image(self,exptime=1,objname='test'):
+
+                exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
+		#put together file name for the image
+		ndx = self.get_index()
+		if ndx == -1:
+			self.logger.error("Error getting the filename index")
+			ipdb.set_trace()
+			self.recover()
+			return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname)
+
+		self.file_name = self.night + "." + objname + "." + str(ndx).zfill(4) + ".fits"
+		self.logger.info('Start taking image: ' + self.file_name)
+		#chose exposure type
+		if objname in self.exptypes.keys():
+			exptype = self.exptypes[objname] 
+		else: exptype = 1 # science exposure
+
+#		#chose appropriate filter
+#		if filterInd not in self.filters:
+#			self.logger.error(telescope_name + "Requested filter (" + filterInd + ") not present")
+#			return 'false'
+                # configure spectrograph
+                # turn on I2 heater
+                # move I2 stage
+                # turn on/off all lamps
+                # open/close calibration shutter
+                # Move calibration FW
+                # begin exposure meter
+
+                self.set_file_name(self.file_name)
+		
+		if self.expose(exptime=exptime):
+			self.logger.info('Finished taking image: ' + self.file_name)
+			self.nfailed = 0 # success; reset the failed counter
+			return
+		else: 
+        		self.logger.error('Failed to save image: ' + self.file_name)
+			self.file_name = ''
+			self.recover()
+			return self.take_image(exptime=exptime,objname=objname) 
+			
 	def get_vacuum_pressure(self):
                 response = self.send('get_vacuum_pressure None',5)
                 if response == 'fail':

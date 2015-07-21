@@ -6,6 +6,12 @@ import sys, ipdb
 import com
 import os
 import time
+import glob
+import datetime
+import pyfits
+import shutil
+import json
+import collections
 
 # minerva library dependency
 import spectrograph_modules
@@ -17,11 +23,18 @@ class server:
 	def __init__(self,name,base):
 		self.name = name
 		self.base_directory = base
-		self.data_directory = "C:/minerva/data"
-		self.create_class_objects()
+		self.data_path_base = "C:\minerva\data"
                 self.load_config()
+
+		# reset the night at 10 am local                                                                                                 
+		today = datetime.datetime.utcnow()
+		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+                        today = today + datetime.timedelta(days=1)
+		self.night = 'n' + today.strftime('%Y%m%d')
+
                 self.setup_logger()
-                self.night='dump'
+                self.set_data_path()
+#                self.file_name = ''                
 
 	def load_config(self):
 	
@@ -37,15 +50,11 @@ class server:
 			print('ERROR accessing ', self.name, ".", 
 				   self.name, " was not found in the configuration file", configfile)
 			return 
-			
-	#create instrument control objects
-	def create_class_objects(self):
-		pass
 		
 	#create logger object and link to log file
-	def setup_logger(self, night='dump'):
+	def setup_logger(self):
 
-		log_path = self.base_directory + '/log/' + night
+		log_path = self.base_directory + '/log/' + self.night
                 if os.path.exists(log_path) == False:os.mkdir(log_path)
 
                 fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
@@ -83,6 +92,12 @@ class server:
 		self.logger.addHandler(streamHandler)
 		'''
 
+	def set_data_path(self,night='dump'):
+		self.data_path = self.data_path_base + '\\' + self.night
+		if not os.path.exists(self.data_path):
+			os.makedirs(self.data_path)
+		return 'success'        
+
 #==================server functions===================#
 #used to process communication between camera client and server==#
 
@@ -110,8 +125,12 @@ class server:
 			response = self.get_fits_header(tokens[1])
 		elif tokens[0] == 'get_index':
 			response = self.get_index(tokens[1])
+		elif tokens[0] == 'save_image':
+			response = self.save_image()
 		elif tokens[0] == 'set_binning':
 			response = self.set_binning(tokens[1])
+		elif tokens[0] == 'set_file_name':
+			response = self.set_file_name(tokens[1])
 		elif tokens[0] == 'set_size':
 			response = self.set_size(tokens[1])
 		elif tokens[0] == 'write_header':
@@ -153,76 +172,40 @@ class server:
 			self.process_command(repr(data),conn)
 		s.close()
 		self.run_server()
-		
-	def save_image(self,file_name):
 
-                filename = "C:/minerva/data/" + self.night + "/" + file_name
+        def set_file_name(self,param):
+                if len(param.split()) != 1:
+			self.logger.error('parameter mismatch')
+			return 'fail'
+		self.logger.info('setting name to:' + param)
+		self.file_name = self.data_path + '\\' + param                
+                return 'success'
+		
+	def save_image(self):
+
+
+		self.logger.info('saving image to:' + self.file_name)
+
                 try:
-                        shutil.move("C:/IMAGES/I",filename)
+                        shutil.move("C:/IMAGES/I",self.file_name)
+                        return 'success'
+		except: return 'fail'
 
-                        '''
-                        # Fill in values from SI header
-                        f = pyfits.open(filename)
-                        hdr['NAXIS'] = f[0].header['NAXIS']
-                        hdr['NAXIS1'] = f[0].header['NAXIS1']
-                        hdr['NAXIS2'] = f[0].header['NAXIS2']
-                        hdr['DATE-OBS'] = f[0].header['DATE-OBS']
-                        hdr['EXPTIME'] = float(f[0].header['PARAM24'])/1000.0
-                        hdr['SET-TEMP'] = float(f[0].header.comments['PARAM62'].split('(')[1].split('C')[0].strip())
-                        hdr['CCD-TEMP'] = float(f[0].header['PARAM0'])
-                        hdr['BACKTEMP'] = float(f[0].header['PARAM1'])
-                        hdr['XBINNING'] = float(f[0].header['PARAM18'])
-                        hdr['YBINNING'] = float(f[0].header['PARAM22'])
-                        hdr['XORGSUBF'] = float(f[0].header['PARAM16'])
-                        hdr['YORGSUBF'] = float(f[0].header['PARAM20'])
-                        hdr['SHUTTER'] = f[0].header.comments['PARAM8'].split('(')[-1].split(")")[0].strip()
-                        hdr['XIRQA'] = f[0].header.comments['PARAM9'].split('(')[-1].split(")")[0].strip()
-                        hdr['COOLER'] = f[0].header.comments['PARAM10'].split('(')[-1].split(")")[0].strip()
-                        hdr['CONCLEAR'] = f[0].header.comments['PARAM25'].split('(')[-1].split(")")[0].strip()
-                        hdr['DSISAMP'] = f[0].header.comments['PARAM26'].split('(')[-1].split(")")[0].strip()
-                        hdr['ANLGATT'] = f[0].header.comments['PARAM27'].split('(')[-1].split(")")[0].strip()
-                        hdr['PORT1OFF'] = f[0].header['PARAM28']
-                        hdr['PORT2OFF'] = f[0].header['PARAM29']
-                        hdr['TDIDELAY'] = f[0].header['PARAM32']
-                        hdr['CMDTRIG'] = f[0].header.comments['PARAM39'].split('(')[-1].split(")")[0].strip()
-                        hdr['ADCOFF1'] = f[0].header['PARAM44']
-                        hdr['ADCOFF2'] = f[0].header['PARAM45']
-                        hdr['MODEL'] = f[0].header['PARAM48']
-                        hdr['HWREV'] = f[0].header['PARAM50']
-                        hdr['SERIALP'] = f[0].header.comments['PARAM51'].split('(')[-1].split(")")[0].strip()
-                        hdr['SERIALSP'] = f[0].header.comments['PARAM52'].split('(')[-1].split(")")[0].strip()
-                        hdr['SERIALS'] = f[0].header['PARAM53']
-                        hdr['PARALP'] = f[0].header.comments['PARAM54'].split('(')[-1].split(")")[0].strip()
-                        hdr['PARALSP'] = f[0].header.comments['PARAM55'].split('(')[-1].split(")")[0].strip()
-                        hdr['PARALS'] = f[0].header['PARAM56']
-                        hdr['PARDLY'] = f[0].header['PARAM57']
-                        hdr['NPORTS'] = f[0].header.comments['PARAM58'].split('(')[-1].split(" ")[0].strip()
-                        hdr['SHUTDLY'] = f[0].header['PARAM59']
-
-                        # recast as 16 bit unsigned integer (2x smaller with no loss of information)
-                        data = f[0].data.astype('uint16')
-                        f.close()
-
-                        # Write final image
-                        pyfits.writeto(filename,data,hdr)
-                        '''
-
-                        return True
-		except: return False
+        def get_index(self,param):
+                files = glob.glob(self.data_path + "/*.fits*")
+                return 'success ' + str(len(files)+1)
 		
-	def write_header(self,param):
-		
+	def write_header(self,param):		
 		self.header_buffer = self.header_buffer + param
 		return 'success'
 		
 	def write_header_done(self,param):
 
-                ipdb.set_trace()
-
 		try: 
 			self.logger.info("Writing header for " + self.file_name)
 		except: 
 			self.logger.error("self.file_name not defined; saving failed earlier")
+			self.logger.exception("self.file_name not defined; saving failed earlier")
 			return 'fail'
 
 		try:
@@ -234,6 +217,52 @@ class server:
 					f[0].header[key] = value
 				else:
 					f[0].header[key] = (value[0],value[1])
+
+                        f[0].header['SIMPLE'] = True
+                        f[0].header['EXPTIME'] = float(f[0].header['PARAM24'])/1000.0
+                        f[0].header['SET-TEMP'] = float(f[0].header.comments['PARAM62'].split('(')[1].split('C')[0].strip())
+                        f[0].header['CCD-TEMP'] = float(f[0].header['PARAM0'])
+                        f[0].header['BACKTEMP'] = float(f[0].header['PARAM1'])
+                        f[0].header['XBINNING'] = float(f[0].header['PARAM18'])
+                        f[0].header['YBINNING'] = float(f[0].header['PARAM22'])
+                        f[0].header['XORGSUBF'] = float(f[0].header['PARAM16'])
+                        f[0].header['YORGSUBF'] = float(f[0].header['PARAM20'])
+                        f[0].header['SHUTTER'] = f[0].header.comments['PARAM8'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['XIRQA'] = f[0].header.comments['PARAM9'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['COOLER'] = f[0].header.comments['PARAM10'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['CONCLEAR'] = f[0].header.comments['PARAM25'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['DSISAMP'] = f[0].header.comments['PARAM26'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['ANLGATT'] = f[0].header.comments['PARAM27'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['PORT1OFF'] = f[0].header['PARAM28']
+                        f[0].header['PORT2OFF'] = f[0].header['PARAM29']
+                        f[0].header['TDIDELAY'] = f[0].header['PARAM32']
+                        f[0].header['CMDTRIG'] = f[0].header.comments['PARAM39'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['ADCOFF1'] = f[0].header['PARAM44']
+                        f[0].header['ADCOFF2'] = f[0].header['PARAM45']
+                        f[0].header['MODEL'] = f[0].header['PARAM48']
+                        f[0].header['HWREV'] = f[0].header['PARAM50']
+                        f[0].header['SERIALP'] = f[0].header.comments['PARAM51'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['SERIALSP'] = f[0].header.comments['PARAM52'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['SERIALS'] = f[0].header['PARAM53']
+                        f[0].header['PARALP'] = f[0].header.comments['PARAM54'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['PARALSP'] = f[0].header.comments['PARAM55'].split('(')[-1].split(")")[0].strip()
+                        f[0].header['PARALS'] = f[0].header['PARAM56']
+                        f[0].header['PARDLY'] = f[0].header['PARAM57']
+                        f[0].header['NPORTS'] = f[0].header.comments['PARAM58'].split('(')[-1].split(" ")[0].strip()
+                        f[0].header['SHUTDLY'] = f[0].header['PARAM59']
+
+                        del f[0].header['N_PARAM']
+                        del f[0].header['DATE']
+                        del f[0].header['TIME']
+                        for i in range(80): del f[0].header['PARAM' + str(i)]
+
+                        # recast as 16 bit unsigned integer (2x smaller with no loss of information)
+                        #data = f[0].data.astype('uint16')
+                        #f.close()
+
+                        # Write final image
+                        #pyfits.writeto(filename,data,hdr)
+                        
 			f.flush()
 			f.close()
 		except:

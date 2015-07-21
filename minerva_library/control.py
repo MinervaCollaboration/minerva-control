@@ -726,10 +726,8 @@ class control:
         def takeSpectrum(self,exptime,objname,template=False):
                 
                 #start imaging process in a different thread
-                kwargs = {'exptime':exptime}
-#                self.spectrograph.expose(exptime=exptime)
-                imaging_thread = threading.Thread(target = self.spectrograph.expose, kwargs = kwargs)
-                imaging_thread.start()
+		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (exptime, objname))
+		imaging_thread.start()
                         
                 # Get status info for headers while exposing/reading out
                 # (needs error handling)
@@ -746,14 +744,14 @@ class control:
                 # emulate MaximDL header for consistency
 		f = collections.OrderedDict()
 
-                f['SIMPLE'] = True
-                f['BITPIX'] = (16,'8 unsigned int, 16 & 32 int, -32 & -64 real')
-                f['NAXIS'] = (2,'number of axes')
-                f['NAXIS1'] = (0,'Length of Axis 1 (Columns)')
-                f['NAXIS2'] = (0,'Length of Axis 2 (Rows)')
-                f['BSCALE'] = (1,'physical = BZERO + BSCALE*array_value')
-                f['BZERO'] = (0,'physical = BZERO + BSCALE*array_value')
-                f['DATE-OBS'] = ("","UTC at exposure start")
+#                f['SIMPLE'] = 'True'
+#                f['BITPIX'] = (16,'8 unsigned int, 16 & 32 int, -32 & -64 real')
+#                f['NAXIS'] = (2,'number of axes')
+#                f['NAXIS1'] = (0,'Length of Axis 1 (Columns)')
+#                f['NAXIS2'] = (0,'Length of Axis 2 (Rows)')
+#                f['BSCALE'] = (1,'physical = BZERO + BSCALE*array_value')
+#                f['BZERO'] = (0,'physical = BZERO + BSCALE*array_value')
+#                f['DATE-OBS'] = ("","UTC at exposure start")
                 f['EXPTIME'] = ("","Exposure time in seconds")                  # PARAM24/1000
 #                f['EXPSTOP'] = ("","UTC at exposure end")
                 f['SET-TEMP'] = ("",'CCD temperature setpoint in C')            # PARAM62 (in comments!)
@@ -916,33 +914,17 @@ class control:
                 f['I2TEMPS'] = ('UNKNOWN','Iodine Cell Set Temperature (C)')
                 f['I2POS'] = ('UNKNOWN','Iodine Stage Position')
                 f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
-
-                objname = 'overscan'
-                path = "C:/minerva/data/" + self.night + "/"
-                images = glob.glob(path + "*.fits*")
-                index = str(len(images)+1).zfill(4)
-                filename = path + self.night + "." + objname + '.' + index + '.fits'
-
-                # Wait for exposure to finish            
-		imaging_thread.join()
-		
-                t0 = datetime.datetime.utcnow()
-
-                
-                print (datetime.datetime.utcnow() - t0).total_seconds()
-                
 		header = json.dumps(f)
 		
 		self.logger.info('Waiting for spectrograph imaging thread')
 		# wait for imaging process to complete
 		imaging_thread.join()
-
-                self.spectrograph.file_name = 'test.fits'
 		
 		# write header for image
 		if self.spectrograph.write_header(header):
 			self.logger.info('Finished writing spectrograph header')
-			return self.spectrograph.image_name()
+			return self.spectrograph.file_name
+                ipdb.set_trace()
 
 		self.logger.error('takeSpectrum failed: ' + self.spectrograph.file_name)
 		return 'error'
