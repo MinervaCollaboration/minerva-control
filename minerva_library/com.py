@@ -31,7 +31,9 @@ class com:
             self.termstr = "\n\r"
         elif config['Setup']['TERMSTR'] == r"\n":
             self.termstr = "\n"
-        
+        elif config['Setup']['TERMSTR'] == "":
+            self.termstr = ""
+            
         self.ser = serial.Serial()
         self.ser.port = str(config['Setup']['PORT'])
         self.ser.baudrate = int(config['Setup']['BAUDRATE'])
@@ -81,7 +83,7 @@ class com:
             if self.ser.isOpen():
                 self.ser.write(cmd + self.termstr)
 
-                # let's wait one second before reading output (let's give device time to answer)
+                # let's wait one second before reading output (give device time to answer)
                 time.sleep(1)
                 out = ''
                 while self.ser.inWaiting() > 0:

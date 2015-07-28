@@ -82,10 +82,15 @@ class control:
 			sys.exit() 
 			
 	#create logger object and link to log file, if night is not specified, log files will go into /log/dump directory
-	def setup_logger(self,night='dump'):
-			
-                self.night = night
-		log_path = self.base_directory + '/log/' + night
+	def setup_logger(self):
+
+		# reset the night at 10 am local                                                                                                 
+		today = datetime.datetime.utcnow()
+		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+                        today = today + datetime.timedelta(days=1)
+		self.night = 'n' + today.strftime('%Y%m%d')
+		
+		log_path = self.base_directory + '/log/' + self.night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
 
 		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
@@ -132,18 +137,18 @@ class control:
 		'''
 
 	#set logger path for all control objects
-	def setup_loggers(self,night='dump'):
+	def setup_loggers(self):
 	
 		self.logger_lock.acquire()
-		self.setup_logger(night)
+		self.setup_logger()
 		for a in self.domes:
-			a.setup_logger(night)
+			a.setup_logger()
 		for t in self.telescopes:
-			t.setup_logger(night)
+			t.setup_logger()
 		for c in self.cameras:
-			c.setup_logger(night)
-		self.site.setup_logger(night)
-		self.spectrograph.setup_logger(night)
+			c.setup_logger()
+		self.site.setup_logger()
+		self.spectrograph.setup_logger()
 		self.logger_lock.release()
 		
 	#enable sending commands to telcom
@@ -722,6 +727,8 @@ class control:
 					       xreftrunc,yreftrunc,xtrunc,ytrunc,scl,dscl,thet,dthet)
 
 		return dx,dy,scale,rot,flag,rmsf,nstf
+
+        
 	
         def takeSpectrum(self,exptime,objname,template=False):
                 
@@ -755,7 +762,7 @@ class control:
                 f['EXPTIME'] = ("","Exposure time in seconds")                  # PARAM24/1000
 #                f['EXPSTOP'] = ("","UTC at exposure end")
                 f['SET-TEMP'] = ("",'CCD temperature setpoint in C')            # PARAM62 (in comments!)
-                f['CCD-TEMP'] = ("",'CCD temperature at start of exposure in C')#PARAM0
+                f['CCD-TEMP'] = ("",'CCD temperature at start of exposure in C')# PARAM0
                 f['BACKTEMP'] = ("","Backplace Temperature in C")               # PARAM1
                 f['XPIXSZ'] = ("",'Pixel Width in microns (after binning)')
                 f['YPIXSZ'] = ("",'Pixel Height in microns (after binning)')
@@ -909,9 +916,16 @@ class control:
                 f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
                 f['VAC_PRES'] = (self.spectrograph.get_vacuum_pressure(),"Vacuum Tank Pressure (mbar)")
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
-                for i in range(16): f['TEMP' + str(i+1)] = ('UNKNOWN','UNKNOWN Temperature (C)')
-                f['I2TEMPA'] = ('UNKNOWN','Iodine Cell Actual Temperature (C)')
-                f['I2TEMPS'] = ('UNKNOWN','Iodine Cell Set Temperature (C)')
+                for i in range(16):
+                        filename = self.base_directory + '/log/' + self.night + '/temp' + str(i+1) + '.log'
+                        with open(filename,'r') as fh:
+                                lineList = fh.readlines()
+                                temps = lineList[-1].split(',')
+                                if temps[1] == "None" : temp = 'UNKNOWN'
+                                else: temp = float(temps[1])
+                        f['TEMP' + str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
+                f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
+                f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
                 f['I2POS'] = ('UNKNOWN','Iodine Stage Position')
                 f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
 		header = json.dumps(f)

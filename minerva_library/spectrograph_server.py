@@ -107,7 +107,17 @@ class server:
 		tokens = command.split(None,1)
 		if len(tokens) != 2:
 			response = 'fail'
-		elif tokens[0] == 'get_vacuum_pressure':
+		elif tokens[0] == 'cell_heater_on':
+                        response = self.cell_heater_on()
+                elif tokens[0] == 'cell_heater_off':
+                        response = self.cell_heater_off()
+                elif tokens[0] == 'cell_heater_temp':
+                        response = self.cell_heater_temp()
+                elif tokens[0] == 'cell_heater_set_temp':
+                        response = self.cell_heater_set_temp()
+                elif tokens[0] == 'cell_heater_get_set_temp':
+                        response = self.cell_heater_get_set_temp()                        
+                elif tokens[0] == 'get_vacuum_pressure':
                         response = self.get_vacuum_pressure()
                 elif tokens[0] == 'get_atmospheric_pressure':
                         response = self.get_atmospheric_pressure()
@@ -268,16 +278,99 @@ class server:
 		except:
 			return 'fail'
 		return 'success'
+
+        # all cell heater functions are untested
+        def cell_heater_status(self):
+                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
+                print cellheater.send("")
+                statusstr = cellheater.send("stat?")
+
+                '''
+                Bit 0 0 = Disabled, 1 = Enabled
+                Bit 1 0 = Normal Mode, 1 = Cycle Mode
+                Bit 2 0 = TH10K, 1 = PTC100 (sensor select bit one)
+                Bit 3 0 = See Bit2, 1 = PTC1000 (sensor select bit two)
+                Bit 4 0 = See Bit5, 1 = degrees C (unit select bit one)
+                Bit 5 0 = Degrees K, 1 = Degrees F (unit select bit two)
+                Bit 6 0 = No Sensor Alarm, 1 = Sensor Alarm
+                Bit 7 0 = Cycle Not Paused, 1 = Cycle Paused
+                '''
+                
+                unit = "C"
+
+                status = {
+                        "enabled": True,
+                        "cyclemode": True,
+                        "PTC100": True,
+                        "PTC1000": True,
+                        "Unit" : unit,
+                        "Alarm": True,
+                        "Paused" : True,
+                }
+                print statusstr
+                ipdb.set_trace()
+
+        def cell_heater_on(self):
+                status = self.cell_heater_status()
+                if not status['enabled']:
+                        self.logger.info("Cell heater off; turning on")
+                        cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
+                        cellheater.send("ens")
+
+                self.logger.info("Cell heater already on")
+                return 'success'
+                
+        def cell_heater_off(self):
+                status = self.cell_heater_status()
+                if status['enabled']:
+                        self.logger.info("Cell heater on; turning off")
+                        cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
+                        cellheater.send("ens")
+
+                self.logger.info("Cell heater already off")
+                return 'success'
+                
+        def cell_heater_temp(self):
+                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
+                return "success -999.0"
+                return "success " + str(cellheater.send("tact?"))
+                
+        def cell_heater_set_temp(self, temp):
+                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
+                return "success" + str(cellheater.send("tset=" + str(temp)))
+                
+        def cell_heater_get_set_temp(self):
+                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
+#                print cellheater.send("tset?")
+#                ipdb.set_trace()
+                return "success 55.0"
+                return "success " + str(cellheater.send("tset?"))
+
+        def move_i2(self,position='science'):
+                i2stage = com.com('iodineStage',self.night,configfile=self.base_directory + '/config/com.ini')
+
+                positions = {
+                        'science' : 147,
+                        'flat'  : 0,
+                        'template' : 0,
+                        }
+                if position not in positions.keys(): return "fail"
+                print i2stage.send('SetAbsMovePos=' + str(positions[position]))
+                print i2stage.send('GetAbsMovePos_AbsPos')
+                ipdb.set_trace()
 	
 	def get_vacuum_pressure(self):
                 specgauge = com.com('specgauge',self.night,configfile=self.base_directory + '/config/com.ini')
-                return 'success ' + str(specgauge.send('RD'))
+                response = str(specgauge.send('RD'))
+                if response == '': return 'fail'
+                return 'success ' + response
 
         def get_atmospheric_pressure(self):
                 atmgauge = com.com('atmGauge',self.night,configfile=self.base_directory + '/config/com.ini')
                 atmgauge.send('OPEN')
                 pressure = atmgauge.send('R')
                 atmgauge.send('CLOSE')
+                ipdb.set_trace()
                 return 'success ' + str(pressure)
                 
 		
@@ -285,6 +378,8 @@ if __name__ == '__main__':
 	
 	base_directory = 'C:\minerva-control'
 	test_server = server('spectrograph.ini',base_directory)
+#	test_server.move_i2(position='science')
+#        test_server.cell_heater_get_set_temp()
 	test_server.run_server()
 	
 	

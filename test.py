@@ -13,6 +13,7 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+        #ipdb.set_trace()
         minerva.takeSpectrum(1.0,'test')
 
         ipdb.set_trace()

@@ -10,6 +10,7 @@ sys.dont_write_bytecode = True
 
 from si.client import SIClient
 from si.imager import Imager
+from minerva_library import dynapower
 import ipdb
 
 # spectrograph control class, control all spectrograph hardware
@@ -81,7 +82,9 @@ class spectrograph:
                 self.logger.addHandler(console)
 		
 	def create_class_objects(self):
-		pass
+                self.dynapower1 = dynapower.dynapower(self.night,configfile='minerva_class_files/dynapower_1.ini')
+                self.dynapower2 = dynapower.dynapower(self.night,configfile='minerva_class_files/dynapower_2.ini')
+		
 	#return a socket object connected to the camera server
 	def connect_server(self):
 		try:
@@ -274,11 +277,103 @@ class spectrograph:
 			self.file_name = ''
 			self.recover()
 			return self.take_image(exptime=exptime,objname=objname) 
+
+        def vent(self):
+                # close the pump valve
+                self.dynapower.off('pumpvalve')
+
+                # turn off the pump
+                self.dynapower.off('pump')
+
+                if self.specgauge.pressure() < 500:
+                    mail.send("The spectrograph is pumped and attempting to vent!","Manual login required to continue")
+                    self.logger.error("The spectrograph is pumped and attempting to vent; manual login required to continue")
+                    ipdb.set_trace()            
+
+                # open the vent valve
+                self.dynapower.on('ventvalve')
+
+                t0 = datetime.datetime.utcnow()
+                elapsedtime = 0.0
+                while self.specgauge.pressure() < 500:
+                    elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds() 
+                    self.logger.info('Waiting for spectrograph to vent (Pressure = ' + str(specgauge.pressure()) + '; elapsed time = ' + str(elapsedtime) + ' seconds)')
+                    if elapsedtime < timeout:
+                        time.sleep(5)
+                    else:
+                        self.logger.error("Error venting the spectrograph")
+                        return
+
+                self.logger.info("Venting complete")
+ 
+        # pump down the spectrograph (during the day)     
+        def pump(self):
+
+                timeout = 300
+
+                # close the pump valve
+                self.dynapower.off('pumpvalve')
+
+                # turn on the pump
+                self.dynapower.on('pump')
+
+                if self.get_vacuum_pressure() > 500:
+                    mail.send("The spectrograph is at atmosphere!","Manual login required to continue")
+                    self.logger.error("The spectrograph is at atmosphere! Manual login required to continue")
+                    ipdb.set_trace()
+
+                # wait until the guage reads < 100 ubar
+                t0 = datetime.datetime.utcnow()
+                elapsedtime = 0.0
+                while self.get_pump_pressure() > 100.0:
+                    elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds() 
+                    self.logger.info('Waiting for tube to pump down (Pressure = ' + str(pumpgauge.pressure()) + '; elapsed time = ' + str(elapsedtime) + ' seconds)')
+                    if elapsedtime < timeout:
+                        time.sleep(5)
+                    else:
+                        self.logger.error("Error pumping down the spectrograph")
+                        return          
+                        
+                # open the pump valve
+                self.dynapower.on('pumpvalve')
+
+        def cell_heater_on(self):
+                response = self.send('cell_heater_on None',5)
+                return float(response.split()[1].split('\\')[0])               
+
+        def cell_heater_off(self):
+                response = self.send('cell_heater_off None',5)
+                return float(response.split()[1].split('\\')[0])                        
+
+        def cell_heater_temp(self):
+                response = self.send('cell_heater_temp None',5)
+                return float(response.split()[1].split('\\')[0])
+
+        def cell_heater_set_temp(self, temp):
+                response = self.send('cell_heater_set_temp ' + str(temp),5)
+                return float(response.split()[1].split('\\')[0])
+
+        def cell_heater_get_set_temp(self):
+                response = self.send('cell_heater_get_set_temp None',5)
+                return float(response.split()[1].split('\\')[0]) 
+
+        # close the valves, hold the pressure (during the night)
+        def hold(self):
+
+                # make sure the vent valve is closed
+                self.dynapower.off('ventvalve')
+
+                # close the pump valve
+                self.dynapower.off('pumpvalve')
+
+                # turn off the pump
+                self.dynapower.off('pump')
 			
 	def get_vacuum_pressure(self):
                 response = self.send('get_vacuum_pressure None',5)
                 if response == 'fail':
                         return 'UNKNOWN'
+                ipdb.set_trace()
 		return float(response.split()[1].split('\\')[0])
 
         ### doesn't work!###
