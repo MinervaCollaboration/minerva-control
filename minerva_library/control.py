@@ -731,6 +731,110 @@ class control:
         ###
 	# EXPOSURES
 	###
+
+	def takeArcSpec(self,filterWheel=None):
+                #Thermocube within 0.2C?
+                #Configure the camera
+                #Thermal enclosure with 0.1C?
+                #Camera with in 0.1C?
+                #How is the vacuum?
+                
+                #S Turn ThAr lamp on, need to let it stabilize for ten minutes
+                self.spectrograph.turnThArON()
+                #S When the lamp was turned on.
+                thArStart = datetime.datetime.utcnow()
+                #S All this stuff done here to fill time while lamp is warming.
+                #S Ensure that the white lamp is off. 
+                self.spectrograph.turnWhiteOFF()
+                #S Number of minutes to let ThAr lamp warm up
+                warmUpMins = 10.
+                #S Move I2 stage out
+                self.spectrograph.moveI2Stage('out')
+                
+                #TODO Find a fun way to pass time while stabilizing.
+                #? When will arcs need to be taken in the night? It could be
+                #? worked to use the timetracking file to see how longs it has
+                #? been on for. I really feel bad just having it idle for ten
+                #? minutes waiting for it to warm up. Going to leave it as is for now,
+                #? but definitely desreves more thought than this.
+
+                while (datetime.datetime.utcnow()-thArStart).total_seconds() < (warmUpMins*60):
+                        #S Let it sleep for 30.1 seconds so we aren't constatly creating
+                        #S datetime instances. Don't want to give it 30 or it'll sleep
+                        #S for longer than necessary.
+                        time.sleep(30.1)
+
+                #Filter wheel
+                
+                #Calibration shutter open
+                
+                #S Turn of the ThAr lamp when all is done.
+                self.spectrograph.turnThArOFF()
+                pass
+
+        
+        def takeFlatSpec(self, filterWheel=None):
+                #Thermocube within 0.2C?
+                #Configure the camera
+                #Thermal enclosure with 0.1C?
+                #Camera with in 0.1C?
+                #How is the vacuum?
+
+
+                #S Turn white lamp on, need to let it stabilize for ten minutes
+                self.turnWhiteON()
+                #S When the lamp was turned on.
+                whiteStart = datetime.datetime.utcnow()                
+                #S Ensure that the ThAr lamp is off
+                self.spectrograph.turnThArOFF()
+                #S Minutes we want to let lamp warm up
+                warmUpMins = 10.
+                
+                #TODO See concerns in takeArcSpec about passing time.
+                #S Actual warm up sitting
+                while (datetime.datetime.utcnow()-whiteStart).total_seconds() < (warmUpMins*60):
+                        time.sleep(30.1)
+
+                #Filter wheel
+                        
+                #Cali shutter
+
+                #S Turn the white lamp off when all is said and done
+                self.spectrograph.turnWhiteOFF()
+
+                
+                        
+                pass
+
+        
+        def takeBiasSpec(self):
+                #Thermocube within 0.2C?
+                #Configure the camera
+                #Thermal enclosure with 0.1C?
+                #Camera with in 0.1C?
+                #How is the vacuum?
+                pass
+        def takeDarkSpec(self):
+                #Thermocube within 0.2C?
+                #Configure the camera
+                #Thermal enclosure with 0.1C?
+                #Camera with in 0.1C?
+                #How is the vacuum?
+                pass
+        def takeTemplateSpec(self):
+                #Thermocube within 0.2C?
+                #Configure the camera
+                #Thermal enclosure with 0.1C?
+                #Camera with in 0.1C?
+                #How is the vacuum?
+                pass
+        def takeScienceSpec(self):
+                #Thermocube within 0.2C?
+                #Configure the camera
+                #Thermal enclosure with 0.1C?
+                #Camera with in 0.1C?
+                #How is the vacuum?
+                pass
         
 
 

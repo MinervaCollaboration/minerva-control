@@ -422,8 +422,15 @@ class spectrograph:
         def get_atm_pressure(self):
                 response = self.send('get_atm_pressure None',5)
                 return float(response.split()[1].split('\\')[0])
+        ###
+        # THORLABS STAGE, For Iodine Lamp
+        ###
 
-        #S THORLABS STAGE, Iodine Lamp
+        #TODO Is it too much to be logging at each connect/disconnect? I think
+        #TODO so, so I commented them out but did leave in error logs. There is also opportunity to
+        #TODO make moveI2Stage check against current position and bypass command if so.
+        #TODO I think this is negligible in the time it would take to not move, and sending the
+        #TODO command should be quick anyway. Might as well I'm thinking.
         
         #S Initialize the stage, needs to happen before anyhting else.
         def connectI2Stage(self):
@@ -442,9 +449,9 @@ class spectrograph:
                         #S Can't be controllecd by anything else until relesased.
                         self.motorI2.initializeHardwareDevice()
                         #S Get curtrent position, needed for logging?
-                        currentPos = self.motorI2.getPos()
-                        #S Write it down
-                        self.logger.info("Iodine stage connected and initialized. Started at position: %0.5f mm"%(currentPos))
+                        ## currentPos = self.motorI2.getPos()
+                        #S Write it down, commented out for now.
+                        ## self.logger.info("Iodine stage connected and initialized. Started at position: %0.5f mm"%(currentPos))
                         
                 #S Something goes wrong. Remember, only one application can connect at
                 #S a time, e.g. Kiwispec but not *.py
@@ -458,17 +465,15 @@ class spectrograph:
                 try:
                         #currentPos = self.motorI2.getPos()
                         self.motorI2.cleanUpATP()
-                        self.logger.info("Iodine stage diconnected and cleaned up.")# Left as position: %0.5f mm"%(currentPos))
+                        #S Logging of succesful left off for now
+                        ## self.logger.info("Iodine stage diconnected and cleaned up.")# Left as position: %0.5f mm"%(currentPos))
                 except:
                         #? Does this deserve an error?
                         self.logger.error("ERROR: The Iodine stage was never connected, or something else went wrong")
 
         #S Move the stage around, needs to be initialized first
         #? Do we need to worry about max velocities or anyhting?
-        #TODO Write logging stuff
-        #TODO Robust way to clean up apt, not sure what to do yet.
-        ##### Could just open and close connection each time? Sounds dumb. 
-        def moveI2stage(self, locationstr):
+         def moveI2stage(self, locationstr):
 #        """
 #        Stage must be initialized prior to movement.
 #        Acceptable arguements -         'in'    - move the lamp to in position.
@@ -480,6 +485,8 @@ class spectrograph:
                 out_pos = 0.0 #mm
                 flat_pos= 93.0 #mm
 
+                #S Connect to the stage
+                self.connectI2Stage()
                 #S Get previous position
                 prev_pos = self.motorI2.getPos()
 
@@ -502,6 +509,8 @@ class spectrograph:
                 #S need to log position, stuff, andything else?
                 new_pos = self.motorI2.getPos()
                 self.logger.info("Iodine stage moved from %0.5f mm to %0.5f mm"%(prev_pos,new_pos))
+                #S Disconnect from stage
+                self.disconnectI2Stage()
                 
         #S Functions for toggling hte ThAr lamp
         def turnThArON(self):
