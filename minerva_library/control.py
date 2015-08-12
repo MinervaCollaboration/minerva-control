@@ -728,29 +728,41 @@ class control:
 
 		return dx,dy,scale,rot,flag,rmsf,nstf
 
+        ###
+	# EXPOSURES
+	###
         
+
+
 	
-        def takeSpectrum(self,exptime,objname,template=False):
-                
+	
+        def takeSpectrum(self,exptime,objname,template=False, expmeter=None):        
+
                 #start imaging process in a different thread
-		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (exptime, objname))
+                kwargs = {'expmeter':expmeter}
+		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (exptime, objname), kwargs=kwargs)
 		imaging_thread.start()
                         
                 # Get status info for headers while exposing/reading out
                 # (needs error handling)
                 while self.site.getWeather() == -1: pass
 
+                #S Get facts about the moon, used for avoidance later I'm assuming.
                 moonpos = self.site.moonpos()
                 moonra = moonpos[0]
                 moondec = moonpos[1]
                 moonphase = self.site.moonphase()
 
+                #S Path for good stuff online
                 gitPath = "C:/Users/Kiwispec/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
                 gitNum = subprocess.check_output([gitPath, "rev-list", "HEAD", "--count"]).strip()
 
                 # emulate MaximDL header for consistency
 		f = collections.OrderedDict()
 
+
+                #S I'm guessing this is the dictionary definition for the header.
+		
 #                f['SIMPLE'] = 'True'
 #                f['BITPIX'] = (16,'8 unsigned int, 16 & 32 int, -32 & -64 real')
 #                f['NAXIS'] = (2,'number of axes')

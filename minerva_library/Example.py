@@ -14,10 +14,17 @@ mcleung@stanford.edu
 from PyAPT import APTMotor
 import time
 import ipdb
-SN = 80851661 # Focus stage (I think)
-SN = 40853360 # I2 (I think)
+
+# Focus stage (I think)
+SN = 80851661
+HWTYPE = 31
+
+# I2 stage (I think)
+#SN = 40853360 
+#HWTYPE = ??
+
 # Create object corresponding to the motor.
-Motor1 = APTMotor(SN, HWTYPE=31) # The number should correspond to the serial number.
+Motor1 = APTMotor(SN, HWTYPE=HWTYPE) # The number should correspond to the serial number.
 # Use help APTMotor to obtain full list of hardware (HW) supported.
 
 # Note: You can control multiple motors by creating more APTMotor Objects

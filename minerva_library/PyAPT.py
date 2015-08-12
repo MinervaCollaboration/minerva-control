@@ -39,6 +39,7 @@ class APTMotor():
         HWTYPE_L490MZ		43	// L490MZ Integrated Driver/Labjack
         HWTYPE_BBD10X		44	// 1/2/3 Ch benchtop brushless DC servo driver
         '''
+       # ipdb.set_trace()
         self.Connected = False
         self.aptdll = windll.LoadLibrary('C:\minerva-control\minerva_library\APT.dll')
         self.aptdll.EnableEventDlg(True)
@@ -88,12 +89,12 @@ class APTMotor():
         Once initiallised, it will not respond to other objects trying to control it, until released.
         '''
         if DEBUG: print('initializeHardwareDevice serial', self.SerialNum)
-        ipdb.set_trace()
+        #S ipdb.set_trace()
         result = self.aptdll.InitHWDevice(self.SerialNum)
         if result == 0:
             self.Connected = True
             if DEBUG: print('initializeHardwareDevice connection SUCESS')
-            ipdb.set_trace()
+            #ipdb.set_trace()
         # need some kind of error reporting here
         else:
             raise Exception('Connection Failed. Check Serial Number!')

@@ -13,8 +13,16 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
-        #ipdb.set_trace()
-        minerva.takeSpectrum(1.0,'test')
+#        minerva.spectrograph.get_vacuum_pressure()
+#        ipdb.set_trace()
+        #S This is throwing due to the calling of undenfined funnction
+        #S in spectrograph.py I think. In the funciton expose(), if an
+        #S expmeter exists (e.g. number of counts to terminate after, it calls
+        #S imager.interrupt(), which doesn't exist anywhere as far as I know.
+        #S This may be the source of our problems, but we'll see. I'm adding
+        #S a TODO to make sure it's looked at again.
+        #TODO
+        minerva.takeSpectrum(60.0,'test')#,expmeter=1000000.0)
 
         ipdb.set_trace()
 	tel = 4

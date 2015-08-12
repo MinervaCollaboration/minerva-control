@@ -21,10 +21,11 @@ class dynapower:
             print('ERROR accessing ' + configfile)
             return 
 
+        #ipdb.set_trace()
         self.IP = config['IP']
         self.PORT = config['PORT']
         logger_name = config['LOGNAME']
-        log_file = 'logs/' + night + '/' + config['LOGFILE']
+        log_file = 'log/' + night + '/' + config['LOGFILE']
         self.outlets = config['OUTLETS']
                 
         # setting up powerswitch logger
@@ -49,7 +50,7 @@ class dynapower:
 
     def send(self,url):
 
-        f = open('dynapower.txt','r')
+        f = open('credentials/dynapower.txt','r')
         username = f.readline().strip()
         password = f.readline().strip()
         f.close()
