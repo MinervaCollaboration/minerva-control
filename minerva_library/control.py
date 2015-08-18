@@ -824,7 +824,8 @@ class control:
                 else :
                         #S Define the temperature tolerance
                         self.spectrograph.cell_heater_on()
-                        TEMPTOLERANCE = -21.
+                        #TODO Find a better cellheater temptolerance.
+                        TEMPTOLERANCE = 0.101
                         #S Here we need the i2stage in
                         self.spectrograph.i2stage_move('in')
                         #S Make sure the lamps are off
@@ -838,11 +839,9 @@ class control:
                         #S for the iodine stage's temperature. The least sigfig returned from the
                         #S heater is actually tenthes, so this may be a little tight ofa restriction.
                         #TODO revise tolerance of heater temp?
-                        print abs(set_temp - self.spectrograph.cell_heater_temp())
                         while (abs(set_temp - self.spectrograph.cell_heater_temp()) > TEMPTOLERANCE):
                                 #S Give her some time to get there.
                                 time.sleep(1)
-                                print self.spectrograph.cell_heater_temp()
                                 #TODO We should track iterations, throw after a certain amount.
                                 #TODO Do a timeout, myimager.py for example for image cooler to work
                                 #TODO Error

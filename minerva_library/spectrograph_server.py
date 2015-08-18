@@ -48,7 +48,9 @@ class server:
                 self.setup_logger()
                 #S Defined later.
                 self.set_data_path()
-#                self.file_name = ''                
+#                self.file_name = ''
+                #S Create all class objects
+                self.create_class_objects()
         #S Used in the initialization.
 	def load_config(self):
                 #S Finds the config file.
@@ -123,7 +125,12 @@ class server:
 		self.data_path = self.data_path_base + '\\' + self.night
 		if not os.path.exists(self.data_path):
 			os.makedirs(self.data_path)
-		return 'success'        
+		return 'success'
+
+	#S Create class objects
+	def create_class_objects(self):
+                self.expmeter_com = com.com('expmeter',self.night,configfile=self.base_directory + '/config/com.ini')
+                self.cellheater_com = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
 
 #==================server functions===================#
 #used to process communication between camera client and server==#
@@ -321,10 +328,8 @@ class server:
         #S Get the cell heater's status, used in a lot of the other functions. Returns
 	#S some good and some useless information. 
         def cell_heater_status(self):
-                #S Create com instance for the heater.
-                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
                 #S Get the status from the heater
-                statusstr = cellheater.send("stat?")
+                statusstr = self.cellheater_com.send("stat?")
                 #S This function grabs all numbers in the string. Found
                 #S online, and super interesting. Need to look into more.
                 #S Read how it works, and understand it. It's dope. Returns a
@@ -375,14 +380,12 @@ class server:
         
         #S Turn the heater on, uses the status of the heater.
         def cell_heater_on(self):
-                #S Create com
-                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
                 #S Get the current status of the heater  
                 status = self.cell_heater_status()
                 #S If iy was off, we'll turn it on. Checked status due to toggle nature of heater power.
                 if not status['enabled']:
                         self.logger.info("Cell heater off; turning on")
-                        cellheater.send("ens")
+                        self.cellheater_com.send("ens")
                 #S It was already on, so no worries.   
                 else:
                         self.logger.info("Cell heater already on")
@@ -391,8 +394,6 @@ class server:
         
         #S You guessed it, turns the heater off.
         def cell_heater_off(self):
-                #S Create com
-                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
                 #S Get the currrent status of the cell heater
                 status = self.cell_heater_status()
                 #S Check if already off or on, due to fact that we can only toggle.
@@ -401,7 +402,7 @@ class server:
                         #S Log that is was on.
                         self.logger.info("Cell heater on; turning off")
                         #S Actually turn it off.
-                        cellheater.send("ens")
+                        self.cellheater_com.send("ens")
                 #S Already off, so no worries
                 else:
                         self.logger.info("Cell heater already off")
@@ -411,12 +412,10 @@ class server:
         #S The current actualy temperature of the heater. Uses status to 
         #S determine whether the heater is on or not.
         def cell_heater_temp(self):
-                #S Com instance
-                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
                 #S Status for units, check if on
                 status = self.cell_heater_status()
                 #S Gets that temp
-                tempstr = cellheater.send("tact?")
+                tempstr = self.cellheater_com.send("tact?")
                 #S Finds the number in the returned string from 'tact?'
                 actual_temp = re.findall('[-+]?\d+[\.]?\d*',tempstr)[0]
                 #S Is the heater on or off, and logs accordingly.
@@ -429,11 +428,10 @@ class server:
         
         #S Sets the temperature for the heater to aim for.       
         def cell_heater_set_temp(self, temp):
-                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
                 #S Despite not asking for a return, we still get one. Used
                 #S to confirm that the set temperature recorded is that from the
                 #S heater itself.
-                newsetstr = cellheater.send('tset='+str(temp))
+                newsetstr = self.cellheater_com.send('tset='+str(temp))
                 new_set_temp = re.findall('[-+]?\d+[\.]?\d*',newsetstr)[0]
                 #S Don't forget to log!
                 self.logger.info('Cell heater temp has been set to '+new_set_temp+' C')
@@ -442,10 +440,8 @@ class server:
         
         #S Query the set temperature.       
         def cell_heater_get_set_temp(self):
-                #S Com
-                cellheater = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
                 #S Actual query
-                setstr = cellheater.send('tset?')
+                setstr = self.cellheater_com.send('tset?')
                 #S Parse for number
                 set_temp = re.findall('[-+]?\d+[\.]?\d*',setstr)[0]
                 #S LOGGIT!
@@ -453,20 +449,6 @@ class server:
                 #S Return to sender.
                 return "success " + set_temp + " C"
         
-        #S Moved into server.py due to ability to bypass the server.
-        def move_i2(self,position='science'):
-                i2stage = com.com('iodineStage',self.night,configfile=self.base_directory + '/config/com.ini')
-
-                positions = {
-                        'science' : 147,
-                        'flat'  : 0,
-                        'template' : 0,
-                        }
-                if position not in positions.keys(): return "fail"
-                print i2stage.send('SetAbsMovePos=' + str(positions[position]))
-                print i2stage.send('GetAbsMovePos_AbsPos')
-                ipdb.set_trace()
-	
 	def get_vacuum_pressure(self):
                 specgauge = com.com('specgauge',self.night,configfile=self.base_directory + '/config/com.ini')
                 response = str(specgauge.send('RD'))
@@ -508,30 +490,29 @@ class server:
                 #S power on. Empirical wait time from counting how long it
                 #S it took to turn on. Potentially shortened?
                 time.sleep(5)
-                #S Creates com instance forcommunication with expmeter.
-                expmeter = com.com('expmeter',self.night,configfile=self.base_directory + '/config/com.ini')
                 #S Sends comand to set Period of expmeter measurements.
                 #S See documentation for explanation.
-                expmeter.send('P' + chr(int(100.0/MEASUREMENTSPERSEC)))
+                self.expmeter_com.send('P' + chr(int(100.0/MEASUREMENTSPERSEC)))
                 #S Turns on the high voltage.
-                expmeter.send('V'+chr(1)+chr(1))
+                self.expmeter_com.send('V'+chr(1)+chr(1))
                 #S Sets the trigger for the shutter.
-                expmeter.send('O' + chr(1))
+                self.expmeter_com.send('O' + chr(1))
                 #S This command is supposed to allow continuous measurements,
                 #S but no difference if it is made or not.
                 ##expmeter.send('L')
                 #S Begin continuous measurements.
-                expmeter.send('C')
+                self.expmeter_com.send('C')
                 #S Open up connection for reading, remains open.
-                expmeter.ser.open()
+                self.expmeter_com.ser.open()
                 #S Loop for catching exposures.
-                while True:
+                while self.expmeter_com.ser.isOpen():
                         try:
+                                #ipdb.set_trace()
                                 #S While the register is empty, wait
-                                while expmeter.ser.inWaiting() < 4:
+                                while self.expmeter_com.ser.inWaiting() < 4:
                                         time.sleep(0.01)
                                 #S Once there is a reading, get it.
-                                rawread = expmeter.ser.read(4)
+                                rawread = self.expmeter_com.ser.read(4)
                                 #S Unpack the reading from the four-byte struct.
                                 reading = struct.unpack('>I',rawread)[0]
                         
@@ -540,6 +521,8 @@ class server:
 
                         #S The exception if something goes bad, negative reading is the key.   
                         except:
+                                e = sys.exc_info()[0]
+                                self.logger.error(e)
                                 reading = -999
                         
                         #S This is the check against the maxsafecount.    
@@ -547,21 +530,20 @@ class server:
                         #S turned off expmeter, program still running. May need
                         #S to implement other actions?
                         if reading > MAXSAFECOUNT:
-                                expmeter.logger.error("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)+" > maxsafecount="+str(MAXSAFECOUNT))                    
+                                self.expmeter_com.logger.error("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)+" > maxsafecount="+str(MAXSAFECOUNT))                    
                                 break
                         #? Not sure if we need this guy, seems like we are already lgging?
                         with open(self.base_directory + "/log/" + self.night + "/expmeter.dat", "a") as fh:
                                 fh.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(reading) + "\n")
-                                fh.close()
-                        expmeter.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading))
+                        self.expmeter_com.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading))
                         
                 #S If the loop is broken, these are shutdown procedures.
                 #S Stop measurements
-                expmeter.ser.write("\r")
+                self.expmeter_com.send("\r")
                 #S High voltage off.
-                expmeter.ser.write('V'+ chr(0) + chr(0) + expmeter.termstr) # turn off voltage
+                self.expmeter_com.send('V'+ chr(0) + chr(0) + self.expmeter_com.termstr) # turn off voltage
                 #S Close the comm port
-                expmeter.close() # close connection
+                self.expmeter_com.close() # close connection
                 #S Turn of power to exposure meter
                 expdynapower.off('3')
                 

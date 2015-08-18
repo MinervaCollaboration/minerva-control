@@ -7,7 +7,8 @@ import time, struct, datetime
 class com:
     
     #S Initialization for com class. Lots of good stuff in here.
-    def __init__(self, id, night, configfile='minerva_class_files/com.ini'):
+    def __init__(self, id, night, configfile='C:/minerva-control/config/com.ini'):
+        #ipdb.set_trace()
         #S set the id of self to the memory addresss, unique identifier
         self.id = id
         
@@ -84,6 +85,9 @@ class com:
         self.logger.setLevel(logging.DEBUG)
         self.logger.addHandler(fileHandler)
         self.logger.addHandler(console)
+
+        #S Ensure that the serial port is definitely closed.
+        self.ser.close()
 
     #S Opens serial comm port. Needs to be done if command is to be sent.
     #? When is appropriate to close? Upon termination of program, or completion
