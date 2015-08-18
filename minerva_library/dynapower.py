@@ -14,7 +14,7 @@ class dynapower:
 
         #set appropriate parameter based on aqawan_num
         #create configuration file object 
-        configObj = ConfigObj(configfile)        
+        configObj = ConfigObj(configfile)
         try:
             config = configObj
         except:
@@ -90,7 +90,7 @@ class dynapower:
 
 if __name__ == '__main__':
 
-    d2 = dynapower('D2','n20150521',configfile='minerva_class_files/dynapower.ini')
+    d2 = dynapower('n20150521',configfile='config/dynapower_1.ini')
     print d2.off(7)
     ipdb.set_trace()
     

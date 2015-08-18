@@ -732,116 +732,141 @@ class control:
 	# EXPOSURES
 	###
 
-	def takeArcSpec(self,filterWheel=None):
-                #Thermocube within 0.2C?
-                #Configure the camera
-                #Thermal enclosure with 0.1C?
-                #Camera with in 0.1C?
-                #How is the vacuum?
+
+        #S Here is the general spectrograph equipment check function.
+	#S Somethings, like turning lamps on, need to be called before. More
+	#S to develop on this
+	#TODO TODO
+        def spec_equipment_check(self,objname,filterwheel=None,template = False):
+                #S Desired warmup time for lamps, in minutes
+                #? Do we want seperate times for each lamp, both need to warm for the same rightnow
+                WARMUPMINUTES = .5#10.
+                #S Convert to lowercase, just in case.
+                objname = objname.lower()
+                #S Some logic to see what type of spectrum we'll be taking.
+
+                #TODO include conditionals for lamps, maybe???
+                #?
                 
-                #S Turn ThAr lamp on, need to let it stabilize for ten minutes
-                self.spectrograph.turnThArON()
-                #S When the lamp was turned on.
-                thArStart = datetime.datetime.utcnow()
-                #S All this stuff done here to fill time while lamp is warming.
-                #S Ensure that the white lamp is off. 
-                self.spectrograph.turnWhiteOFF()
-                #S Number of minutes to let ThAr lamp warm up
-                warmUpMins = 10.
-                #S Move I2 stage out
-                self.spectrograph.moveI2Stage('out')
-                
-                #TODO Find a fun way to pass time while stabilizing.
-                #? When will arcs need to be taken in the night? It could be
-                #? worked to use the timetracking file to see how longs it has
-                #? been on for. I really feel bad just having it idle for ten
-                #? minutes waiting for it to warm up. Going to leave it as is for now,
-                #? but definitely desreves more thought than this.
+                #S These factors are necessary for all types of exposures,
+                #S so we'll put them in the equipment check
 
-                while (datetime.datetime.utcnow()-thArStart).total_seconds() < (warmUpMins*60):
-                        #S Let it sleep for 30.1 seconds so we aren't constatly creating
-                        #S datetime instances. Don't want to give it 30 or it'll sleep
-                        #S for longer than necessary.
-                        time.sleep(30.1)
+                #TODO Thermocube within 0.2C?
+                #TODO Configure the camera
+                #TODO Thermal enclosure with 0.1C?
+                #TODO Camera with in 0.1C?
+                #TODO How is the vacuum?
 
-                #Filter wheel
-                
-                #Calibration shutter open
-                
-                #S Turn of the ThAr lamp when all is done.
-                self.spectrograph.turnThArOFF()
-                pass
+                #S For ThAr exposures, we'll need the lamp on for at least ten
+                #S minutes prior. This init only checks whether the lamp has been on
+                #S for that long. We could have it default to turn on the lamp,
+                #S but for now it doesn't.
+                if objname == 'arc':
+                        #S Move the I2 stage out of the way of the slit.
+                        self.spectrograph.i2stage_move('out')
+                        #S Ensure that the white lamp is off
+                        self.spectrograph.white_turn_off()
+                        #S Move filter wheel where we want it.
+                        #TODO A move filterwheel function
+                        #S Make sure the calibration shutter is open
+                        #TODO Calibrtoin shutter open.
 
-        
-        def takeFlatSpec(self, filterWheel=None):
-                #Thermocube within 0.2C?
-                #Configure the camera
-                #Thermal enclosure with 0.1C?
-                #Camera with in 0.1C?
-                #How is the vacuum?
-
-
-                #S Turn white lamp on, need to let it stabilize for ten minutes
-                self.turnWhiteON()
-                #S When the lamp was turned on.
-                whiteStart = datetime.datetime.utcnow()                
-                #S Ensure that the ThAr lamp is off
-                self.spectrograph.turnThArOFF()
-                #S Minutes we want to let lamp warm up
-                warmUpMins = 10.
-                
-                #TODO See concerns in takeArcSpec about passing time.
-                #S Actual warm up sitting
-                while (datetime.datetime.utcnow()-whiteStart).total_seconds() < (warmUpMins*60):
-                        time.sleep(30.1)
-
-                #Filter wheel
+                        #S Determine if the lamp has been on long enough, or sleep until it has.
+                        if ((WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.thar_file)) > 0.):
+                                time.sleep(WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.thar_file))
+                        else:
+                                time.sleep(0)
+                            
+                #S Flat exposures require the white lamp to be on for ten minutes too.
+                #S Same questions as for thar specs.
+                elif objname == 'flat':
+                        #S Move the I2 stage out of the way of the slit.
+                        self.spectrograph.i2stage_move('flat')
+                        #S Ensure that the thar lamp is off
+                        self.spectrograph.thar_turn_off()
                         
-                #Cali shutter
+                                
+                        #S Move filter wheel where we want it.
+                        #TODO A move filterwheel function
+                        #S Make sure the calibration shutter is open
+                        #TODO Calibrtoin shutter open.
 
-                #S Turn the white lamp off when all is said and done
-                self.spectrograph.turnWhiteOFF()
+                        #S Make sure the lamp has been on long enough, or sleep until it has.
+                        if ((WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.white_file)) >0.):
+                                time.sleep(WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.white_file))
+                        else:
+                                time.sleep(0)
 
-                
+                #S Conditions for both bias and dark.
+                elif (objname == 'bias') or (objname == 'dark'):
+                        #S Make sure the lamps are off
+                        self.spectrograph.thar_turn_off()
+                        self.spectrograph.white_turn_off()
+                        #S Make sure the calibrations shutter is closed.
+                        #TODO Calibration shutter closed
+
+
+                #S Conditions for template images, just in case we need them might
+                #S as well have it programmed in.
+                elif template:
+                        #S Get that iodine out of my face!
+                        self.spectrograph.i2stage_move('out')
+                        #S Make sure the lamps are off
+                        self.spectrograph.thar_turn_off()
+                        self.spectrograph.white_turn_off()
+                        #S Make sure the calibrations shutter is closed.
+                        #TODO Calibration shutter closed
+
+                #S Let's do some science!
+                #S The cell heater should be turned on before starting this, to give
+                #S it time to warm up. It should really be turned on at the beginning
+                #S of the night, but just a reminder.
+                else :
+                        #S Define the temperature tolerance
+                        self.spectrograph.cell_heater_on()
+                        TEMPTOLERANCE = -21.
+                        #S Here we need the i2stage in
+                        self.spectrograph.i2stage_move('in')
+                        #S Make sure the lamps are off
+                        self.spectrograph.thar_turn_off()
+                        self.spectrograph.white_turn_off()
+                        #S Let's query the cellheater's setpoint for checks onthe temperature
                         
-                pass
+                        self.spectrograph.cell_heater_set_temp(55.00)
+                        set_temp = self.spectrograph.cell_heater_get_set_temp()
+                        #S This loop is a hold for the cell heater to be within a set tolerance
+                        #S for the iodine stage's temperature. The least sigfig returned from the
+                        #S heater is actually tenthes, so this may be a little tight ofa restriction.
+                        #TODO revise tolerance of heater temp?
+                        print abs(set_temp - self.spectrograph.cell_heater_temp())
+                        while (abs(set_temp - self.spectrograph.cell_heater_temp()) > TEMPTOLERANCE):
+                                #S Give her some time to get there.
+                                time.sleep(1)
+                                print self.spectrograph.cell_heater_temp()
+                                #TODO We should track iterations, throw after a certain amount.
+                                #TODO Do a timeout, myimager.py for example for image cooler to work
+                                #TODO Error
+               
+                        
+                                
 
-        
-        def takeBiasSpec(self):
-                #Thermocube within 0.2C?
-                #Configure the camera
-                #Thermal enclosure with 0.1C?
-                #Camera with in 0.1C?
-                #How is the vacuum?
-                pass
-        def takeDarkSpec(self):
-                #Thermocube within 0.2C?
-                #Configure the camera
-                #Thermal enclosure with 0.1C?
-                #Camera with in 0.1C?
-                #How is the vacuum?
-                pass
-        def takeTemplateSpec(self):
-                #Thermocube within 0.2C?
-                #Configure the camera
-                #Thermal enclosure with 0.1C?
-                #Camera with in 0.1C?
-                #How is the vacuum?
-                pass
-        def takeScienceSpec(self):
-                #Thermocube within 0.2C?
-                #Configure the camera
-                #Thermal enclosure with 0.1C?
-                #Camera with in 0.1C?
-                #How is the vacuum?
-                pass
-        
+                        
 
+                self.logger.info('Equipment check passed, starting '+objname+' exposure.')
+                return
+                        
+                                
+                        
+                        
+                        
+                                
 
 	
 	
-        def takeSpectrum(self,exptime,objname,template=False, expmeter=None):        
-
+        def takeSpectrum(self,exptime,objname,template=False, expmeter=None,filterwheel=None):
+                #S This is a check to ensure that everything is where/how it's supposed to be
+                #S based on objname.
+                #spec_instrument_check(objname,filterwheel)
                 #start imaging process in a different thread
                 kwargs = {'expmeter':expmeter}
 		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (exptime, objname), kwargs=kwargs)
@@ -1030,7 +1055,9 @@ class control:
                 f['CCDMODE'] = (0,'CCD Readout Mode')
                 f['FIBER'] = ('','Fiber Bundle Used')
                 f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
-                f['VAC_PRES'] = (self.spectrograph.get_vacuum_pressure(),"Vacuum Tank Pressure (mbar)")
+                #TODOTDOTDO
+                #S TESTING trying to isolate errors, need to remove
+                f['VAC_PRES'] = (0.0,"Vac pretture TEMPORARY")#(self.spectrograph.get_vacuum_pressure(),"Vacuum Tank Pressure (mbar)")
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
                 for i in range(16):
                         filename = self.base_directory + '/log/' + self.night + '/temp' + str(i+1) + '.log'
@@ -1042,7 +1069,7 @@ class control:
                         f['TEMP' + str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
                 f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
                 f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
-                f['I2POS'] = ('UNKNOWN','Iodine Stage Position')
+                f['I2POS'] = (self.spectrograph.i2stage_get_pos(),'Iodine Stage Position')
                 f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
 		header = json.dumps(f)
 		
@@ -1054,7 +1081,7 @@ class control:
 		if self.spectrograph.write_header(header):
 			self.logger.info('Finished writing spectrograph header')
 			return self.spectrograph.file_name
-                ipdb.set_trace()
+                #ipdb.set_trace()
 
 		self.logger.error('takeSpectrum failed: ' + self.spectrograph.file_name)
 		return 'error'

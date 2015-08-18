@@ -12,6 +12,7 @@ from si.client import SIClient
 from si.imager import Imager
 from minerva_library import dynapower
 import ipdb
+from PyAPT import APTMotor
 
 # spectrograph control class, control all spectrograph hardware
 class spectrograph:
@@ -22,16 +23,16 @@ class spectrograph:
 		self.base_directory = base
 		self.load_config()
 		self.setup_logger()
-		self.create_class_objects
+		self.create_class_objects()
 		self.status_lock = threading.RLock()
 		self.file_name = ''
 		# threading.Thread(target=self.write_status_thread).start()
 
                 #S Some init stuff that should probably go in a config file
                 #S File name for ThArLamp log
-		self.thArFile = 'ThArLamp01.txt'
+		self.thar_file = 'ThArLamp01.txt'
 		#S File name for white lamp log
-		self.whiteFile = 'WhiteLamp01.txt'
+		self.white_file = 'WhiteLamp01.txt'
 
 	#load configuration file
 	def load_config(self):
@@ -89,12 +90,10 @@ class spectrograph:
                 self.logger.addHandler(console)
 		
 	def create_class_objects(self):
-                self.dynapower1 = dynapower.dynapower(self.night,configfile='minerva_class_files/dynapower_1.ini')
-                self.dynapower2 = dynapower.dynapower(self.night,configfile='minerva_class_files/dynapower_2.ini')
-                #S Creates an APTMotor class for controlling the Iodinelamp stage
-                #S Refered to as self.motorI2
-                #TODO Need a similar one for the focus stage? I don;t think so.
-                self.startI2motor() 
+                self.dynapower1 = dynapower.dynapower(self.night,configfile='config/dynapower_1.ini')
+                self.dynapower2 = dynapower.dynapower(self.night,configfile='config/dynapower_2.ini')
+                
+                
 		
 	#return a socket object connected to the camera server
 	def connect_server(self):
@@ -125,6 +124,7 @@ class spectrograph:
 		if data.split()[0] == 'success':
 			self.logger.info("command completed")
 		else:
+                        #ipdb.set_trace()
 			self.logger.error("command failed")
 		return data
 	#get camera status and write into a json file with name == (self.logger_name + '.json')
@@ -237,7 +237,8 @@ class spectrograph:
                                 flux = self.getexpflux(t0)
                                 self.logger.info("flux = " + str(flux))
                                 if expmeter < flux:
-                                        imager.interrupt()
+                                        imager.retrieve_image()
+                                        ## imager.interrupt()
                                         break
 
                         
@@ -433,7 +434,7 @@ class spectrograph:
         #TODO command should be quick anyway. Might as well I'm thinking.
         
         #S Initialize the stage, needs to happen before anyhting else.
-        def connectI2Stage(self):
+        def i2stage_connect(self):
                 #S Unique serial number for I2 stage, hardwaretype for BSC201(?)
                 #S Using HW=12, waiting for response form THORLABS. Seems to work fine
                 #S in testing though.
@@ -444,7 +445,7 @@ class spectrograph:
                 #S Try and connect and initialize
                 try:
                         #S Connect the motor with credentials above.
-                        self.motorI2 = APIMotor(SN , HWTYPE)
+                        self.motorI2 = APTMotor(SN , HWTYPE)
                         #S Initialize motor, we can move and get info with this.
                         #S Can't be controllecd by anything else until relesased.
                         self.motorI2.initializeHardwareDevice()
@@ -457,23 +458,37 @@ class spectrograph:
                 #S a time, e.g. Kiwispec but not *.py
                 except:
                         self.logger.error("ERROR: did not connect to the Iodine stage.")
+                return
         #S Disconnect gracefully from Iodine stage. Not sure if we want to log last position
         #S as I don't see a need for it, but just uncomment sections to do so. Included a try:
         #S incase the stage was never connected, as this function will be included in
         #S ConsoleCtrlHandler().
-        def disconnectI2Stage(self):
+        def i2stage_disconnect(self):
                 try:
                         #currentPos = self.motorI2.getPos()
-                        self.motorI2.cleanUpATP()
+                        self.motorI2.cleanUpAPT()
                         #S Logging of succesful left off for now
                         ## self.logger.info("Iodine stage diconnected and cleaned up.")# Left as position: %0.5f mm"%(currentPos))
                 except:
                         #? Does this deserve an error?
                         self.logger.error("ERROR: The Iodine stage was never connected, or something else went wrong")
+                return
+
+        #S Get the position of the I2 stage
+
+        def i2stage_get_pos(self):
+                #S Connect to stage
+                self.i2stage_connect()
+                #S Query position
+                current_pos = self.motorI2.getPos()
+                #S Disconnect
+                self.i2stage_disconnect()
+                return float(current_pos)
+        
 
         #S Move the stage around, needs to be initialized first
         #? Do we need to worry about max velocities or anyhting?
-         def moveI2stage(self, locationstr):
+        def i2stage_move(self, locationstr):
 #        """
 #        Stage must be initialized prior to movement.
 #        Acceptable arguements -         'in'    - move the lamp to in position.
@@ -481,12 +496,12 @@ class spectrograph:
 #                                        'flat'  - move the lamp to the flat position"""
                 #S Definition of positions
                 #TODO Double check.
-                in_pos = 147.0 #mm
-                out_pos = 0.0 #mm
-                flat_pos= 93.0 #mm
+                IN_POS = 147.0 #mm
+                OUT_POS = 0.0 #mm
+                FLAT_POS = 93.0 #mm
 
                 #S Connect to the stage
-                self.connectI2Stage()
+                self.i2stage_connect()
                 #S Get previous position
                 prev_pos = self.motorI2.getPos()
 
@@ -495,11 +510,11 @@ class spectrograph:
                 #TODO before.
                 try:
                         if locationstr.lower() == 'in':
-                                self.motorI2.mAbs(in_pos)
+                                self.motorI2.mAbs(IN_POS)
                         elif locationstr.lower() == 'out':
-                                self.motorI2.mAbs(out_pos)
+                                self.motorI2.mAbs(OUT_POS)
                         elif locationstr.lower() == 'flat':
-                                self.motorI2.mAbs(flat_pos)
+                                self.motorI2.mAbs(FLAT_POS)
                         else:
                                 raise Exception("Bad position for Iodine stage.")
                 except:
@@ -510,29 +525,34 @@ class spectrograph:
                 new_pos = self.motorI2.getPos()
                 self.logger.info("Iodine stage moved from %0.5f mm to %0.5f mm"%(prev_pos,new_pos))
                 #S Disconnect from stage
-                self.disconnectI2Stage()
+                self.i2stage_disconnect()
+                return
                 
-        #S Functions for toggling hte ThAr lamp
-        def turnThArON(self):
-                self.timeTrackON(self.thArFile)
+        #S Functions for toggling the ThAr lamp
+        def thar_turn_on(self):
                 self.dynapower1.on('2')
-        def turnThArOFF(self):
+                self.time_tracker_on(self.thar_file)
+                
+                return
+        def thar_turn_off(self):
                 self.dynapower1.off('2')
-                self.timeTrackOFF(self.thArFile)
-
+                self.time_tracker_off(self.thar_file)
+                return
         #S Functions for toggling the White lamp
-        def turnWhiteON(self):
-                self.timeTrackON(self.whiteFile)
-                self.dynapower.on('1')
-        def turnWhiteOFF(self):
-                self.dynapower.off('1')
-                self.timeTrackOFF(self.whiteFile)
+        def white_turn_on(self):
+                self.time_tracker_on(self.white_file)
+                self.dynapower1.on('1')
+                return
+        def white_turn_off(self):
+                self.dynapower1.off('1')
+                self.time_tracker_off(self.white_file)
+                return
 
         #S Functions for tracking the time something has been on.
         #S Tested on my computer, so it should be fine. Definitely keep an eye
         #S on it though.
         
-        def timeTrackON(self,filename):
+        def time_tracker_on(self,filename):
                 #S Some extra path to put files in directory in log directory
                 extra_path = self.base_directory+'/log/lamps//'
                 #S Format for datetime objects being used.
@@ -544,8 +564,9 @@ class spectrograph:
                 f = open(extra_path+filename,'a')
                 f.write(now)
                 f.close()
+                return
                 
-        def timeTrackOFF(self,filename):
+        def time_tracker_off(self,filename):
                 #S Paath
                 extra_path = self.base_directory+'/log/lamps//'
                 #S Format for datetime strings 
@@ -581,7 +602,7 @@ class spectrograph:
                 #S it will still throw with IndexError as it's supposed to for
                 #S no prevtot instead. Do more investigating.
                 except (IndexError):
-                        totseconds = 0.
+                        prevtot = 0.
                         #print 'If you started a new lamp, ignore! Otherwise, something went wrong.'
                 #S The last start time as datetime. As  a try it will catch if something is
                 #S wrong with the log file. Should be at the TrackON, but this is most efficient?
@@ -600,14 +621,53 @@ class spectrograph:
                 f = open(extra_path+filename,'a')
                 f.write(','+nowstr+','+totalstr+'\n')
                 f.close()
+                return
+
+        #S Function to open lamp log file and read how long the lamp has been on for.
+        #S Used in checks to see if a lamp has been on for the required amount of time.
+        #S Same basic structure as the off one. Returns SECONDS!!!
+        #? Should we include an optio n to turn the lamp on if it is off??
+
+        def time_tracker_check(self,filename):
+                #S Paath
+                extra_path = self.base_directory+'/log/lamps//'
+                #S Format for datetime strings 
+                fmt = '%Y-%m-%dT%H:%M:%S'
+                #S Current time
+                now = datetime.datetime.utcnow()                
+                #S Open and read log. For some reason can't append and
+                #S read at sametime.
+                #TODO Find way to read file from bottom up, only need
+                #TODO last two lines.
+                f = open(extra_path+filename,'r')
+                lst = f.readlines()
+                f.close()
+                #S Check to see if there is a full line of entries at EOF, and if so,
+                #S skip the saving and update. this is because if there is a full
+                #S list of entries, this timeTrackOFF was envoked by the CtrlHandler.
+                #S The lamp was probably off already, but just in case we tell it again.
+                if len(lst[-1].split(',')) == 3:
+                        print 'The lamp is off right now, do we want it on?'
+                #S Get the datetime string from the last line, which should be the only
+                #S entry in that line. 
+                try:
+                        start = datetime.datetime.strptime(lst[-1],fmt)
+                except:
+                        self.logger.error('ERROR: Start time was screwed, check '+filename)
+                #S Calculate the time that the lamp has been on so far. SECONDSS!!
+                onTime = (now - start).total_seconds()
+                return onTime
+                
+
+        
                 
         
-        def safeclose():
+        def safe_close():
                 #S Close logs and turn off lamps
-                self.turnThArOFF()
-                self.turnWhiteOFF()
+                self.thar_turn_off()
+                self.white_turn_off()
                 #S Disconnect from Iodine stage
-                self.disconnectI2Stage()
+                self.i2stage_disconnect()
                 
         
 

@@ -201,15 +201,18 @@ class server:
                 ##s.settimeout(1)#S
                 while True:
                         print 'listening to incoming connection on port ' + str(self.port)
+                        #S Conn is a new secket object created by s.accept(), where
+                        #S addr is he address where the socket is bound to. 
                         conn, addr = s.accept()
                         try:
-                               ## conn, addr = s.accept()#S
+                               
                                 conn.settimeout(3)
                                 data = conn.recv(1024)
                         except:
                                 break
                         if not data:break
                         self.process_command(repr(data),conn)
+                conn.close()
                 s.close()
                 self.run_server()
           
@@ -494,9 +497,9 @@ class server:
                 #S The maximum count threshold we are currently allowing.
                 #S Used as trigger level for shutdown.
                 #TODO Get a real number for this.
-                maxsafecount = 100000.0
+                MAXSAFECOUNT = 100000.0
                 #S Number of measurements we want to read per second.
-                measurementspersec = 1.0
+                MEASUREMENTSPERSEC = 1.0
                 #S Create dynapower class, used only in this function.
                 expdynapower = dynapower.dynapower(self.night,configfile=self.base_directory+'/config/dynapower_1.ini')
                 #S Turn it on.
@@ -509,7 +512,7 @@ class server:
                 expmeter = com.com('expmeter',self.night,configfile=self.base_directory + '/config/com.ini')
                 #S Sends comand to set Period of expmeter measurements.
                 #S See documentation for explanation.
-                expmeter.send('P' + chr(int(100.0/measurementspersec)))
+                expmeter.send('P' + chr(int(100.0/MEASUREMENTSPERSEC)))
                 #S Turns on the high voltage.
                 expmeter.send('V'+chr(1)+chr(1))
                 #S Sets the trigger for the shutter.
@@ -543,13 +546,15 @@ class server:
                         #S Tested to see if caught, passed.Utlimately just
                         #S turned off expmeter, program still running. May need
                         #S to implement other actions?
-                        if reading > maxsafecount:
-                                expmeter.logger.error("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)+" > maxsafecount="+str(maxsafecount))                    
+                        if reading > MAXSAFECOUNT:
+                                expmeter.logger.error("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)+" > maxsafecount="+str(MAXSAFECOUNT))                    
                                 break
                         #? Not sure if we need this guy, seems like we are already lgging?
                         with open(self.base_directory + "/log/" + self.night + "/expmeter.dat", "a") as fh:
                                 fh.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(reading) + "\n")
-                        expmeter.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)) 
+                                fh.close()
+                        expmeter.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading))
+                        
                 #S If the loop is broken, these are shutdown procedures.
                 #S Stop measurements
                 expmeter.ser.write("\r")
@@ -565,7 +570,7 @@ class server:
         #S may also catch accidental shutdown, not sure about loss of
         #S power. INCLUDES:
         #S Functino to ensure power is shut off to exposure meter
-        def safeclose(self,signal):
+        def safe_close(self,signal):
                 dynapower1 = dynapower.dynapower(self.night,configfile=self.base_directory+'/config/dynapower_1.ini')
                 dynapower1.off('3')
 
@@ -576,7 +581,7 @@ if __name__ == '__main__':
 	base_directory = 'C:\minerva-control'
 
 	test_server = server('spectrograph.ini',base_directory)
-	win32api.SetConsoleCtrlHandler(test_server.safeclose,True)
+	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
 
 

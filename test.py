@@ -12,7 +12,8 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva_control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
-
+        time.sleep(5)
+        
 #        minerva.spectrograph.get_vacuum_pressure()
 #        ipdb.set_trace()
         #S This is throwing due to the calling of undenfined funnction

@@ -130,9 +130,14 @@ class Imager (object):
 
 		return cpars
 
+        #S TerminateAcquisition command empties buffers, and htus does not save an image. I want to try
+	#S just get image, but we'll see if that'll work.
 	def interrupt (self):
 
 		self.client.executeCommand (TerminateAcquisition ())
+
+	def retrieve_image(self):
+                self.client.executeCommand (RetrieveImage())
 			
 	def _saveFITS (self, img, headers, filename):
 
