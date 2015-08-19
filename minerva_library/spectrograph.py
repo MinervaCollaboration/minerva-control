@@ -13,6 +13,8 @@ from si.imager import Imager
 from minerva_library import dynapower
 import ipdb
 from PyAPT import APTMotor
+import win32api
+import atexit
 
 # spectrograph control class, control all spectrograph hardware
 class spectrograph:
@@ -28,11 +30,16 @@ class spectrograph:
 		self.file_name = ''
 		# threading.Thread(target=self.write_status_thread).start()
 
-                #S Some init stuff that should probably go in a config file
+		#S Some init stuff that should probably go in a config file
                 #S File name for ThArLamp log
 		self.thar_file = 'ThArLamp01.txt'
 		#S File name for white lamp log
 		self.white_file = 'WhiteLamp01.txt'
+		#S Setup the closing sequence.
+		win32api.SetConsoleCtrlHandler(self.safe_close,True)
+		atexit.register(self.safe_close,'signal_arguement')
+
+
 
 	#load configuration file
 	def load_config(self):
@@ -92,6 +99,7 @@ class spectrograph:
 	def create_class_objects(self):
                 self.dynapower1 = dynapower.dynapower(self.night,configfile='config/dynapower_1.ini')
                 self.dynapower2 = dynapower.dynapower(self.night,configfile='config/dynapower_2.ini')
+                self.i2stage_connect()
                 
                 
 		
@@ -477,13 +485,12 @@ class spectrograph:
         #S Get the position of the I2 stage
 
         def i2stage_get_pos(self):
-                #S Connect to stage
-                self.i2stage_connect()
-                #S Query position
-                current_pos = self.motorI2.getPos()
-                #S Disconnect
-                self.i2stage_disconnect()
-                return float(current_pos)
+                try:
+                        #S Query position
+                        current_pos = self.motorI2.getPos()
+                        return float(current_pos)
+                except:
+                        self.logger.error("The Iodine stage isn't connected (most likely).")
         
 
         #S Move the stage around, needs to be initialized first
@@ -500,8 +507,6 @@ class spectrograph:
                 OUT_POS = 0.0 #mm
                 FLAT_POS = 93.0 #mm
 
-                #S Connect to the stage
-                self.i2stage_connect()
                 #S Get previous position
                 prev_pos = self.motorI2.getPos()
 
@@ -524,8 +529,6 @@ class spectrograph:
                 #S need to log position, stuff, andything else?
                 new_pos = self.motorI2.getPos()
                 self.logger.info("Iodine stage moved from %0.5f mm to %0.5f mm"%(prev_pos,new_pos))
-                #S Disconnect from stage
-                self.i2stage_disconnect()
                 return
                 
         #S Functions for toggling the ThAr lamp
@@ -555,6 +558,15 @@ class spectrograph:
         def time_tracker_on(self,filename):
                 #S Some extra path to put files in directory in log directory
                 extra_path = self.base_directory+'/log/lamps//'
+                #S Want to check if the lamp was already on, or if the
+                #S the logger wasn't informed of a pwer off. In which case,
+                #S we'll leave what ever the last start time was in there to
+                #S be safe and continue from there.
+                fd = open(extra_path+filename,'r')
+                lst = fd.readlines()
+                fd.close()
+                if len(lst[-1].split(',')) == 1 :
+                       return
                 #S Format for datetime objects being used.
                 fmt = '%Y-%m-%dT%H:%M:%S'
                 #S Get datetime string of current time.
@@ -662,7 +674,7 @@ class spectrograph:
         
                 
         
-        def safe_close():
+        def safe_close(self,signal):
                 #S Close logs and turn off lamps
                 self.thar_turn_off()
                 self.white_turn_off()

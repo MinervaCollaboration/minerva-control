@@ -15,6 +15,7 @@ import collections
 import struct
 import dynapower
 import win32api
+import atexit
 import re
 
 # minerva library dependency
@@ -51,6 +52,10 @@ class server:
 #                self.file_name = ''
                 #S Create all class objects
                 self.create_class_objects()
+
+                #S Set up closing procedures
+                win32api.SetConsoleCtrlHandler(self.safe_close,True)
+                atexit.register(self.safe_close,'signal_arguement')
         #S Used in the initialization.
 	def load_config(self):
                 #S Finds the config file.
@@ -479,7 +484,7 @@ class server:
                 #S The maximum count threshold we are currently allowing.
                 #S Used as trigger level for shutdown.
                 #TODO Get a real number for this.
-                MAXSAFECOUNT = 100000.0
+                MAXSAFECOUNT = 150000.0
                 #S Number of measurements we want to read per second.
                 MEASUREMENTSPERSEC = 1.0
                 #S Create dynapower class, used only in this function.
@@ -509,6 +514,7 @@ class server:
                         try:
                                 #ipdb.set_trace()
                                 #S While the register is empty, wait
+                                #TODO Add time out, throw exception
                                 while self.expmeter_com.ser.inWaiting() < 4:
                                         time.sleep(0.01)
                                 #S Once there is a reading, get it.
@@ -521,9 +527,10 @@ class server:
 
                         #S The exception if something goes bad, negative reading is the key.   
                         except:
-                                e = sys.exc_info()[0]
-                                self.logger.error(e)
+                                time.sleep(.5)
+                                self.expmeter_com.logger.exception('-999')
                                 reading = -999
+                                
                         
                         #S This is the check against the maxsafecount.    
                         #S Tested to see if caught, passed.Utlimately just
@@ -563,7 +570,7 @@ if __name__ == '__main__':
 	base_directory = 'C:\minerva-control'
 
 	test_server = server('spectrograph.ini',base_directory)
-	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
+#	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
 
 

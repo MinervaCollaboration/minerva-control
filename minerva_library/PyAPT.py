@@ -39,12 +39,12 @@ class APTMotor():
         HWTYPE_L490MZ		43	// L490MZ Integrated Driver/Labjack
         HWTYPE_BBD10X		44	// 1/2/3 Ch benchtop brushless DC servo driver
         '''
-       # ipdb.set_trace()
+        #ipdb.set_trace()
         self.Connected = False
         self.aptdll = windll.LoadLibrary('C:\minerva-control\minerva_library\APT.dll')
         self.aptdll.EnableEventDlg(True)
         self.aptdll.APTInit()
-        #print 'APT initialized'
+        print 'APT initialized'
         self.HWType = c_long(HWTYPE)
         self.blCorr = 0.10 #100um backlash correction
         if SerialNum is not None:

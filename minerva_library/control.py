@@ -746,7 +746,13 @@ class control:
                 #S Some logic to see what type of spectrum we'll be taking.
 
                 #TODO include conditionals for lamps, maybe???
-                #?
+                #S Decided it would be best to include a saftey to make sure the lamps
+                #S were turned on.
+                #S LAMPS NEED TO BE SHUT DOWN MANUALLY THOUGH.
+                if (objname == 'arc'):
+                        self.spectrograph.thar_turn_on()
+                if (objname == 'flat'):
+                        self.spectrograph.white_turn_on()
                 
                 #S These factors are necessary for all types of exposures,
                 #S so we'll put them in the equipment check
@@ -761,7 +767,7 @@ class control:
                 #S minutes prior. This init only checks whether the lamp has been on
                 #S for that long. We could have it default to turn on the lamp,
                 #S but for now it doesn't.
-                if objname == 'arc':
+                if (objname == 'arc'):
                         #S Move the I2 stage out of the way of the slit.
                         self.spectrograph.i2stage_move('out')
                         #S Ensure that the white lamp is off
@@ -770,16 +776,19 @@ class control:
                         #TODO A move filterwheel function
                         #S Make sure the calibration shutter is open
                         #TODO Calibrtoin shutter open.
-
+                        #S Time left for warm up
+                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.thar_file)
+                        print '\t\t\t\tWARM TIME IS '+str(warm_time)
                         #S Determine if the lamp has been on long enough, or sleep until it has.
-                        if ((WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.thar_file)) > 0.):
-                                time.sleep(WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.thar_file))
+                        if (warm_time > 0.):
+                                time.sleep(warm_time)
+                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
                         else:
                                 time.sleep(0)
                             
                 #S Flat exposures require the white lamp to be on for ten minutes too.
                 #S Same questions as for thar specs.
-                elif objname == 'flat':
+                elif (objname == 'flat'):
                         #S Move the I2 stage out of the way of the slit.
                         self.spectrograph.i2stage_move('flat')
                         #S Ensure that the thar lamp is off
@@ -791,9 +800,13 @@ class control:
                         #S Make sure the calibration shutter is open
                         #TODO Calibrtoin shutter open.
 
+                        #S Time left for warm up
+                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.white_file)
+                        print '\t\t\t\t WARM TIME IS '+str(warm_time)
                         #S Make sure the lamp has been on long enough, or sleep until it has.
-                        if ((WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.white_file)) >0.):
-                                time.sleep(WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.white_file))
+                        if (warm_time > 0):
+                                time.sleep(warm_time)
+                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
                         else:
                                 time.sleep(0)
 
@@ -825,7 +838,7 @@ class control:
                         #S Define the temperature tolerance
                         self.spectrograph.cell_heater_on()
                         #TODO Find a better cellheater temptolerance.
-                        TEMPTOLERANCE = 0.101
+                        TEMPTOLERANCE = 0.501
                         #S Here we need the i2stage in
                         self.spectrograph.i2stage_move('in')
                         #S Make sure the lamps are off
@@ -865,7 +878,7 @@ class control:
         def takeSpectrum(self,exptime,objname,template=False, expmeter=None,filterwheel=None):
                 #S This is a check to ensure that everything is where/how it's supposed to be
                 #S based on objname.
-                #spec_instrument_check(objname,filterwheel)
+                self.spec_equipment_check(objname)
                 #start imaging process in a different thread
                 kwargs = {'expmeter':expmeter}
 		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (exptime, objname), kwargs=kwargs)
