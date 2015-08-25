@@ -188,12 +188,14 @@ class server:
 			response = self.write_header_done(tokens[1])
 		else:
 			response = 'fail'
+			self.logger.error(tokens[0]+' got to fail')
 			
 		try:
-			conn.settimeout(100)#3)
+			conn.settimeout(3)
 			conn.sendall(response)
 			conn.close()
 		except:
+                        self.logger.exception('failed to send response, connection lost')
 			self.logger.error('failed to send response, connection lost')
 			return
 
@@ -419,6 +421,7 @@ class server:
         def cell_heater_temp(self):
                 #S Status for units, check if on
                 status = self.cell_heater_status()
+                self.logger.info('Cell heater in get temp is '+str(status['enabled']))
                 #S Gets that temp
                 tempstr = self.cellheater_com.send("tact?")
                 #S Finds the number in the returned string from 'tact?'
@@ -428,8 +431,10 @@ class server:
                         self.logger.info("Cell heater is on and at "+actual_temp+" C")
                 else:
                         self.logger.info("Cell heater is off and at "+actual_temp+" C")
-                #S Yiss
-                return "success " + actual_temp +" C"
+                        
+                returnstr =  "success " + actual_temp +" C"
+                self.logger.info(returnstr)
+                return returnstr
         
         #S Sets the temperature for the heater to aim for.       
         def cell_heater_set_temp(self, temp):
@@ -494,7 +499,7 @@ class server:
                 #S Give some time for command to be sent and the outlet to
                 #S power on. Empirical wait time from counting how long it
                 #S it took to turn on. Potentially shortened?
-                time.sleep(5)
+                time.sleep(3)
                 #S Sends comand to set Period of expmeter measurements.
                 #S See documentation for explanation.
                 self.expmeter_com.send('P' + chr(int(100.0/MEASUREMENTSPERSEC)))
@@ -530,6 +535,10 @@ class server:
                                 time.sleep(.5)
                                 self.expmeter_com.logger.exception('-999')
                                 reading = -999
+                                print 'WE HIT THE SPEC_SERV EXCEPTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+                                #TODO Run this solution by Jason
+                                if not self.expmeter_com.ser.isOpen():
+                                        self.expmeter_com.open()
                                 
                         
                         #S This is the check against the maxsafecount.    

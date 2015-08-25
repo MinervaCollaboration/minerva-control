@@ -12,15 +12,12 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva_control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
-
-        minerva.spectrograph.thar_turn_on()
-        for i in range(3):
-            print 'Taking arc '+str(i)
-            minerva.takeSpectrum(1.0,'arc')
-
-        
-
-        minerva.spectrograph.thar_turn_off()
+       # minerva.config_calib()
+        pred_time = minerva.spec_calib_time()/60.
+        start = time.time()
+        minerva.spec_calibration()
+        end = time.time()
+        print 'Calib took '+str((end-start)/60.)+' versus '+str(pred_time)
 
 ##        minerva.spectrograph.white_turn_on()
 ##        for i in range(3):

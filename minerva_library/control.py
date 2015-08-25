@@ -32,11 +32,14 @@ import segments
 class control:
 	
 #============Initialize class===============#
-	
+	#S The standard init
 	def __init__(self,config,base):
+                #S This config file literally only contains the logger name I think.
 		self.config_file = config
 		self.base_directory = base
+		#S Only sets logger name right now
 		self.load_config()
+		#S See below, lots of new objects created here. 
 		self.create_class_objects()
 		
 		self.logger_lock = threading.Lock()
@@ -76,11 +79,15 @@ class control:
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.logger_name = config['LOGNAME']
+			self.calib_dict = config['CALIB_DICT']
+			for key in self.calib_dict.keys():
+                                self.calib_dict[key] = [int(x) for x in self.calib_dict[key]]
 			self.observing = False
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
-			
+
+	#? What happens here if this isn't called between 10:00AM and 4:00PM?
 	#create logger object and link to log file, if night is not specified, log files will go into /log/dump directory
 	def setup_logger(self):
 
@@ -164,7 +171,8 @@ class control:
 			self.telcom_enabled[num-1] = False
 		else:
 			self.telcom_enabled = [False]*len(self.telescopes)
-		
+
+	#S Hmmmmm
 	def telecom_shutdown(self):
 		pass
 		
@@ -180,6 +188,7 @@ class control:
 #if no argument or num outside of array command all domes
 
 	def dome_initialize(self,num):
+                #TODO There is no thread started here, do we need one?
 		if num >= 1 and num <= len(self.domes):
 			self.domes[num-1].initialize()
 		else:
@@ -864,7 +873,7 @@ class control:
 
                         
 
-                self.logger.info('Equipment check passed, starting '+objname+' exposure.')
+                self.logger.info('Equipment check passed, continuing with '+objname+' exposure.')
                 return
                         
                                 
@@ -2003,6 +2012,112 @@ class control:
 	#TODO:set up http server to handle manual commands
 	def run_server(self):
 		pass
+
+        ###
+	# SPECTROGRAPH CALIBRATION
+	###
+
+	#S Spectrograph calibration routine. 
+
+        #S Figure the (hopefully) maximum time needed for calibration sequence.
+        #S This returns the time in seconds so, so be aware of that. Could return
+        #S a time_diff or something though, which might be a but more useful.
+        def spec_calib_time(self):
+                #S Readout time for the spec CCD, seconds
+                READOUTTIME = 40.
+                #S Warm up time for lamps,seconds * minutes, which should be ten.
+                #TODO Make self.WARMUPTIME
+                WARMUPTIME = 60.*0.5#10.
+                #S Calc times
+
+                ###NEED TO CONVERT THE DICTIONARY TO FLOATS> FUCK don't want to leave this on a Friday, but my brain is fried. Need to think of a good solution to this, or learn more about dictionaries.
+                print type(self.calib_dict['arc_nums'][0]),type(self.calib_dict['arc_nums'])
+                time_for_arcs = WARMUPTIME + np.sum(np.array(self.calib_dict['arc_nums'])*(READOUTTIME + np.array(self.calib_dict['arc_times'])))
+                print 'Time for arcs: '+str(time_for_arcs)
+                time_for_flats = WARMUPTIME + np.sum(np.array(self.calib_dict['flat_nums']) * (READOUTTIME + np.array(self.calib_dict['flat_times'])))
+                print 'Time for flats: '+str(time_for_flats)
+                time_for_darks = np.sum(np.array(self.calib_dict['dark_nums']) * (READOUTTIME + np.array(self.calib_dict['dark_times'])))
+                print 'Time for darks: '+str(time_for_darks)
+                time_for_bias = np.sum(np.array(self.calib_dict['bias_nums']) * (READOUTTIME + np.array(self.calib_dict['bias_times'])))
+                print 'Time for bias: '+str(time_for_bias)
+
+                calib_time = time_for_arcs + time_for_flats + time_for_darks + time_for_bias
+
+                return calib_time
+                                                    
+                
+                
+                
+
+	#TODO Measure readout time for CCD for taking it into
+	#TODO account for overhead.
+
+
+
+	def spec_calibration(self):#num_arcs, num_darks, num_flats, num_bias):
+                #TODO Will having the calibration shutter closed be enough for darks, biases? We Think...
+                #TODO This could really help for warmup times, etc.
+                        
+
+                #S Including a back up to ensure the I2heater is on. As if we are
+                #S running calibrations, we'll probably need to be taking spectra of targets.
+                self.spectrograph.cell_heater_on()
+
+                #S Turn the ThAr lamp on
+                self.spectrograph.thar_turn_on()
+                #S Take the number of arcs specified
+                #S For the number of sets (e.g. the number of different exposure times we need to take any number
+                #S of images for)
+                for set_num in range(len(self.calib_dict['arc_nums'])):
+                        #S For the number of images in a set
+                        for num in range(self.calib_dict['arc_nums'][set_num]):
+                                #S Log the number of how many and the exposure time
+                                self.logger.info("Taking arc image: %02.0f/%02.0f, at %.0f seconds"%(num+1,self.calib_dict['arc_nums'][set_num],self.calib_dict['arc_times'][set_num]))
+                                #S Take it
+                                self.takeSpectrum(self.calib_dict['arc_times'][set_num],'arc')
+                        
+                #S Turn ThAr off, but I think it would be caought by later exposure conditoins
+                self.spectrograph.thar_turn_off()
+                
+                #S Prepping flat lamp
+                self.spectrograph.white_turn_on()
+                #TODO Same concerns as arcs, but should also worry about
+                #TODO flats with differing duratinos?
+                #S For the number of sets (e.g. the number of different exposure times we need to take any number
+                #S of images for)
+                for set_num in range(len(self.calib_dict['flat_nums'])):
+                        #S For the number of images in a set
+                        for num in range(self.calib_dict['flat_nums'][set_num]):
+                                #S Log the number of how many and the exposure time
+                                self.logger.info("Taking flat image: %02.0f/%02.0f, at %.0f seconds"%(num+1,self.calib_dict['flat_nums'][set_num],self.calib_dict['flat_times'][set_num]))
+                                #S Take it
+                                self.takeSpectrum(self.calib_dict['flat_times'][set_num],'flat')
+
+
+                #S Turn the flat lamp off
+                self.spectrograph.white_turn_off()
+
+                #S Lets take darks
+                #S For the number of sets (e.g. the number of different exposure times we need to take any number
+                #S of images for)
+                for set_num in range(len(self.calib_dict['dark_nums'])):
+                        #S For the number of images in a set
+                        for num in range(self.calib_dict['dark_nums'][set_num]):
+                                #S Log the number of how many and the exposure time
+                                self.logger.info("Taking arc image: %02.0f/%02.0f, at %.0f seconds"%(num+1,self.calib_dict['dark_nums'][set_num],self.calib_dict['dark_times'][set_num]))
+                                #S Take it
+                                self.takeSpectrum(self.calib_dict['dark_times'][set_num],'dark')
+      
+                
+                #S Moving on to biases, make this the same as all other routines.
+                for set_num in range(len(self.calib_dict['bias_nums'])):                
+                        for num in range(self.calib_dict['bias_nums'][set_num]):
+                                self.logger.info("Taking bias image: %02.0f/%02.0f at %.0f seconds"%(num+1,self.calib_dict['bias_nums'][set_num],self.calib_dict['bias_times'][set_num]))
+                                self.takeSpectrum(self.calib_dict['bias_times'][set_num],'bias')
+
+                
+                                
+                
 		
 if __name__ == '__main__':
 

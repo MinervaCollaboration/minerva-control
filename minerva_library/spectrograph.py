@@ -69,9 +69,9 @@ class spectrograph:
 			sys.exit()
 
 	#set up logger object
-	def setup_logger(self,night='dump'):
+	def setup_logger(self):
 		
-		log_path = self.base_directory + '/log/' + night
+		log_path = self.base_directory + '/log/' + self.night
                 if os.path.exists(log_path) == False:os.mkdir(log_path)
 
                 fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
@@ -100,6 +100,9 @@ class spectrograph:
                 self.dynapower1 = dynapower.dynapower(self.night,configfile='config/dynapower_1.ini')
                 self.dynapower2 = dynapower.dynapower(self.night,configfile='config/dynapower_2.ini')
                 self.i2stage_connect()
+                #TODO Should we have this here? It makes sense to give it the time
+                #TODO to warm and settle.
+                self.cell_heater_on()
                 
                 
 		
@@ -121,12 +124,15 @@ class spectrograph:
 			s.sendall(msg)
 		except:
 			self.logger.error("connection lost")
+			self.logger.exception("connection lost")
 			return 'fail'
 		try:
+                        self.logger.info('Timeout is '+str(timeout))
 			s.settimeout(timeout)
 			data = s.recv(1024)
 		except:
 			self.logger.error("connection timed out")
+			self.logger.exception("connection timed out")
 			return 'fail'
 		data = repr(data).strip("'")
 		if data.split()[0] == 'success':
@@ -390,22 +396,23 @@ class spectrograph:
         ###
         
         def cell_heater_on(self):
-                response = self.send('cell_heater_on None',5)
+                response = self.send('cell_heater_on None',20.1)
                 return response
         def cell_heater_off(self):
-                response = self.send('cell_heater_off None',5)
+                response = self.send('cell_heater_off None',20.2)
                 return response
         #TODO I don't think the second split is necessary on all these 'returns'
         def cell_heater_temp(self):
-                response = self.send('cell_heater_temp None',5)
+                response = self.send('cell_heater_temp None',20.3)
+                print response
                 return float(response.split()[1].split('\\')[0])
 
         def cell_heater_set_temp(self, temp):
-                response = self.send('cell_heater_set_temp ' + str(temp),5)
+                response = self.send('cell_heater_set_temp ' + str(temp),20.4)
                 return float(response.split()[1].split('\\')[0])
 
         def cell_heater_get_set_temp(self):
-                response = self.send('cell_heater_get_set_temp None',5)
+                response = self.send('cell_heater_get_set_temp None',20.5)
                 return float(response.split()[1].split('\\')[0]) 
 
         # close the valves, hold the pressure (during the night)

@@ -428,6 +428,7 @@ class CDK700:
 			time.sleep(0.1)
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 			telescopeStatus = self.getStatus()
+			#? Has this conditoin ever be met? Why is this here?
 			if telescopeStatus.mount.moving == 'False':
 				time.sleep(1)
 				telescopeStatus = self.getStatus()

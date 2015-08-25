@@ -93,8 +93,8 @@ class dynapower:
         
 
 if __name__ == '__main__':
-    ipdb.set_trace()
-    d2 = dynapower('n20150824',configfile='config/dynapower_1.ini')
+
+    d2 = dynapower('n20150521',configfile='config/dynapower_1.ini')
     print d2.off(7)
-    
+    ipdb.set_trace()
     
