@@ -4,10 +4,15 @@ import sys
 sys.dont_write_bytecode = True
 from minerva_library import control
 import ipdb, datetime, time, socket
+import os
 #from si.client import SIClient
 #from si.imager import Imager
 
 if __name__ == '__main__':
+        #S Start server stuff in seperate terminals
+        os.system('start cmd /c python minerva_library\PT100.py')
+        os.system('start cmd /c python minerva_library\spectrograph_server.py')
+        time.sleep(10)
 
 	base_directory = '/home/minerva/minerva_control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'

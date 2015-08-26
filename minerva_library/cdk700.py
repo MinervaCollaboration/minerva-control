@@ -56,13 +56,20 @@ def elementTreeToObject(elementTreeNode):
 
 class CDK700:
 	def __init__(self, config, base=''):
-		
+		#S Set config file
 		self.config_file = config
+		#S Set base directory
 		self.base_directory = base
+		#S Get values from config_file
 		self.load_config()
+		#S Set up logger
 		self.setup_logger()
+		#TODO Not really sure what powerswitch is really for yet.
 		self.nps = powerswitch.powerswitch(self.nps_config,base)
+		#TODO Get reading telcom as well
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
+		#TODO I think I understand threading to some degre, but need to do some
+		#TODO of my own experimenting to get a good grasp on it.
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
 		
@@ -82,7 +89,7 @@ class CDK700:
 		# turning on mount tracking
 		self.logger.info('Connecting to mount')
 		self.mountConnect()
-
+                #S Start yer engines
 		self.logger.info('Enabling motors')
 		self.mountEnableMotors()
 		

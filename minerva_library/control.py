@@ -159,6 +159,7 @@ class control:
 		self.logger_lock.release()
 		
 	#enable sending commands to telcom
+	#TODO what does this do?
 	def telcom_enable(self,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telcom_enabled[num-1] = True
@@ -188,7 +189,6 @@ class control:
 #if no argument or num outside of array command all domes
 
 	def dome_initialize(self,num):
-                #TODO There is no thread started here, do we need one?
 		if num >= 1 and num <= len(self.domes):
 			self.domes[num-1].initialize()
 		else:
@@ -223,15 +223,111 @@ class control:
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
+		return
 		
 #==================Telescope control==================#
 #block until command is complete
-#operate telescope specified by num
-#if num is not specified or outside of array range, 
+#operate telescope specified by list of numbers
+#if number(s) is/are not specified or outside of array range, 
 #all enabled telescopes will execute command in parallel
+#S I left an old version of the command to be an example of changes
+
+#TODO What if we only create fewer than four self.cdk700 objects??
+#TODO For now, saving all old versions of functions incase such an
+#S instance occurs.
 #=====================================================#
-		
-	def telescope_initialize(self,num=0):
+
+	#S New command format, which allows for incomplete lists of telescopes				
+	def telescope_initialize(self,tele_list = 0):
+                #S Catch to default a zero arguement or outside array range num_list
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        #S This is a list of numbers fron 1 to the number scopes
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                #S check if tele_list is only an int
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                #S Zero index tele_list
+                tele_list = [x-1 for x in tele_list]
+                #S The number of threads we'll have will be number of scopes
+                threads = [None] * len(tele_list)
+                #S So for each scope, this index is a bit tricky. We have a zero indexed reference to the
+                #S the number corresponding to each scope. So this is really saying
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].initialize)
+                                threads[t].start()
+                #S Join all the threads together
+                for t in range(len(num_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+                return
+
+        def telescope_autoFocus(self,tele_list=0):
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None]*len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].autoFocus)
+                                threads[t].start()
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+                
+        def telescope_acquireTarget(self,ra,dec,tele_list=0):
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None]*len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].acquireTarget,args=(ra,dec))
+                                threads[t].start()
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+                                
+        def telescope_MountGotoAltAz(self,alt,az,tele_list=0):
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None]*len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].mountGotoAltAz,args=(alt,az))
+                                threads[t].start()
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+        def telescope_park(self,tele_list=0):
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None]*len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].park)
+                                threads[t].start()
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+                
+                                                               
+
+                        
+                        
+	#S Old functions
+	def telescope_initialize_old(self,num=0):
+                #? Why is there no telecom check for the single case?
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].initialize()
 		else:
@@ -240,11 +336,12 @@ class control:
 				if self.telcom_enabled[t] == True:
 					threads[t] = threading.Thread(target = self.telescopes[t].initialize)
 					threads[t].start()
+			#? why are there two seperate loops?
 			for t in range(len(self.telescopes)):
 				if self.telcom_enabled[t] == True:
 					threads[t].join()
-					
-	def telescope_autoFocus(self,num=0):
+				
+	def telescope_autoFocus_old(self,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].autoFocus()
 		else:
@@ -257,7 +354,7 @@ class control:
 				if self.telcom_enabled[t] == True:
 					threads[t].join()
 					
-	def telescope_acquireTarget(self,ra,dec,num=0):
+	def telescope_acquireTarget_old(self,ra,dec,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].acquireTarget(ra,dec)
 		else:
@@ -270,7 +367,7 @@ class control:
 				if self.telcom_enabled[t] == True:
 					threads[t].join()
 					
-	def telescope_mountGotoAltAz(self,Alt,Az,num=0):
+	def telescope_mountGotoAltAz_old(self,Alt,Az,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].mountGotoAltAz(Alt,Az)
 		else:
@@ -283,7 +380,7 @@ class control:
 				if self.telcom_enabled[t] == True:
 					threads[t].join()
 					
-	def telescope_park(self,num=0):
+	def telescope_park_old(self,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].park()
 		else:
@@ -754,7 +851,6 @@ class control:
                 objname = objname.lower()
                 #S Some logic to see what type of spectrum we'll be taking.
 
-                #TODO include conditionals for lamps, maybe???
                 #S Decided it would be best to include a saftey to make sure the lamps
                 #S were turned on.
                 #S LAMPS NEED TO BE SHUT DOWN MANUALLY THOUGH.
@@ -2012,6 +2108,36 @@ class control:
 	#TODO:set up http server to handle manual commands
 	def run_server(self):
 		pass
+        #S Big batch of psuedo code starting up, trying to get a framework for the RV observing
+	#S script written down. 
+        def rv_observing(self):
+                #S Get the domes running in thread
+                self.domeControlThread()
+                #S Not really sure what prepNight does, but seems like it
+                #S takes care of some loggin stuff/names, and updates site info.
+                #S running it, but need explanation
+                #TODO I htink prepNight needs t o be run for each scope
+                #XXX self.prepNight()
+                #S Initialize ALL telescopes
+                self.Telescope_initialize
+                #S Spec CCD calibration process
+                self.spec_calib_time()
+                self.spec_calibration()
+
+                
+
+                #S Use a scheduler to determine the best target
+                #TODO I think we'll load in the data as a dictionary containing dictionaries for
+                #TODO each etaEarth target, so etaEarth['target_name']['attributes']
+                while nighttime:
+                        #S Better have the scheduler check validity of target as well.
+                        #S So nexttarget here is the dictionary of the next target.
+                        nexttarget = self.scheduler(etaEarth)
+                        self.telescope_aquireTarget(nexttarget['ra'],nexttarget['dec'])
+                        self.takeSpectrum(etaEarth[nexttarget])
+                
+                
+                
 
         ###
 	# SPECTROGRAPH CALIBRATION
@@ -2029,9 +2155,6 @@ class control:
                 #TODO Make self.WARMUPTIME
                 WARMUPTIME = 60.*0.5#10.
                 #S Calc times
-
-                ###NEED TO CONVERT THE DICTIONARY TO FLOATS> FUCK don't want to leave this on a Friday, but my brain is fried. Need to think of a good solution to this, or learn more about dictionaries.
-                print type(self.calib_dict['arc_nums'][0]),type(self.calib_dict['arc_nums'])
                 time_for_arcs = WARMUPTIME + np.sum(np.array(self.calib_dict['arc_nums'])*(READOUTTIME + np.array(self.calib_dict['arc_times'])))
                 print 'Time for arcs: '+str(time_for_arcs)
                 time_for_flats = WARMUPTIME + np.sum(np.array(self.calib_dict['flat_nums']) * (READOUTTIME + np.array(self.calib_dict['flat_times'])))
@@ -2049,7 +2172,7 @@ class control:
                 
                 
 
-	#TODO Measure readout time for CCD for taking it into
+	#TODO Measure readout time for CCD for taking it into, about 40s is the guess, more like 42s
 	#TODO account for overhead.
 
 
@@ -2081,8 +2204,6 @@ class control:
                 
                 #S Prepping flat lamp
                 self.spectrograph.white_turn_on()
-                #TODO Same concerns as arcs, but should also worry about
-                #TODO flats with differing duratinos?
                 #S For the number of sets (e.g. the number of different exposure times we need to take any number
                 #S of images for)
                 for set_num in range(len(self.calib_dict['flat_nums'])):
@@ -2115,7 +2236,16 @@ class control:
                                 self.logger.info("Taking bias image: %02.0f/%02.0f at %.0f seconds"%(num+1,self.calib_dict['bias_nums'][set_num],self.calib_dict['bias_times'][set_num]))
                                 self.takeSpectrum(self.calib_dict['bias_times'][set_num],'bias')
 
-                
+                return
+
+
+
+
+        #S For now let's anticipate that 'target' is a dictionary containging everything we
+        #S need to know about hte target in question
+        #S 'name','ra','dec','propermotion','parallax',weight stuff,
+        def take_rv_spec(self,target):
+                pass
                                 
                 
 		
