@@ -276,7 +276,8 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t].join()
-                
+                                
+        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
         def telescope_acquireTarget(self,ra,dec,tele_list=0):
                 if (tele_list < 1) or (tele_list > len(self.telescopes)):
                         tele_list = [x+1 for x in range(len(self.telescopes))]
@@ -286,6 +287,7 @@ class control:
                 threads = [None]*len(tele_list)
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
+                                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].acquireTarget,args=(ra,dec))
                                 threads[t].start()
                 for t in range(len(tele_list)):
@@ -1084,30 +1086,48 @@ class control:
 
                 # loop over each telescope and insert the appropriate keywords
                 for telescope in self.telescopes:
+                    #? What? What is this concat?
                     telescop += telescope.name
+                    #S the telescope number, striped of the chararray that is the string telescope.name[-1]
+                    #S Not wure where self.telescope[x].name comes from though. Not in config files that I can find.
                     telnum = telescope.name[-1]
+                    #S Getting this mysterious status dict (I believe).
                     telescopeStatus = telescope.getStatus()
+                    #S The telescopes current ra.
+                    #S NOTE: telescopestatus.mount.ra_2000 in hours. 
                     telra = ten(telescopeStatus.mount.ra_2000)*15.0
+                    #S Telescopes mounts current dec from status
                     teldec = ten(telescopeStatus.mount.dec_2000)
+                    #S The targets current ra, hours again
                     ra = ten(telescopeStatus.mount.ra_target)*15.0
+                    #S the targets dec, degrees
                     dec = ten(telescopeStatus.mount.dec_target)
+                    #S Fixes an unforetold but legendary bug in PWI. You probably have heard about it. Wait, you haven't?! Get with the picture, dammit!
+                    #S My guess is that PWI will return a wrap arund for declination sometimes. 
                     if dec > 90.0: dec = dec-360 # fixes bug in PWI
+                    #S Fill out header information based on each telescope.
                     f['TELRA' + telnum] = (telra,"Telescope RA (J2000 deg)")
                     f['TELDEC' + telnum] = (teldec,"Telescope Dec (J2000 deg)")
                     f['RA' + telnum] = (ra, "Target RA (J2000 deg)")
                     f['DEC'+ telnum] = (dec,"Target Dec (J2000 deg)")
-
+                    #S Get that moon seperation, put in in a header
                     moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
                     f['MOONDIS' + telnum] = (moonsep, "Distance between pointing and moon (deg)")
+                    #TODO Now this, where are we storing pointing model? How is it set?
+                    #TODO Obviously it's in status, but where does status get it? Is it just
+                    #TODO not on this computer?
                     f['PMODEL' + telnum] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
-                    
+                    #S Focus stuff
                     f['FOCPOS' + telnum] = (telescopeStatus.focuser.position,"Focus Position (microns)")
+                    #S Rotator stuff, only needed for photometry?
                     f['ROTPOS' + telnum] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
-
+                    #S So we do have access to port info, keep this in mind!!!
+                    #SNOTE 
                     # M3 Specific
                     f['PORT' + telnum] = (telescopeStatus.m3.port,"Selected port for " + telescope.name)
+                    #S Ahh, the otafan. Obtuse telescope ass fan, obviously.
                     f['OTAFAN' + telnum] = (telescopeStatus.fans.on,"OTA Fans on?")
-
+                    #S Get mirror temps
                     try: m1temp = telescopeStatus.temperature.primary
                     except: m1temp = 'UNKNOWN'
                     f['M1TEMP'+telnum] = (m1temp,"Primary Mirror Temp (C)")
@@ -1119,11 +1139,11 @@ class control:
                     try: m3temp = telescopeStatus.temperature.m3
                     except: m3temp = 'UNKNOWN'
                     f['M3TEMP'+telnum] = (m3temp,"Tertiary Mirror Temp (C)")
-
+                    #S Outside temp
                     try: ambtemp = telescopeStatus.temperature.ambient
                     except: ambtemp = 'UNKNOWN'
                     f['AMBTEMP'+telnum] = (ambtemp,"Ambient Temp (C)")
-                               
+                    #S Whats the backplate?           
                     try: bcktemp = telescopeStatus.temperature.backplate
                     except: bcktemp = 'UNKNOWN'
                     f['BCKTEMP'+telnum] = (bcktemp,"Backplate Temp (C)")
@@ -1681,6 +1701,8 @@ class control:
 
 
 	#if telescope_num out of range or not specified, do science for all telescopes
+	#S I don't think the above is true. Do we want to do something similar tp what
+	#S telescope commands were switched to.
 	def doScience(self,target,telescope_num = 0):
 
 		telescope_name = 'T(' + str(telescope_num) +'): '
@@ -1714,12 +1736,14 @@ class control:
 		pa = None
 
 		if target['name'] == 'autofocus':
+                        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			except: pass
 			telescope.inPosition()
 			telescope.autoFocus()
 			return
 
+                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 		# slew to the target
 		telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 
@@ -1749,6 +1773,7 @@ class control:
 								self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
 								time.sleep(30)
 								if datetime.datetime.utcnow() > target['endtime']: return
+							#TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 							#reacquire target after waiting for dome to open
 							telescope.acquireTarget(target['ra'],target['dec'])
 						if datetime.datetime.utcnow() > target['endtime']: return
@@ -1771,6 +1796,7 @@ class control:
 								time.sleep(30)
 								if datetime.datetime.utcnow() > target['endtime']: return
 
+                                                        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 						        #reacquire target after waiting for dome to open
 							telescope.acquireTarget(target['ra'],target['dec'])
 						if datetime.datetime.utcnow() > target['endtime']: return

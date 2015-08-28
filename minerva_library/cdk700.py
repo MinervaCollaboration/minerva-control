@@ -475,7 +475,98 @@ class CDK700:
 		else:
 			self.logger.error('Telescope failed to slew')
 			self.recover()
+			#S Hmmmmmmmm........
 			self.acquireTarget(ra,dec,pa=pa)
+			return
+
+	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
+        #S This has not been incorporated anywhere yet, and if it is all calls on the function will
+	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
+	def acquireTarget_new(self,target,pa=None):
+                ## Constants
+                #S Was using julian date of observation, but this was only to have a more general approach to
+                #S what coordinate system we were using. I assume we are using on J2000 coordinates, so I made it only take that for now.
+                #S It can be switched very easily though
+                #epoch = 2451545.0
+                now = datetime.datetime.utcnow()
+                j2000 = datetime.datetime(2000,01,01,12)
+                days_since_j2000 = (now-j200).days #[] = daya
+                #jd_obs = days_since_j200 + jd_of_j2000
+                #TODO NEED Au in meteres
+                AU  = 149597870700. #[] = meters
+                #S the seconds in a year
+                year_sec = 365.25*24*3600 #[] = seconds/year
+                #S Parsecs in a nAU
+                pctoau = 3600.*180/math.pi #[] = AU
+                #S km/sec to AU/year
+                #TODO AU IN METERS
+                kmstoauy = year_sec*1000./AU
+                #? Initializ3ing?
+                self.initialize()
+                #TODO what is target['ra','dec'] coming in as? This will convert to radians
+                #TODO Same for pmra and pmdec
+                ra = np.radians(target['ra'])
+                pmra = np.radians(target['pmra'])
+                dec = np.radians(target['dec'])
+                pmdec = np.radians(target['pmdec'])
+                #S Need rv if available, in m/s
+                try:
+                        rv = target['rv']
+                else:
+                        rv = 0
+                #S Unit vector pointing to star's epoch location
+                r0hat = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
+                #S Vector pointingup at celestial pole
+                up = np.array([0.,0.,1.])
+                #S Vector pointing east
+                east = np.cross(zenith, r0hat)
+                #S Normalize east vector
+                east = east/np.linalg.norm(east)
+                #S Unit vector pointing north
+                north =  np.cross(r0hat,east)
+                #S Proper motion correction (Not 100% sure what is going on with this calculation)
+                mu = (pmra*east+pmdec*north)/pctoau/1000.
+
+                #S This can be used if we want to make our code more general and to be able to switch between epochs. I'm
+                #S assuming were sticking with j2000
+                ##epoch0 = 2000. + (epoch-2451545.0)/365.25
+                ##yearnow = 2000. + (jd_obs - 2451545.0)/365.25
+                #S Days since j2000
+                T = days_since_j2000
+                #S rv away from earth, with parallax
+                vpi = rv/1000.*kmstopauy*(px/1000./pctoau)
+                #S Total velocity of star on sky (proper motion plus rv away from earth)
+                vel = mu + vpi*r0hat
+                #S corrected vector from observer to object
+                r = vel*T + r0hat
+                #S Unit vector from observer to object
+                rhat = r/p.linalg.norm(r)
+                #S rhat = [cos(dec)cos(ra),cos(dec)sin(ra),sin(dec)] for our corrected ra,dec
+                #S all we need to do is arcsin for declination, returns between [-pi/2,pi/2], converted to degrees
+                dec_corrected = np.degrees(np.arcsin(rhat[2]))
+                #S The tricky one is to get ra on [0,2pi], but this takes care of it. Converted to degrees in either case
+                #S arctan2 is rctan but chooses quadrant based on signs of arguements. Giving us ra on [-pi,pi]
+                ra_intermed  = np.arctan2(rhat[1],rhat[0])
+                #S Check to see if less than zero, add 2pi if so to make sure all angles are of ra on [0,2pi]
+                if ra_inter < 0:
+                        ra_corrected = np.degrees(ra_intermed + 2*np.pi)
+                else:
+                        ra_corrected = np.degrees(ra_intermed)
+                	
+		self.logger.info("Starting slew to J2000 " + str(ra_corrected) + ',' + str(dec_corrected))
+		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
+
+		if pa <> None:
+			self.logger.info("Slewing rotator to PA=" + str(pa) + ' deg')
+			self.rotatorMove(pa)
+
+		if self.inPosition():
+			self.logger.info("Finished slew to J2000 " + str(ra_corrected) + ',' + str(dec_corrected))
+		else:
+			self.logger.error("Slew failed to J2000 " + str(ra_corrected) + ',' + str(dec_corrected))
+			self.recover()
+			#XXX Something bad is going to happen here.
+			self.acquireTarget(ra_corrected,dec_corrected,pa=pa)
 			return
 
 	def acquireTarget(self,ra,dec,pa=None):
@@ -652,8 +743,10 @@ class CDK700:
 #test program
 if __name__ == "__main__":
 
-	base_directory = '/home/minerva/minerva-control'
+	#base_directory = '/home/minerva/minerva-control'
+        base_directory = 'C:/minerva-control/'
 	telescope = CDK700('telescope_3.ini', base_directory)
+	ipdb.set_trace()
 	while True:
 		print telescope.logger_name + ' test program'
 		print ' a. move to alt az'
