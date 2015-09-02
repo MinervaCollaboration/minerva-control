@@ -1206,8 +1206,20 @@ class control:
                         f['TEMP' + str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
                 f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
                 f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
-                f['I2POS'] = (self.spectrograph.i2stage_get_pos(),'Iodine Stage Position')
+                f['I2POSA'] = (self.spectrograph.i2stage_get_pos(),'Iodine Stage Actual Position [cm]')
+                f['I2POSS'] = (self.spectrograph.motorI2.lastlocationstr,'Iodine Stage Set Position')
                 f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+                #S PDU Header info
+                self.spectrograph.dynapower1.updateStatus()
+                self.spectrograph.dynapower2.updateStatus()
+                dyna1keys  = ['tharLamp','whiteLamp','expmeter','i2heater']
+                for key in dyna1keys:
+                        f[key] = (self.spectrograph.dynapower1.status[key],"Outlet for "+key)
+                dyna2keys = ['i2stage']
+                for key in dyna2keys:
+                        f[key] = (self.spectrograph.dynapower2.status[key],"Outlet for "+key)
+
+                
 		header = json.dumps(f)
 		
 		self.logger.info('Waiting for spectrograph imaging thread')

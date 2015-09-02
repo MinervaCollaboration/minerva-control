@@ -9,9 +9,11 @@ import sys
 import ipdb
 import mail
 import math
+import numpy
 import powerswitch
 import telcom_client
 import threading
+import numpy as np
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -492,34 +494,44 @@ class CDK700:
                 j2000 = datetime.datetime(2000,01,01,12)
                 days_since_j2000 = (now-j200).days #[] = daya
                 #jd_obs = days_since_j200 + jd_of_j2000
-                #TODO NEED Au in meteres
+                #S One AU in meters
                 AU  = 149597870700. #[] = meters
                 #S the seconds in a year
                 year_sec = 365.25*24*3600 #[] = seconds/year
                 #S Parsecs in a nAU
                 pctoau = 3600.*180/math.pi #[] = AU
                 #S km/sec to AU/year
-                #TODO AU IN METERS
                 kmstoauy = year_sec*1000./AU
                 #? Initializ3ing?
                 self.initialize()
-                #TODO what is target['ra','dec'] coming in as? This will convert to radians
-                #TODO Same for pmra and pmdec
-                ra = np.radians(target['ra'])
-                pmra = np.radians(target['pmra'])
+                #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
+                #S dec comes in as degrees.
+                ra = np.radians(target['ra']*15.)
                 dec = np.radians(target['dec'])
-                pmdec = np.radians(target['pmdec'])
+                #S 
+                try:
+                        pmra = target['pmra']
+                except:
+                        pmra = 0.
+                try:
+                        pmdec = target['pmdec']
+                except:
+                        pmdec = 0.
+                try:
+                        px = target['px']
+                except:
+                        px = 0.
                 #S Need rv if available, in m/s
                 try:
                         rv = target['rv']
-                else:
-                        rv = 0
+                except:
+                        rv = 0.
                 #S Unit vector pointing to star's epoch location
                 r0hat = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
                 #S Vector pointingup at celestial pole
                 up = np.array([0.,0.,1.])
                 #S Vector pointing east
-                east = np.cross(zenith, r0hat)
+                east = np.cross(up, r0hat)
                 #S Normalize east vector
                 east = east/np.linalg.norm(east)
                 #S Unit vector pointing north
@@ -548,10 +560,11 @@ class CDK700:
                 #S arctan2 is rctan but chooses quadrant based on signs of arguements. Giving us ra on [-pi,pi]
                 ra_intermed  = np.arctan2(rhat[1],rhat[0])
                 #S Check to see if less than zero, add 2pi if so to make sure all angles are of ra on [0,2pi]
-                if ra_inter < 0:
-                        ra_corrected = np.degrees(ra_intermed + 2*np.pi)
+                #S We do want to convert to decimal hours though
+                if ra_intermed < 0:
+                        ra_corrected = np.degrees(ra_intermed + 2*np.pi)/15.
                 else:
-                        ra_corrected = np.degrees(ra_intermed)
+                        ra_corrected = np.degrees(ra_intermed)/15.
                 	
 		self.logger.info("Starting slew to J2000 " + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
@@ -566,7 +579,7 @@ class CDK700:
 			self.logger.error("Slew failed to J2000 " + str(ra_corrected) + ',' + str(dec_corrected))
 			self.recover()
 			#XXX Something bad is going to happen here.
-			self.acquireTarget(ra_corrected,dec_corrected,pa=pa)
+			self.acquireTarget(target,pa=pa)
 			return
 
 	def acquireTarget(self,ra,dec,pa=None):

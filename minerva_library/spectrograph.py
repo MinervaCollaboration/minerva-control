@@ -63,6 +63,9 @@ class spectrograph:
                         if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                                 today = today + datetime.timedelta(days=1)
                         self.night = 'n' + today.strftime('%Y%m%d')
+                        self.i2positions = config['I2POSITIONS']
+                        for key in self.i2positions.keys():
+                                self.i2positions[key] = float(self.i2positions[key])
 
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -97,8 +100,8 @@ class spectrograph:
                 self.logger.addHandler(console)
 		
 	def create_class_objects(self):
-                self.dynapower1 = dynapower.dynapower(self.night,configfile='config/dynapower_1.ini')
-                self.dynapower2 = dynapower.dynapower(self.night,configfile='config/dynapower_2.ini')
+                self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
+                self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)
                 self.i2stage_connect()
                 #TODO Should we have this here? It makes sense to give it the time
                 #TODO to warm and settle.
@@ -457,6 +460,7 @@ class spectrograph:
                 HWTYPE = 12
                 
                 
+                
                 #S Try and connect and initialize
                 try:
                         #S Connect the motor with credentials above.
@@ -468,6 +472,9 @@ class spectrograph:
                         ## currentPos = self.motorI2.getPos()
                         #S Write it down, commented out for now.
                         ## self.logger.info("Iodine stage connected and initialized. Started at position: %0.5f mm"%(currentPos))
+
+                        #S Location str fot header, unknown because just started.
+                        self.motorI2.lastlocationstr = 'unknown'
                         
                 #S Something goes wrong. Remember, only one application can connect at
                 #S a time, e.g. Kiwispec but not *.py
@@ -503,32 +510,15 @@ class spectrograph:
         #S Move the stage around, needs to be initialized first
         #? Do we need to worry about max velocities or anyhting?
         def i2stage_move(self, locationstr):
-#        """
-#        Stage must be initialized prior to movement.
-#        Acceptable arguements -         'in'    - move the lamp to in position.
-#                                        'out'   - move the lamp to the out position
-#                                        'flat'  - move the lamp to the flat position"""
-                #S Definition of positions
-                #TODO Double check.
-                IN_POS = 147.0 #mm
-                OUT_POS = 0.0 #mm
-                FLAT_POS = 93.0 #mm
+                #S Last set location string, for header info
+                self.motorI2.lastlocationstr = locationstr
 
                 #S Get previous position
                 prev_pos = self.motorI2.getPos()
 
-                #S Read position arguement, or throw if something goes bad.
-                #TODO Make sure this works as desired. Never used Exception
-                #TODO before.
+                #S Try to get locationstr from dictionary in config.
                 try:
-                        if locationstr.lower() == 'in':
-                                self.motorI2.mAbs(IN_POS)
-                        elif locationstr.lower() == 'out':
-                                self.motorI2.mAbs(OUT_POS)
-                        elif locationstr.lower() == 'flat':
-                                self.motorI2.mAbs(FLAT_POS)
-                        else:
-                                raise Exception("Bad position for Iodine stage.")
+                        self.motorI2.mAbs(self.i2positions[locationstr.lower()])
                 except:
                         #throw and log error on bad position
                         self.logger.error("ERROR: Iodine failed to move or invalid location.")
@@ -537,24 +527,24 @@ class spectrograph:
                 new_pos = self.motorI2.getPos()
                 self.logger.info("Iodine stage moved from %0.5f mm to %0.5f mm"%(prev_pos,new_pos))
                 return
-                
+        #TODODYNA need to incorporate outlet names, etc.        
         #S Functions for toggling the ThAr lamp
         def thar_turn_on(self):
-                self.dynapower1.on('2')
+                self.dynapower1.on('tharLamp')
                 self.time_tracker_on(self.thar_file)
                 
                 return
         def thar_turn_off(self):
-                self.dynapower1.off('2')
+                self.dynapower1.off('tharLamp')
                 self.time_tracker_off(self.thar_file)
                 return
         #S Functions for toggling the White lamp
         def white_turn_on(self):
                 self.time_tracker_on(self.white_file)
-                self.dynapower1.on('1')
+                self.dynapower1.on('whiteLamp')
                 return
         def white_turn_off(self):
-                self.dynapower1.off('1')
+                self.dynapower1.off('whiteLamp')
                 self.time_tracker_off(self.white_file)
                 return
 

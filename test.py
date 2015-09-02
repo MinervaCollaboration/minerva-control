@@ -23,7 +23,8 @@ if __name__ == '__main__':
         #S This may be the source of our problems, but we'll see. I'm adding
         #S a TODO to make sure it's looked at again.
         #TODO
-        minerva.takeSpectrum(60.0,'test')#,expmeter=1000000.0)
+        ipdb.set_trace()
+        minerva.takeSpectrum(60.0,'test',expmeter=1000000.0)
 
         ipdb.set_trace()
 	tel = 4

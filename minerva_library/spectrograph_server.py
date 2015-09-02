@@ -492,14 +492,14 @@ class server:
                 MAXSAFECOUNT = 150000.0
                 #S Number of measurements we want to read per second.
                 MEASUREMENTSPERSEC = 1.0
-                #S Create dynapower class, used only in this function.
-                expdynapower = dynapower.dynapower(self.night,configfile=self.base_directory+'/config/dynapower_1.ini')
+                #S Create dynapower class, used only in this function. Note no browser should be opened.
+                expdynapower = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini')
                 #S Turn it on.
-                expdynapower.on('3')
+                expdynapower.on('expmeter')
                 #S Give some time for command to be sent and the outlet to
                 #S power on. Empirical wait time from counting how long it
                 #S it took to turn on. Potentially shortened?
-                time.sleep(3)
+                time.sleep(2)
                 #S Sends comand to set Period of expmeter measurements.
                 #S See documentation for explanation.
                 self.expmeter_com.send('P' + chr(int(100.0/MEASUREMENTSPERSEC)))
@@ -561,7 +561,7 @@ class server:
                 #S Close the comm port
                 self.expmeter_com.close() # close connection
                 #S Turn of power to exposure meter
-                expdynapower.off('3')
+                expdynapower.off('expmeter')
                 
         #S Used in the Console CTRL Handler, where we 
         #S can put all routines to be perfomred in here I think. It
@@ -569,8 +569,8 @@ class server:
         #S power. INCLUDES:
         #S Functino to ensure power is shut off to exposure meter
         def safe_close(self,signal):
-                dynapower1 = dynapower.dynapower(self.night,configfile=self.base_directory+'/config/dynapower_1.ini')
-                dynapower1.off('3')
+                dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini')
+                dynapower1.off('expmeter')
 
                 
                 
