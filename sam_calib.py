@@ -12,9 +12,11 @@ if __name__ == '__main__':
         #S Start server stuff in seperate terminals
         os.system('start cmd /c python minerva_library\PT100.py')
         os.system('start cmd /c python minerva_library\spectrograph_server.py')
-        time.sleep(10)
+        time.sleep(15)
 
 	base_directory = '/home/minerva/minerva_control'
+	#S testing
+	base_directory  = 'C:/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
        # minerva.config_calib()

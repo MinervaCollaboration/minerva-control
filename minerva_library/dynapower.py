@@ -101,6 +101,8 @@ class dynapower:
         except:
             self.browser = selenium.webdriver.Chrome(self.base+'/dependencies/'+self.driverfile)
             self.updateStatus()
+
+        return self.status
             
         #DEBUG        
         for key in self.status.keys():

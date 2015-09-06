@@ -18,6 +18,7 @@ from PyAPT import APTMotor
 import win32api
 import atexit
 import re
+import json
 
 # minerva library dependency
 #S Put copy of dynapwoer.py in spectrograph_modules for power stuff on expmeter
@@ -68,6 +69,8 @@ class server:
 			self.ip = config['HOST']
                         self.logger_name = config['LOGNAME']
                         self.header_buffer = ''
+                        self.thar_file = config['THARFILE']
+                        self.white_file = config['WHITEFILE']
 		except:
 			print('ERROR accessing ', self.name, ".", 
 				   self.name, " was not found in the configuration file", configfile)
@@ -139,6 +142,7 @@ class server:
                 self.cellheater_com = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
                 self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
                 self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)
+                self.i2stage_connect()
 
 #==================server functions===================#
 #used to process communication between camera client and server==#
@@ -205,6 +209,12 @@ class server:
 			response = self.white_turn_on()
 		elif tokens[0] == 'white_turn_off':
 			response = self.white_turn_off()
+		elif tokens[0] == 'time_tracker_check':
+                        response = self.time_tracker_check(tokens[1])
+                elif tokens[0] == 'update_dynapower1':
+                        response = self.update_dynapower1()
+                elif tokens[0] == 'update_dynapower2':
+                        response = self.update_dynapower2()
 		
 		else:
 			response = 'fail'
@@ -410,7 +420,7 @@ class server:
                 try:
                         #S Query position
                         current_pos = self.motorI2.getPos()
-                        return 'sucess' + current_pos
+                        return 'sucess ' + str(current_pos)
                 except:
                         self.logger.error("The Iodine stage isn't connected (most likely).")
 			return 'fail'
@@ -594,21 +604,20 @@ class server:
         def thar_turn_on(self):
                 self.dynapower1.on('tharLamp')
                 self.time_tracker_on(self.thar_file)
-                
-                return
+                return 'success'
         def thar_turn_off(self):
                 self.dynapower1.off('tharLamp')
                 self.time_tracker_off(self.thar_file)
-                return
+                return 'success'
         #S Functions for toggling the White lamp
         def white_turn_on(self):
                 self.time_tracker_on(self.white_file)
                 self.dynapower1.on('whiteLamp')
-                return
+                return 'success'
         def white_turn_off(self):
                 self.dynapower1.off('whiteLamp')
                 self.time_tracker_off(self.white_file)
-                return
+                return 'success'
 
         #S Functions for tracking the time something has been on.
         #S Tested on my computer, so it should be fine. Definitely keep an eye
@@ -635,7 +644,7 @@ class server:
                 f = open(extra_path+filename,'a')
                 f.write(now)
                 f.close()
-                return
+                return 'success'
                 
         def time_tracker_off(self,filename):
                 #S Paath
@@ -692,7 +701,7 @@ class server:
                 f = open(extra_path+filename,'a')
                 f.write(','+nowstr+','+totalstr+'\n')
                 f.close()
-                return
+                return 'success'
 
         #S Function to open lamp log file and read how long the lamp has been on for.
         #S Used in checks to see if a lamp has been on for the required amount of time.
@@ -727,7 +736,21 @@ class server:
                         self.logger.error('ERROR: Start time was screwed, check '+filename)
                 #S Calculate the time that the lamp has been on so far. SECONDSS!!
                 onTime = (now - start).total_seconds()
-                return onTime
+                return 'success ' + str(onTime)
+
+        
+        ### Extra dynapower stuff
+
+        def update_dynapower1(self):
+                status_dict = self.dynapower1.updateStatus()
+                dict_str = json.dumps(status_dict)
+                return 'success '+dict_str
+
+        def update_dynapower2(self):
+                status_dict = self.dynapower2.updateStatus()
+                dict_str = json.dumps(status_dict)
+                return 'success '+dict_str
+                
                 
 
 
@@ -751,10 +774,8 @@ class server:
                 MAXSAFECOUNT = 150000.0
                 #S Number of measurements we want to read per second.
                 MEASUREMENTSPERSEC = 1.0
-                #S Create dynapower class, used only in this function. Note no browser should be opened.
-                expdynapower = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini')
-                #S Turn it on.
-                expdynapower.on('expmeter')
+                #S Turn expmeter on
+                self.dynapower1.on('expmeter')
                 #S Give some time for command to be sent and the outlet to
                 #S power on. Empirical wait time from counting how long it
                 #S it took to turn on. Potentially shortened?
@@ -820,16 +841,19 @@ class server:
                 #S Close the comm port
                 self.expmeter_com.close() # close connection
                 #S Turn of power to exposure meter
-                expdynapower.off('expmeter')
-                
+                self.dynapower1.off('expmeter')
+
+
+
+
+                 
         #S Used in the Console CTRL Handler, where we 
         #S can put all routines to be perfomred in here I think. It
         #S may also catch accidental shutdown, not sure about loss of
         #S power. INCLUDES:
         #S Functino to ensure power is shut off to exposure meter
         def safe_close(self,signal):
-                dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini')
-                dynapower1.off('expmeter')
+                self.dynapower1.off('expmeter')
 		self.thar_turn_off()
 		self.white_turn_off()
 		self.i2stage_disconnect()

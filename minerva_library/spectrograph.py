@@ -2,6 +2,7 @@ import sys
 import os
 import socket
 import logging
+import json
 import time
 import threading
 import datetime
@@ -27,14 +28,8 @@ class spectrograph:
 		self.file_name = ''
 		# threading.Thread(target=self.write_status_thread).start()
 
-		#S Some init stuff that should probably go in a config file
-                #S File name for ThArLamp log
-		self.thar_file = 'ThArLamp01.txt'
-		#S File name for white lamp log
-		self.white_file = 'WhiteLamp01.txt'
-		#S Setup the closing sequence.
-		win32api.SetConsoleCtrlHandler(self.safe_close,True)
-		atexit.register(self.safe_close,'signal_arguement')
+   
+
 
 
 
@@ -63,6 +58,8 @@ class spectrograph:
                         self.i2positions = config['I2POSITIONS']
                         for key in self.i2positions.keys():
                                 self.i2positions[key] = float(self.i2positions[key])
+                        self.thar_file = config['THARFILE']
+                        self.white_file = config['WHITEFILE']
 
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -97,9 +94,6 @@ class spectrograph:
                 self.logger.addHandler(console)
 		
 	def create_class_objects(self):
-                self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
-                self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)
-                self.i2stage_connect()
                 #TODO Should we have this here? It makes sense to give it the time
                 #TODO to warm and settle.
                 self.cell_heater_on()
@@ -450,44 +444,65 @@ class spectrograph:
         
         #S Initialize the stage, needs to happen before anyhting else.
         def i2stage_connect(self):
-                response = self.send('i2stage_connect None',5)
+                response = self.send('i2stage_connect None',10)
                 return response
  
         def i2stage_disconnect(self):
-                response = self.send('i2stage_disconnect None',5)
+                response = self.send('i2stage_disconnect None',10)
                 return response
 
         def i2stage_get_pos(self):
-                response = self.send('i2stage_get_pos None',5)
-                return response
+                response = self.send('i2stage_get_pos None',10)
+                return float(response.split()[1].split('\\')[0])
 
         def i2stage_move(self,locationstr):
-                response = self.send('i2stage_move '+locationstr,5)
+                #S some hackery for writing info to headers in control.py
+                #TODO Can and should be gone about in a better way
+                self.lastI2MotorLocation = locationstr
+                response = self.send('i2stage_move '+locationstr,10)
                 return response
 
 
          #TODODYNA need to incorporate outlet names, etc.        
         #S Functions for toggling the ThAr lamp
         def thar_turn_on(self):
-                response = self.send('thar_turn_on None',5)
+                response = self.send('thar_turn_on None',10)
                 return response
 
         def thar_turn_off(self):
-                response = self.send('thar_turn_off None',5)
+                response = self.send('thar_turn_off None',10)
                 return response
 
 
 
         #S Functions for toggling the White lamp
         def white_turn_on(self):
-                response = self.send('white_turn_on None',5)
+                response = self.send('white_turn_on None',10)
                 return response
 
 
         def white_turn_off(self):
-                response = self.send('white_turn_off None',5)
+                response = self.send('white_turn_off None',10)
                 return response
-                 
+
+        def time_tracker_check(self,filename):
+                response = self.send("time_tracker_check "+filename,10)
+                #return response
+                return float(response.split()[1].split('\\')[0])
+
+        def update_dynapower1(self):
+                temp_response = self.send('update_dynapower1 None',10)
+                #ipdb.set_trace()
+                status_str = ''
+                for p in temp_response.split(' ')[1:]:
+                        status_str = status_str + p + ' '
+                self.dynapower1_status = json.loads(status_str)
+        def update_dynapower2(self):
+                temp_response = self.send('update_dynapower2 None',10)
+                status_str = ''
+                for p in temp_response.split(' ')[1:]:
+                        status_str = status_str + p + ' '
+                self.dynapower2_status = json.loads(status_str)
         
 
         
