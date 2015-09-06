@@ -48,7 +48,7 @@ class control:
 		
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
-	
+		#S Commenting put for operation on minervaMain
 		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []

@@ -6,7 +6,6 @@ import time, urllib2, ipdb, datetime, logging, requests
 import selenium
 from selenium import webdriver
 from configobj import ConfigObj
-from bs4 import BeautifulSoup
 from requests.auth import HTTPBasicAuth
 
 #To Do: change log to appropriate format, log open/close failure by reading status, add more functionality as needed 

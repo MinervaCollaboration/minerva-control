@@ -10,6 +10,7 @@ pip install pyreadline
 pip install requests
 pip install pyserial
 pip install SendKeys
+pip install selenium
 cd pywinauto-0.4.2
 python setup.py install
 cd ..

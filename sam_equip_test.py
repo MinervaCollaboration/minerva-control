@@ -8,20 +8,12 @@ import ipdb, datetime, time, socket
 #from si.imager import Imager
 
 if __name__ == '__main__':
-
-	base_directory = '/home/minerva/minerva_control'
+	ipdb.set_trace()
+	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
-        minerva.spectrograph.thar_turn_on()
-        minerva.spectrograph.thar_turn_on()
-
-        time.sleep(3)
-        print minerva.spectrograph.time_tracker_check(minerva.spectrograph.thar_file)
-        time.sleep(3)
-        minerva.spectrograph.thar_turn_off()
-        
-        print 'thar on'
+	minerva.telescope_initialize([3,4])
         
        # minerva.spec_equipment_check('HD12121')
         
