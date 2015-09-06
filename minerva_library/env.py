@@ -165,8 +165,21 @@ class site:
 			weather['cloudDate'] = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
 			weather['relativeSkyTemp'] = float(data[13])
 			
-		elif self.logger_name == 'Simulate':
-			pass
+		elif self.logger_name == 'site_Simulate' or self.logger_name == 'site_Wellington':
+                        # get values that pass through
+                        weather = {}
+                        weather['date'] = datetime.datetime.utcnow()
+                        weather['cloudDate'] = datetime.datetime.utcnow()
+                        weather['outsideTemp'] = 20.0
+                        weather['windSpeed'] = 0.0
+                        weather['outsideHumidity'] = 0.0
+                        weather['outsideDewPt'] = 0.0
+                        weather['wxt510Rain'] = 0.0
+                        weather['relativeSkyTemp'] = 999
+                        weather['totalRain'] = 0.0
+                        weather['barometer'] = 1000.0
+                        weather['windGustSpeed'] = 0.0
+                        weather['windDirectionDegrees'] = 0.0
 			
 		# add in the Sun Altitude
 		weather['sunAltitude'] = self.sunalt()
@@ -174,9 +187,9 @@ class site:
 		# make sure all required keys are present
 		pageError = False
 		requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
-						'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
-						'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
-						'cloudDate', 'relativeSkyTemp']
+                                'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
+				'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
+				'cloudDate', 'relativeSkyTemp']
 		
 		for key in requiredKeys:
 			if not key in weather.keys():

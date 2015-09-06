@@ -7,7 +7,9 @@ import socket
 
 #sys.path.insert (0, os.path.join (os.getcwd(), '..'))
 
+#? What's going on here?
 from si import __progname__, __description__, __copyleft__
+
 
 from si.client import SIClient
 from si.imager import Imager

@@ -14,6 +14,7 @@ import pyfits
 import shutil
 import re
 import collections
+import subprocess
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
 
@@ -31,11 +32,14 @@ import segments
 class control:
 	
 #============Initialize class===============#
-	
+	#S The standard init
 	def __init__(self,config,base):
+                #S This config file literally only contains the logger name I think.
 		self.config_file = config
 		self.base_directory = base
+		#S Only sets logger name right now
 		self.load_config()
+		#S See below, lots of new objects created here. 
 		self.create_class_objects()
 		
 		self.logger_lock = threading.Lock()
@@ -45,8 +49,14 @@ class control:
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
 	
-		self.site = env.site('site_mtHopkins.ini',self.base_directory)
 		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+                self.domes = []
+                self.telescopes = []
+                self.cameras = []
+		self.site = env.site('site_Wellington.ini',self.base_directory)
+                return
+
+		self.site = env.site('site_mtHopkins.ini',self.base_directory)
 		
 		self.domes = [
 		aqawan.aqawan('aqawan_1.ini',self.base_directory),
@@ -63,21 +73,31 @@ class control:
 		imager.imager('imager_t2.ini',self.base_directory),
 		imager.imager('imager_t3.ini',self.base_directory),
 		imager.imager('imager_t4.ini',self.base_directory)]
-		
+                        
 	def load_config(self):
-		
+
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.logger_name = config['LOGNAME']
+			self.calib_dict = config['CALIB_DICT']
+			for key in self.calib_dict.keys():
+                                self.calib_dict[key] = [int(x) for x in self.calib_dict[key]]
 			self.observing = False
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
-			
+
+	#? What happens here if this isn't called between 10:00AM and 4:00PM?
 	#create logger object and link to log file, if night is not specified, log files will go into /log/dump directory
-	def setup_logger(self,night='dump'):
-			
-		log_path = self.base_directory + '/log/' + night
+	def setup_logger(self):
+
+		# reset the night at 10 am local                                                                                                 
+		today = datetime.datetime.utcnow()
+		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+                        today = today + datetime.timedelta(days=1)
+		self.night = 'n' + today.strftime('%Y%m%d')
+		
+		log_path = self.base_directory + '/log/' + self.night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
 
 		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
@@ -124,21 +144,22 @@ class control:
 		'''
 
 	#set logger path for all control objects
-	def setup_loggers(self,night='dump'):
+	def setup_loggers(self):
 	
 		self.logger_lock.acquire()
-		self.setup_logger(night)
+		self.setup_logger()
 		for a in self.domes:
-			a.setup_logger(night)
+			a.setup_logger()
 		for t in self.telescopes:
-			t.setup_logger(night)
+			t.setup_logger()
 		for c in self.cameras:
-			c.setup_logger(night)
-		self.site.setup_logger(night)
-		self.spectrograph.setup_logger(night)
+			c.setup_logger()
+		self.site.setup_logger()
+		self.spectrograph.setup_logger()
 		self.logger_lock.release()
 		
 	#enable sending commands to telcom
+	#TODO what does this do?
 	def telcom_enable(self,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telcom_enabled[num-1] = True
@@ -151,7 +172,8 @@ class control:
 			self.telcom_enabled[num-1] = False
 		else:
 			self.telcom_enabled = [False]*len(self.telescopes)
-		
+
+	#S Hmmmmm
 	def telecom_shutdown(self):
 		pass
 		
@@ -201,15 +223,113 @@ class control:
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
+		return
 		
 #==================Telescope control==================#
 #block until command is complete
-#operate telescope specified by num
-#if num is not specified or outside of array range, 
+#operate telescope specified by list of numbers
+#if number(s) is/are not specified or outside of array range, 
 #all enabled telescopes will execute command in parallel
+#S I left an old version of the command to be an example of changes
+
+#TODO What if we only create fewer than four self.cdk700 objects??
+#TODO For now, saving all old versions of functions incase such an
+#S instance occurs.
 #=====================================================#
-		
-	def telescope_initialize(self,num=0):
+
+	#S New command format, which allows for incomplete lists of telescopes				
+	def telescope_initialize(self,tele_list = 0):
+                #S Catch to default a zero arguement or outside array range num_list
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        #S This is a list of numbers fron 1 to the number scopes
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                #S check if tele_list is only an int
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                #S Zero index tele_list
+                tele_list = [x-1 for x in tele_list]
+                #S The number of threads we'll have will be number of scopes
+                threads = [None] * len(tele_list)
+                #S So for each scope, this index is a bit tricky. We have a zero indexed reference to the
+                #S the number corresponding to each scope. So this is really saying
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].initialize)
+                                threads[t].start()
+                #S Join all the threads together
+                for t in range(len(num_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+                return
+
+        def telescope_autoFocus(self,tele_list=0):
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None]*len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].autoFocus)
+                                threads[t].start()
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+                                
+        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
+        def telescope_acquireTarget(self,ra,dec,tele_list=0):
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None]*len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].acquireTarget,args=(ra,dec))
+                                threads[t].start()
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+                                
+        def telescope_MountGotoAltAz(self,alt,az,tele_list=0):
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None]*len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].mountGotoAltAz,args=(alt,az))
+                                threads[t].start()
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+        def telescope_park(self,tele_list=0):
+                if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                if type(tele_list) is int:
+                        tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None]*len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].park)
+                                threads[t].start()
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]]:
+                                threads[t].join()
+                
+                                                               
+
+                        
+                        
+	#S Old functions
+	def telescope_initialize_old(self,num=0):
+                #? Why is there no telecom check for the single case?
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].initialize()
 		else:
@@ -218,11 +338,12 @@ class control:
 				if self.telcom_enabled[t] == True:
 					threads[t] = threading.Thread(target = self.telescopes[t].initialize)
 					threads[t].start()
+			#? why are there two seperate loops?
 			for t in range(len(self.telescopes)):
 				if self.telcom_enabled[t] == True:
 					threads[t].join()
-					
-	def telescope_autoFocus(self,num=0):
+				
+	def telescope_autoFocus_old(self,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].autoFocus()
 		else:
@@ -235,7 +356,7 @@ class control:
 				if self.telcom_enabled[t] == True:
 					threads[t].join()
 					
-	def telescope_acquireTarget(self,ra,dec,num=0):
+	def telescope_acquireTarget_old(self,ra,dec,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].acquireTarget(ra,dec)
 		else:
@@ -248,7 +369,7 @@ class control:
 				if self.telcom_enabled[t] == True:
 					threads[t].join()
 					
-	def telescope_mountGotoAltAz(self,Alt,Az,num=0):
+	def telescope_mountGotoAltAz_old(self,Alt,Az,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].mountGotoAltAz(Alt,Az)
 		else:
@@ -261,7 +382,7 @@ class control:
 				if self.telcom_enabled[t] == True:
 					threads[t].join()
 					
-	def telescope_park(self,num=0):
+	def telescope_park_old(self,num=0):
 		if num >= 1 and num <= len(self.telescopes):
 			self.telescopes[num-1].park()
 		else:
@@ -714,8 +835,405 @@ class control:
 					       xreftrunc,yreftrunc,xtrunc,ytrunc,scl,dscl,thet,dthet)
 
 		return dx,dy,scale,rot,flag,rmsf,nstf
-	
 
+        ###
+	# EXPOSURES
+	###
+
+
+        #S Here is the general spectrograph equipment check function.
+	#S Somethings, like turning lamps on, need to be called before. More
+	#S to develop on this
+	#TODO TODO
+        def spec_equipment_check(self,objname,filterwheel=None,template = False):
+                #S Desired warmup time for lamps, in minutes
+                #? Do we want seperate times for each lamp, both need to warm for the same rightnow
+                WARMUPMINUTES = .5#10.
+                #S Convert to lowercase, just in case.
+                objname = objname.lower()
+                #S Some logic to see what type of spectrum we'll be taking.
+
+                #S Decided it would be best to include a saftey to make sure the lamps
+                #S were turned on.
+                #S LAMPS NEED TO BE SHUT DOWN MANUALLY THOUGH.
+                if (objname == 'arc'):
+                        self.spectrograph.thar_turn_on()
+                if (objname == 'flat'):
+                        self.spectrograph.white_turn_on()
+                
+                #S These factors are necessary for all types of exposures,
+                #S so we'll put them in the equipment check
+
+                #TODO Thermocube within 0.2C?
+                #TODO Configure the camera
+                #TODO Thermal enclosure with 0.1C?
+                #TODO Camera with in 0.1C?
+                #TODO How is the vacuum?
+
+                #S For ThAr exposures, we'll need the lamp on for at least ten
+                #S minutes prior. This init only checks whether the lamp has been on
+                #S for that long. We could have it default to turn on the lamp,
+                #S but for now it doesn't.
+                if (objname == 'arc'):
+                        #S Move the I2 stage out of the way of the slit.
+                        self.spectrograph.i2stage_move('out')
+                        #S Ensure that the white lamp is off
+                        self.spectrograph.white_turn_off()
+                        #S Move filter wheel where we want it.
+                        #TODO A move filterwheel function
+                        #S Make sure the calibration shutter is open
+                        #TODO Calibrtoin shutter open.
+                        #S Time left for warm up
+                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.thar_file)
+                        print '\t\t\t\tWARM TIME IS '+str(warm_time)
+                        #S Determine if the lamp has been on long enough, or sleep until it has.
+                        if (warm_time > 0.):
+                                time.sleep(warm_time)
+                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
+                        else:
+                                time.sleep(0)
+                            
+                #S Flat exposures require the white lamp to be on for ten minutes too.
+                #S Same questions as for thar specs.
+                elif (objname == 'flat'):
+                        #S Move the I2 stage out of the way of the slit.
+                        self.spectrograph.i2stage_move('flat')
+                        #S Ensure that the thar lamp is off
+                        self.spectrograph.thar_turn_off()
+                        
+                                
+                        #S Move filter wheel where we want it.
+                        #TODO A move filterwheel function
+                        #S Make sure the calibration shutter is open
+                        #TODO Calibrtoin shutter open.
+
+                        #S Time left for warm up
+                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.white_file)
+                        print '\t\t\t\t WARM TIME IS '+str(warm_time)
+                        #S Make sure the lamp has been on long enough, or sleep until it has.
+                        if (warm_time > 0):
+                                time.sleep(warm_time)
+                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
+                        else:
+                                time.sleep(0)
+
+                #S Conditions for both bias and dark.
+                elif (objname == 'bias') or (objname == 'dark'):
+                        #S Make sure the lamps are off
+                        self.spectrograph.thar_turn_off()
+                        self.spectrograph.white_turn_off()
+                        #S Make sure the calibrations shutter is closed.
+                        #TODO Calibration shutter closed
+
+
+                #S Conditions for template images, just in case we need them might
+                #S as well have it programmed in.
+                elif template:
+                        #S Get that iodine out of my face!
+                        self.spectrograph.i2stage_move('out')
+                        #S Make sure the lamps are off
+                        self.spectrograph.thar_turn_off()
+                        self.spectrograph.white_turn_off()
+                        #S Make sure the calibrations shutter is closed.
+                        #TODO Calibration shutter closed
+
+                #S Let's do some science!
+                #S The cell heater should be turned on before starting this, to give
+                #S it time to warm up. It should really be turned on at the beginning
+                #S of the night, but just a reminder.
+                else :
+                        #S Define the temperature tolerance
+                        self.spectrograph.cell_heater_on()
+                        #TODO Find a better cellheater temptolerance.
+                        TEMPTOLERANCE = 0.501
+                        #S Here we need the i2stage in
+                        self.spectrograph.i2stage_move('in')
+                        #S Make sure the lamps are off
+                        self.spectrograph.thar_turn_off()
+                        self.spectrograph.white_turn_off()
+                        #S Let's query the cellheater's setpoint for checks onthe temperature
+                        
+                        self.spectrograph.cell_heater_set_temp(55.00)
+                        set_temp = self.spectrograph.cell_heater_get_set_temp()
+                        #S This loop is a hold for the cell heater to be within a set tolerance
+                        #S for the iodine stage's temperature. The least sigfig returned from the
+                        #S heater is actually tenthes, so this may be a little tight ofa restriction.
+                        #TODO revise tolerance of heater temp?
+                        while (abs(set_temp - self.spectrograph.cell_heater_temp()) > TEMPTOLERANCE):
+                                #S Give her some time to get there.
+                                time.sleep(1)
+                                #TODO We should track iterations, throw after a certain amount.
+                                #TODO Do a timeout, myimager.py for example for image cooler to work
+                                #TODO Error
+               
+                        
+                                
+
+                        
+
+                self.logger.info('Equipment check passed, continuing with '+objname+' exposure.')
+                return
+                        
+                                
+                        
+                        
+                        
+                                
+
+	
+	
+        def takeSpectrum(self,exptime,objname,template=False, expmeter=None,filterwheel=None):
+                #S This is a check to ensure that everything is where/how it's supposed to be
+                #S based on objname.
+                self.spec_equipment_check(objname)
+                #start imaging process in a different thread
+                kwargs = {'expmeter':expmeter}
+		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (exptime, objname), kwargs=kwargs)
+		imaging_thread.start()
+                        
+                # Get status info for headers while exposing/reading out
+                # (needs error handling)
+                while self.site.getWeather() == -1: pass
+
+                #S Get facts about the moon, used for avoidance later I'm assuming.
+                moonpos = self.site.moonpos()
+                moonra = moonpos[0]
+                moondec = moonpos[1]
+                moonphase = self.site.moonphase()
+
+                #S Path for good stuff online
+                gitPath = "C:/Users/Kiwispec/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
+                gitNum = subprocess.check_output([gitPath, "rev-list", "HEAD", "--count"]).strip()
+
+                # emulate MaximDL header for consistency
+		f = collections.OrderedDict()
+
+
+                #S I'm guessing this is the dictionary definition for the header.
+		
+#                f['SIMPLE'] = 'True'
+#                f['BITPIX'] = (16,'8 unsigned int, 16 & 32 int, -32 & -64 real')
+#                f['NAXIS'] = (2,'number of axes')
+#                f['NAXIS1'] = (0,'Length of Axis 1 (Columns)')
+#                f['NAXIS2'] = (0,'Length of Axis 2 (Rows)')
+#                f['BSCALE'] = (1,'physical = BZERO + BSCALE*array_value')
+#                f['BZERO'] = (0,'physical = BZERO + BSCALE*array_value')
+#                f['DATE-OBS'] = ("","UTC at exposure start")
+                f['EXPTIME'] = ("","Exposure time in seconds")                  # PARAM24/1000
+#                f['EXPSTOP'] = ("","UTC at exposure end")
+                f['SET-TEMP'] = ("",'CCD temperature setpoint in C')            # PARAM62 (in comments!)
+                f['CCD-TEMP'] = ("",'CCD temperature at start of exposure in C')# PARAM0
+                f['BACKTEMP'] = ("","Backplace Temperature in C")               # PARAM1
+                f['XPIXSZ'] = ("",'Pixel Width in microns (after binning)')
+                f['YPIXSZ'] = ("",'Pixel Height in microns (after binning)')
+                f['XBINNING'] = ("","Binning factor in width")                  # PARAM18
+                f['YBINNING'] = ("","Binning factor in height")                 # PARAM22
+                f['XORGSUBF'] = (0,'Subframe X position in binned pixels')      # PARAM16
+                f['YORGSUBF'] = (0,'Subframe Y position in binned pixels')      # PARAM20
+                f['IMAGETYP'] = ("",'Type of image')
+                f['SITELAT'] = (str(self.site.obs.lat),"Site Latitude")
+                f['SITELONG'] = (str(self.site.obs.lon),"East Longitude of the imaging location")
+                f['SITEALT'] = (self.site.obs.elevation,"Site Altitude (m)")
+                f['JD'] = (0.0,"Julian Date at the start of exposure")
+                f['FOCALLEN'] = (4560.0,"Focal length of the telescope in mm")
+                f['APTDIA'] = (700,"")
+                f['APTAREA'] = (490000,"")
+                f['SWCREATE'] = ("SI2479E 2011-12-02","Name of the software that created the image")
+                f['INSTRUME'] = ('KiwiSpec','Name of the instrument')
+                f['OBSERVER'] = ('MINERVA Robot',"Observer")
+                f['SHUTTER'] = ("","Shuter Status")             # PARAM8
+                f['XIRQA'] = ("",'XIRQA status')                # PARAM9
+                f['COOLER'] = ("","Cooler Status")              # PARAM10
+                f['CONCLEAR'] = ("","Continuous Clear")         # PARAM25
+                f['DSISAMP'] = ("","DSI Sample Time")           # PARAM26
+                f['ANLGATT'] = ("","Analog Attenuation")        # PARAM27
+                f['PORT1OFF'] = ("","Port 1 Offset")            # PARAM28
+                f['PORT2OFF'] = ("","Port 2 Offset")            # PARAM29
+                f['TDIDELAY'] = ("","TDI Delay,us")             # PARAM32
+                f['CMDTRIG'] = ("","Command on Trigger")        # PARAM39
+                f['ADCOFF1'] = ("","Port 1 ADC Offset")         # PARAM44
+                f['ADCOFF2'] = ("","Port 2 ADC Offset")         # PARAM45
+                f['MODEL'] = ("","Instrument Model")            # PARAM48
+                f['SN'] = ("","Instrument SN")                  # PARAM49
+                f['HWREV'] = ("","Hardware Revision")           # PARAM50
+                f['SERIALP'] =("","Serial Phasing")             # PARAM51
+                f['SERIALSP'] = ("","Serial Split")             # PARAM52
+                f['SERIALS'] = ("","Serial Size,Pixels")        # PARAM53
+                f['PARALP'] = ("","Parallel Phasing")           # PARAM54
+                f['PARALSP'] = ("","Parallel Split")            # PARAM55
+                f['PARALS'] = ("","Parallel Size,Pixels")       # PARAM56
+                f['PARDLY'] = ("","Parallel Shift Delay, ns")   # PARAM57
+                f['NPORTS'] = ("","Number of Ports")            # PARAM58
+                f['SHUTDLY'] = ("","Shutter Close Delay, ms")   # PARAM59
+                f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
+                f['MOONRA'] = (moonra,"Moon RA (J2000)")
+                f['MOONDEC'] = (moondec,"Moon DEC (J2000)")
+                f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")
+                                        
+        #PARAM60 =                   74 / CCD Temp. Setpoint Offset,0.1 C               
+        #PARAM61 =               1730.0 / Low Temp Limit,(-100.0 C)                      
+        #PARAM62 =               1830.0 / CCD Temperature Setpoint,(-90.0 C)             
+        #PARAM63 =               1880.0 / Operational Temp,(-85.0 C)                     
+        #PARAM65 =                    0 / Port Select,(A)                                
+        #PARAM73 =                    0 / Acquisition Mode,(Normal)                      
+        #PARAM76 =                    0 / UART 100 byte Ack,(Off)                        
+        #PARAM79 =                  900 / Pixel Clear,ns                                 
+        #COMMENT  Temperature is above set limit, Light Exposure, Exp Time= 10, Saved as:
+        #COMMENT   overscan.FIT                                
+                                     
+                                         
+                # need object for each telescope
+
+                # loop over each telescope and insert the appropriate keywords
+                for telescope in self.telescopes:
+                    #? What? What is this concat?
+                    telescop += telescope.name
+                    #S the telescope number, striped of the chararray that is the string telescope.name[-1]
+                    #S Not wure where self.telescope[x].name comes from though. Not in config files that I can find.
+                    telnum = telescope.name[-1]
+                    #S Getting this mysterious status dict (I believe).
+                    telescopeStatus = telescope.getStatus()
+                    #S The telescopes current ra.
+                    #S NOTE: telescopestatus.mount.ra_2000 in hours. 
+                    telra = ten(telescopeStatus.mount.ra_2000)*15.0
+                    #S Telescopes mounts current dec from status
+                    teldec = ten(telescopeStatus.mount.dec_2000)
+                    #S The targets current ra, hours again
+                    ra = ten(telescopeStatus.mount.ra_target)*15.0
+                    #S the targets dec, degrees
+                    dec = ten(telescopeStatus.mount.dec_target)
+                    #S Fixes an unforetold but legendary bug in PWI. You probably have heard about it. Wait, you haven't?! Get with the picture, dammit!
+                    #S My guess is that PWI will return a wrap arund for declination sometimes. 
+                    if dec > 90.0: dec = dec-360 # fixes bug in PWI
+                    #S Fill out header information based on each telescope.
+                    f['TELRA' + telnum] = (telra,"Telescope RA (J2000 deg)")
+                    f['TELDEC' + telnum] = (teldec,"Telescope Dec (J2000 deg)")
+                    f['RA' + telnum] = (ra, "Target RA (J2000 deg)")
+                    f['DEC'+ telnum] = (dec,"Target Dec (J2000 deg)")
+                    #S Get that moon seperation, put in in a header
+                    moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
+                    f['MOONDIS' + telnum] = (moonsep, "Distance between pointing and moon (deg)")
+                    #TODO Now this, where are we storing pointing model? How is it set?
+                    #TODO Obviously it's in status, but where does status get it? Is it just
+                    #TODO not on this computer?
+                    f['PMODEL' + telnum] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
+                    #S Focus stuff
+                    f['FOCPOS' + telnum] = (telescopeStatus.focuser.position,"Focus Position (microns)")
+                    #S Rotator stuff, only needed for photometry?
+                    f['ROTPOS' + telnum] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
+                    #S So we do have access to port info, keep this in mind!!!
+                    #SNOTE 
+                    # M3 Specific
+                    f['PORT' + telnum] = (telescopeStatus.m3.port,"Selected port for " + telescope.name)
+                    #S Ahh, the otafan. Obtuse telescope ass fan, obviously.
+                    f['OTAFAN' + telnum] = (telescopeStatus.fans.on,"OTA Fans on?")
+                    #S Get mirror temps
+                    try: m1temp = telescopeStatus.temperature.primary
+                    except: m1temp = 'UNKNOWN'
+                    f['M1TEMP'+telnum] = (m1temp,"Primary Mirror Temp (C)")
+
+                    try: m2temp = telescopeStatus.temperature.secondary
+                    except: m2temp = 'UNKNOWN'
+                    f['M2TEMP'+telnum] = (m2temp,"Secondary Mirror Temp (C)")
+
+                    try: m3temp = telescopeStatus.temperature.m3
+                    except: m3temp = 'UNKNOWN'
+                    f['M3TEMP'+telnum] = (m3temp,"Tertiary Mirror Temp (C)")
+                    #S Outside temp
+                    try: ambtemp = telescopeStatus.temperature.ambient
+                    except: ambtemp = 'UNKNOWN'
+                    f['AMBTEMP'+telnum] = (ambtemp,"Ambient Temp (C)")
+                    #S Whats the backplate?           
+                    try: bcktemp = telescopeStatus.temperature.backplate
+                    except: bcktemp = 'UNKNOWN'
+                    f['BCKTEMP'+telnum] = (bcktemp,"Backplate Temp (C)")
+
+                # loop over each aqawan and insert the appropriate keywords
+                for aqawan in self.domes:
+                    aqStatus = aqawan.status()
+                    aqnum = aqawan.name[-1]
+
+                    f['AQSOFTV'+aqnum] = (aqStatus['SWVersion'],"Aqawan software version number")
+                    f['AQSHUT1'+aqnum] = (aqStatus['Shutter1'],"Aqawan shutter 1 state")
+                    f['AQSHUT2'+aqnum] = (aqStatus['Shutter2'],"Aqawan shutter 2 state")
+                    f['INHUMID'+aqnum] = (aqStatus['EnclHumidity'],"Humidity inside enclosure")
+                    f['DOOR1'  +aqnum] = (aqStatus['EntryDoor1'],"Door 1 into aqawan state")
+                    f['DOOR2'  +aqnum] = (aqStatus['EntryDoor2'],"Door 2 into aqawan state")
+                    f['PANELDR'+aqnum] = (aqStatus['PanelDoor'],"Aqawan control panel door state")
+                    f['HRTBEAT'+aqnum] = (aqStatus['Heartbeat'],"Heartbeat timer")
+                    f['AQPACUP'+aqnum] = (aqStatus['SystemUpTime'],"PAC uptime (seconds)")
+                    f['AQFAULT'+aqnum] = (aqStatus['Fault'],"Aqawan fault present?")
+                    f['AQERROR'+aqnum] = (aqStatus['Error'],"Aqawan error present?")
+                    f['PANLTMP'+aqnum] = (aqStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
+                    f['AQTEMP' +aqnum] = (aqStatus['EnclTemp'],"Enclosure temperature (C)")
+                    f['AQEXTMP'+aqnum] = (aqStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
+                    f['AQINTMP'+aqnum] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
+                    f['AQLITON'+aqnum] = (aqStatus['LightsOn'],"Aqawan lights on?")
+
+                # Weather station
+                f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
+                f['RAIN'] = (self.site.weather['wxt510Rain'],"Current Rain (mm?)")
+                f['TOTRAIN'] = (self.site.weather['totalRain'],"Total rain since ?? (mm?)")
+                f['OUTTEMP'] = (self.site.weather['outsideTemp'],"Outside Temperature (C)")
+                f['SKYTEMP'] = (self.site.weather['relativeSkyTemp'],"Sky - Ambient (C)")
+                f['DEWPOINT'] = (self.site.weather['outsideDewPt'],"Dewpoint (C)")
+                f['WINDSPD'] = (self.site.weather['windSpeed'],"Wind Speed (mph)")
+                f['WINDGUST'] = (self.site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
+                f['WINDIR'] = (self.site.weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
+                f['PRESSURE'] = (self.site.weather['barometer'],"Outside Pressure (mmHg?)")
+                f['SUNALT'] = (self.site.weather['sunAltitude'],"Sun Altitude (deg)")
+
+                '''
+                # spectrograph information
+                EXPTYPE = 'Time-Based'         / Exposure Type                                  
+                DETECTOR= 'SI850'              / Detector Name                                  
+                '''
+
+                f['CCDMODE'] = (0,'CCD Readout Mode')
+                f['FIBER'] = ('','Fiber Bundle Used')
+                f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
+                #TODOTDOTDO
+                #S TESTING trying to isolate errors, need to remove
+                f['VAC_PRES'] = (0.0,"Vac pretture TEMPORARY")#(self.spectrograph.get_vacuum_pressure(),"Vacuum Tank Pressure (mbar)")
+                f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
+                for i in range(16):
+                        filename = self.base_directory + '/log/' + self.night + '/temp' + str(i+1) + '.log'
+                        with open(filename,'r') as fh:
+                                lineList = fh.readlines()
+                                temps = lineList[-1].split(',')
+                                if temps[1] == "None" : temp = 'UNKNOWN'
+                                else: temp = float(temps[1])
+                        f['TEMP' + str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
+                f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
+                f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
+                f['I2POSA'] = (self.spectrograph.i2stage_get_pos(),'Iodine Stage Actual Position [cm]')
+                f['I2POSS'] = (self.spectrograph.motorI2.lastlocationstr,'Iodine Stage Set Position')
+                f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+                #S PDU Header info
+                self.spectrograph.dynapower1.updateStatus()
+                self.spectrograph.dynapower2.updateStatus()
+                dyna1keys  = ['tharLamp','whiteLamp','expmeter','i2heater']
+                for key in dyna1keys:
+                        f[key] = (self.spectrograph.dynapower1.status[key],"Outlet for "+key)
+                dyna2keys = ['i2stage']
+                for key in dyna2keys:
+                        f[key] = (self.spectrograph.dynapower2.status[key],"Outlet for "+key)
+
+                
+		header = json.dumps(f)
+		
+		self.logger.info('Waiting for spectrograph imaging thread')
+		# wait for imaging process to complete
+		imaging_thread.join()
+		
+		# write header for image
+		if self.spectrograph.write_header(header):
+			self.logger.info('Finished writing spectrograph header')
+			return self.spectrograph.file_name
+                #ipdb.set_trace()
+
+		self.logger.error('takeSpectrum failed: ' + self.spectrograph.file_name)
+		return 'error'
 
 	#take one image based on parameter given, return name of the image, return 'error' if fail
 	#image is saved on remote computer's data directory set by imager.set_data_path()
@@ -732,7 +1250,6 @@ class control:
 			
 		telescope = self.telescopes[camera_num-1]
 		imager = self.cameras[camera_num-1]
-
 		self.logger.info(telescope_name + 'starting imaging thread')
 		#start imaging process in a different thread
 		imaging_thread = threading.Thread(target = imager.take_image, args = (exptime, filterInd, objname))
@@ -1196,6 +1713,8 @@ class control:
 
 
 	#if telescope_num out of range or not specified, do science for all telescopes
+	#S I don't think the above is true. Do we want to do something similar tp what
+	#S telescope commands were switched to.
 	def doScience(self,target,telescope_num = 0):
 
 		telescope_name = 'T(' + str(telescope_num) +'): '
@@ -1229,12 +1748,14 @@ class control:
 		pa = None
 
 		if target['name'] == 'autofocus':
+                        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			except: pass
 			telescope.inPosition()
 			telescope.autoFocus()
 			return
 
+                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 		# slew to the target
 		telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 
@@ -1264,6 +1785,7 @@ class control:
 								self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
 								time.sleep(30)
 								if datetime.datetime.utcnow() > target['endtime']: return
+							#TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 							#reacquire target after waiting for dome to open
 							telescope.acquireTarget(target['ra'],target['dec'])
 						if datetime.datetime.utcnow() > target['endtime']: return
@@ -1286,6 +1808,7 @@ class control:
 								time.sleep(30)
 								if datetime.datetime.utcnow() > target['endtime']: return
 
+                                                        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 						        #reacquire target after waiting for dome to open
 							telescope.acquireTarget(target['ra'],target['dec'])
 						if datetime.datetime.utcnow() > target['endtime']: return
@@ -1623,10 +2146,151 @@ class control:
 	#TODO:set up http server to handle manual commands
 	def run_server(self):
 		pass
+        #S Big batch of psuedo code starting up, trying to get a framework for the RV observing
+	#S script written down. 
+        def rv_observing(self):
+                #S Get the domes running in thread
+                self.domeControlThread()
+                #S Not really sure what prepNight does, but seems like it
+                #S takes care of some loggin stuff/names, and updates site info.
+                #S running it, but need explanation
+                #TODO I htink prepNight needs t o be run for each scope
+                #XXX self.prepNight()
+                #S Initialize ALL telescopes
+                self.Telescope_initialize
+                #S Spec CCD calibration process
+                self.spec_calib_time()
+                self.spec_calibration()
+
+                
+
+                #S Use a scheduler to determine the best target
+                #TODO I think we'll load in the data as a dictionary containing dictionaries for
+                #TODO each etaEarth target, so etaEarth['target_name']['attributes']
+                while nighttime:
+                        #S Better have the scheduler check validity of target as well.
+                        #S So nexttarget here is the dictionary of the next target.
+                        nexttarget = self.scheduler(etaEarth)
+                        self.telescope_aquireTarget(nexttarget['ra'],nexttarget['dec'])
+                        self.takeSpectrum(etaEarth[nexttarget])
+                
+                
+                
+
+        ###
+	# SPECTROGRAPH CALIBRATION
+	###
+
+	#S Spectrograph calibration routine. 
+
+        #S Figure the (hopefully) maximum time needed for calibration sequence.
+        #S This returns the time in seconds so, so be aware of that. Could return
+        #S a time_diff or something though, which might be a but more useful.
+        def spec_calib_time(self):
+                #S Readout time for the spec CCD, seconds
+                READOUTTIME = 40.
+                #S Warm up time for lamps,seconds * minutes, which should be ten.
+                #TODO Make self.WARMUPTIME
+                WARMUPTIME = 60.*0.5#10.
+                #S Calc times
+                time_for_arcs = WARMUPTIME + np.sum(np.array(self.calib_dict['arc_nums'])*(READOUTTIME + np.array(self.calib_dict['arc_times'])))
+                print 'Time for arcs: '+str(time_for_arcs)
+                time_for_flats = WARMUPTIME + np.sum(np.array(self.calib_dict['flat_nums']) * (READOUTTIME + np.array(self.calib_dict['flat_times'])))
+                print 'Time for flats: '+str(time_for_flats)
+                time_for_darks = np.sum(np.array(self.calib_dict['dark_nums']) * (READOUTTIME + np.array(self.calib_dict['dark_times'])))
+                print 'Time for darks: '+str(time_for_darks)
+                time_for_bias = np.sum(np.array(self.calib_dict['bias_nums']) * (READOUTTIME + np.array(self.calib_dict['bias_times'])))
+                print 'Time for bias: '+str(time_for_bias)
+
+                calib_time = time_for_arcs + time_for_flats + time_for_darks + time_for_bias
+
+                return calib_time
+                                                    
+                
+                
+                
+
+	#TODO Measure readout time for CCD for taking it into, about 40s is the guess, more like 42s
+	#TODO account for overhead.
+
+
+
+	def spec_calibration(self):#num_arcs, num_darks, num_flats, num_bias):
+                #TODO Will having the calibration shutter closed be enough for darks, biases? We Think...
+                #TODO This could really help for warmup times, etc.
+                        
+
+                #S Including a back up to ensure the I2heater is on. As if we are
+                #S running calibrations, we'll probably need to be taking spectra of targets.
+                self.spectrograph.cell_heater_on()
+
+                #S Turn the ThAr lamp on
+                self.spectrograph.thar_turn_on()
+                #S Take the number of arcs specified
+                #S For the number of sets (e.g. the number of different exposure times we need to take any number
+                #S of images for)
+                for set_num in range(len(self.calib_dict['arc_nums'])):
+                        #S For the number of images in a set
+                        for num in range(self.calib_dict['arc_nums'][set_num]):
+                                #S Log the number of how many and the exposure time
+                                self.logger.info("Taking arc image: %02.0f/%02.0f, at %.0f seconds"%(num+1,self.calib_dict['arc_nums'][set_num],self.calib_dict['arc_times'][set_num]))
+                                #S Take it
+                                self.takeSpectrum(self.calib_dict['arc_times'][set_num],'arc')
+                        
+                #S Turn ThAr off, but I think it would be caought by later exposure conditoins
+                self.spectrograph.thar_turn_off()
+                
+                #S Prepping flat lamp
+                self.spectrograph.white_turn_on()
+                #S For the number of sets (e.g. the number of different exposure times we need to take any number
+                #S of images for)
+                for set_num in range(len(self.calib_dict['flat_nums'])):
+                        #S For the number of images in a set
+                        for num in range(self.calib_dict['flat_nums'][set_num]):
+                                #S Log the number of how many and the exposure time
+                                self.logger.info("Taking flat image: %02.0f/%02.0f, at %.0f seconds"%(num+1,self.calib_dict['flat_nums'][set_num],self.calib_dict['flat_times'][set_num]))
+                                #S Take it
+                                self.takeSpectrum(self.calib_dict['flat_times'][set_num],'flat')
+
+
+                #S Turn the flat lamp off
+                self.spectrograph.white_turn_off()
+
+                #S Lets take darks
+                #S For the number of sets (e.g. the number of different exposure times we need to take any number
+                #S of images for)
+                for set_num in range(len(self.calib_dict['dark_nums'])):
+                        #S For the number of images in a set
+                        for num in range(self.calib_dict['dark_nums'][set_num]):
+                                #S Log the number of how many and the exposure time
+                                self.logger.info("Taking arc image: %02.0f/%02.0f, at %.0f seconds"%(num+1,self.calib_dict['dark_nums'][set_num],self.calib_dict['dark_times'][set_num]))
+                                #S Take it
+                                self.takeSpectrum(self.calib_dict['dark_times'][set_num],'dark')
+      
+                
+                #S Moving on to biases, make this the same as all other routines.
+                for set_num in range(len(self.calib_dict['bias_nums'])):                
+                        for num in range(self.calib_dict['bias_nums'][set_num]):
+                                self.logger.info("Taking bias image: %02.0f/%02.0f at %.0f seconds"%(num+1,self.calib_dict['bias_nums'][set_num],self.calib_dict['bias_times'][set_num]))
+                                self.takeSpectrum(self.calib_dict['bias_times'][set_num],'bias')
+
+                return
+
+
+
+
+        #S For now let's anticipate that 'target' is a dictionary containging everything we
+        #S need to know about hte target in question
+        #S 'name','ra','dec','propermotion','parallax',weight stuff,
+        def take_rv_spec(self,target):
+                pass
+                                
+                
 		
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
+        if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	ctrl = control('control.ini',base_directory)
 
 	# ctrl.doBias(1,2)
