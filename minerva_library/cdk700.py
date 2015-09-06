@@ -12,6 +12,7 @@ import math
 import powerswitch
 import telcom_client
 import threading
+import xmltodict
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -64,7 +65,7 @@ class CDK700:
 		self.nps = powerswitch.powerswitch(self.nps_config,base)
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
-		# threading.Thread(target=self.write_status_thread).start()
+		threading.Thread(target=self.write_status_thread).start()
 		
 		# initialize to the most recent best focus
 		if os.path.isfile('focus.' + self.logger_name + '.txt'):
@@ -202,7 +203,6 @@ class CDK700:
 
 	def status(self):
 
-		import xmltodict
 		status = xmltodict.parse(self.getStatusXml())
 
 		with open(self.currentStatusFile,'w') as outfile:
@@ -220,7 +220,24 @@ class CDK700:
 		return self.parseXml(self.getStatusXml())
 
 	def write_status(self):
-		pass
+		
+		output = {}
+		
+		try:
+			status = self.getStatus()
+			output['ra'] = status.mount.ra
+			output['dec'] = status.mount.dec
+			output['port'] = status.m3.port
+			output['focus'] = status.focuser.position
+		except:
+			pass
+			
+		self.status_lock.acquire()
+		
+		with open(self.base_directory + '/status/' + self.logger_name + '.json','w') as outfile:
+			json.dump(output,outfile)
+			
+		self.status_lock.release()
 		
 	#status thread, exit when main thread stops
 	def write_status_thread(self):
@@ -645,7 +662,7 @@ class CDK700:
 if __name__ == "__main__":
 
 	base_directory = '/home/minerva/minerva-control'
-	telescope = CDK700('telescope_3.ini', base_directory)
+	telescope = CDK700('telescope_1.ini', base_directory)
 	while True:
 		print telescope.logger_name + ' test program'
 		print ' a. move to alt az'
