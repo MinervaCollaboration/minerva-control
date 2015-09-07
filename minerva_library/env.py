@@ -152,18 +152,27 @@ class site:
 				site.weather = -1
 				return -1
 			data = response.read().split()
-			if data[0] == '':
+			self.logger.info(data)
+
+			if len(data) == 0:
+				self.logger.error('Error reading the weather page; response: ' + str(data))
+				skyTemp = 999
+				cloudDate = datetime.datetime.utcnow()
+			elif data[0] == '':
 				self.logger.error('Error reading the weather page (empty response)')
 				site.weather = -1
 				return -1
-			if len(data) <> 14:
+			elif len(data) <> 14:
 				self.logger.error('Error reading the weather page; response: ' + str(data))
 				site.weather = -1
 				return -1
-
+			else:
+				skyTemp = float(data[13])
+				cloudDate = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
+		
 			# MJD to datetime
-			weather['cloudDate'] = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
-			weather['relativeSkyTemp'] = float(data[13])
+			weather['cloudDate'] = cloudDate
+			weather['relativeSkyTemp'] = skyTemp
 			
 		elif self.logger_name == 'site_Simulate' or self.logger_name == 'site_Wellington':
                         # get values that pass through

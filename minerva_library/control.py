@@ -15,6 +15,7 @@ import shutil
 import re
 import collections
 import subprocess
+import socket
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
 
@@ -49,19 +50,20 @@ class control:
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
 		#S Commenting put for operation on minervaMain
-		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+		if socket.gethostname() == 'KiwiSpec':
+			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
-		self.site = env.site('site_Wellington.ini',self.base_directory)
-                return
+		#self.site = env.site('site_Wellington.ini',self.base_directory)
+                
 
 		self.site = env.site('site_mtHopkins.ini',self.base_directory)
 		
 		self.domes = [
 		aqawan.aqawan('aqawan_1.ini',self.base_directory),
 		aqawan.aqawan('aqawan_2.ini',self.base_directory)]
-	
+		
 		self.telescopes = [
 		cdk700.CDK700('telescope_1.ini',self.base_directory),
 		cdk700.CDK700('telescope_2.ini',self.base_directory),
@@ -155,7 +157,8 @@ class control:
 		for c in self.cameras:
 			c.setup_logger()
 		self.site.setup_logger()
-		self.spectrograph.setup_logger()
+		if socket.gethostname() == 'KiwiSpec':
+			self.spectrograph.setup_logger()
 		self.logger_lock.release()
 		
 	#enable sending commands to telcom
@@ -1827,7 +1830,7 @@ class control:
 
 		#set correct path for the night
 		self.logger.info("Setting up directories for " + night)
-		self.setup_loggers(night)
+#		self.setup_loggers()
 		self.imager_setDatapath(night,num)
 	
 		if email: mail.send('T' + str(num) + ' Starting observing','Love,\nMINERVA')
@@ -1971,9 +1974,11 @@ class control:
 		if telescope_num < 1 or telescope_num > len(self.telescopes):
 			self.logger.error(telescope_name + 'invalid telescope index')
 			return
-			
+		
 		#set up night's directory
+		self.logger.info(telescope_name+' Setting up night directory')
 		self.prepNight(telescope_num)
+		self.logger.info(telescope_name+' Checking schedule for ')
 		self.scheduleIsValid(telescope_num)
 
 		# home and initialize the telescope
@@ -2136,7 +2141,11 @@ class control:
 	def observingScript_all(self):
 		self.domeControlThread()
 		
+		# python bug work around -- strptime not thread safe. Must call this onece before starting threads
+		junk = datetime.datetime.strptime('2000-01-01 00:00:00','%Y-%m-%d %H:%M:%S')
+
 		threads = [None]*len(self.telescopes)
+		self.logger.info('Starting '+str(len(self.telescopes))+ ' telecopes.')
 		for t in range(len(self.telescopes)):
 			threads[t] = threading.Thread(target = self.observingScript_catch,args = (t+1,))
 			threads[t].start()

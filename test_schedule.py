@@ -8,7 +8,7 @@ import ipdb
 
 if __name__ == '__main__':
 
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
 	if len(sys.argv) == 2:

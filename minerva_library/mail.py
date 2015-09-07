@@ -28,6 +28,8 @@ def send(subject,body,level='normal',attachment=None):
 				if random.random() < contact['probability']:
 					recipients.append(contact['email'])
 
+	if len(recipients) == 0: return
+
 	# login credentials (proprietary)
 	f = open(credential_directory + 'emaillogin.txt')
 	username = f.readline()
