@@ -9,7 +9,7 @@ import ipdb, datetime, time, socket
 
 if __name__ == '__main__':
 
-	base_directory = '/home/minerva/minerva_control'
+	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
         time.sleep(5)
@@ -23,7 +23,9 @@ if __name__ == '__main__':
         #S This may be the source of our problems, but we'll see. I'm adding
         #S a TODO to make sure it's looked at again.
         #TODO
-        ipdb.set_trace()
+        #ipdb.set_trace()
+	minerva.telescope_initialize(tele_list = [3,4])
+	return
         minerva.takeSpectrum(60.0,'test',expmeter=1000000.0)
 
         ipdb.set_trace()

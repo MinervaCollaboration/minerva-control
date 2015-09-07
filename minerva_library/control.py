@@ -242,14 +242,19 @@ class control:
 
 	#S New command format, which allows for incomplete lists of telescopes				
 	def telescope_initialize(self,tele_list = 0):
-                #S Catch to default a zero arguement or outside array range num_list
-                if (tele_list < 1) or (tele_list > len(self.telescopes)):
-                        #S This is a list of numbers fron 1 to the number scopes
-                        tele_list = [x+1 for x in range(len(self.telescopes))]
                 #S check if tele_list is only an int
                 if type(tele_list) is int:
-                        tele_list = [tele_list]
-                #S Zero index tele_list
+                        #S Catch to default a zero arguement or outside array range tele_list
+			#S and if so make it default to controling all telescopes.
+			if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                                #S This is a list of numbers fron 1 to the number scopes
+				tele_list = [x+1 for x in range(len(self.telescopes))]
+			#S If it is in the range of telescopes, we'll put in a list to 
+			#S avoid accessing issues later on.
+			else:
+				tele_list = [tele_list]
+				
+                #S Zero index the tele_list
                 tele_list = [x-1 for x in tele_list]
                 #S The number of threads we'll have will be number of scopes
                 threads = [None] * len(tele_list)
@@ -260,18 +265,20 @@ class control:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].initialize)
                                 threads[t].start()
                 #S Join all the threads together
-                for t in range(len(num_list)):
+                for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t].join()
                 return
 
-        def telescope_autoFocus(self,tele_list=0):
-                if (tele_list < 1) or (tele_list > len(self.telescopes)):
-                        tele_list = [x+1 for x in range(len(self.telescopes))]
+
+	def telescope_autoFocus(self,tele_list = 0):
                 if type(tele_list) is int:
-                        tele_list = [tele_list]
+			if (tele_list < 1) or (tele_list > len(self.telescopes)):
+				tele_list = [x+1 for x in range(len(self.telescopes))]
+			else:
+				tele_list = [tele_list]
                 tele_list = [x-1 for x in tele_list]
-                threads = [None]*len(tele_list)
+                threads = [None] * len(tele_list)
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].autoFocus)
@@ -279,15 +286,17 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t].join()
-                                
+                return
+
         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
-        def telescope_acquireTarget(self,ra,dec,tele_list=0):
-                if (tele_list < 1) or (tele_list > len(self.telescopes)):
-                        tele_list = [x+1 for x in range(len(self.telescopes))]
+	def telescope_acquireTarget(self,ra,dec,tele_list = 0):
                 if type(tele_list) is int:
-                        tele_list = [tele_list]
+			if (tele_list < 1) or (tele_list > len(self.telescopes)):
+				tele_list = [x+1 for x in range(len(self.telescopes))]
+			else:
+				tele_list = [tele_list]
                 tele_list = [x-1 for x in tele_list]
-                threads = [None]*len(tele_list)
+                threads = [None] * len(tele_list)
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
@@ -296,14 +305,16 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t].join()
-                                
-        def telescope_MountGotoAltAz(self,alt,az,tele_list=0):
-                if (tele_list < 1) or (tele_list > len(self.telescopes)):
-                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                return
+
+	def telescope_mountGotoAltAz(self,alt,az,tele_list = 0):
                 if type(tele_list) is int:
-                        tele_list = [tele_list]
+			if (tele_list < 1) or (tele_list > len(self.telescopes)):
+				tele_list = [x+1 for x in range(len(self.telescopes))]
+			else:
+				tele_list = [tele_list]
                 tele_list = [x-1 for x in tele_list]
-                threads = [None]*len(tele_list)
+                threads = [None] * len(tele_list)
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].mountGotoAltAz,args=(alt,az))
@@ -311,13 +322,16 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t].join()
-        def telescope_park(self,tele_list=0):
-                if (tele_list < 1) or (tele_list > len(self.telescopes)):
-                        tele_list = [x+1 for x in range(len(self.telescopes))]
+                return
+
+	def telescope_park(self,tele_list = 0):
                 if type(tele_list) is int:
-                        tele_list = [tele_list]
+			if (tele_list < 1) or (tele_list > len(self.telescopes)):
+				tele_list = [x+1 for x in range(len(self.telescopes))]
+			else:
+				tele_list = [tele_list]
                 tele_list = [x-1 for x in tele_list]
-                threads = [None]*len(tele_list)
+                threads = [None] * len(tele_list)
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].park)
@@ -325,6 +339,9 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t].join()
+                return
+
+
                 
                                                                
 
