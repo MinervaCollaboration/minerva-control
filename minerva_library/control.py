@@ -50,31 +50,31 @@ class control:
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
 		#S Commenting put for operation on minervaMain
-		if socket.gethostname() == 'KiwiSpec':
+		if socket.gethostname() == 'Kiwispec-PC':
 			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+			self.site = env.site('site_Wellington.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
-		#self.site = env.site('site_Wellington.ini',self.base_directory)
-                
+                if socket.gethostname() == 'Main':
 
-		self.site = env.site('site_mtHopkins.ini',self.base_directory)
-		
-		self.domes = [
-		aqawan.aqawan('aqawan_1.ini',self.base_directory),
-		aqawan.aqawan('aqawan_2.ini',self.base_directory)]
-		
-		self.telescopes = [
-		cdk700.CDK700('telescope_1.ini',self.base_directory),
-		cdk700.CDK700('telescope_2.ini',self.base_directory),
-		cdk700.CDK700('telescope_3.ini',self.base_directory),
-		cdk700.CDK700('telescope_4.ini',self.base_directory)]
-		
-		self.cameras = [
-		imager.imager('imager_t1.ini',self.base_directory),
-		imager.imager('imager_t2.ini',self.base_directory),
-		imager.imager('imager_t3.ini',self.base_directory),
-		imager.imager('imager_t4.ini',self.base_directory)]
+                        self.site = env.site('site_mtHopkins.ini',self.base_directory)
+                        
+                        self.domes = [
+                        aqawan.aqawan('aqawan_1.ini',self.base_directory),
+                        aqawan.aqawan('aqawan_2.ini',self.base_directory)]
+                        
+                        self.telescopes = [
+                        cdk700.CDK700('telescope_1.ini',self.base_directory),
+                        cdk700.CDK700('telescope_2.ini',self.base_directory),
+                        cdk700.CDK700('telescope_3.ini',self.base_directory),
+                        cdk700.CDK700('telescope_4.ini',self.base_directory)]
+                        
+                        self.cameras = [
+                        imager.imager('imager_t1.ini',self.base_directory),
+                        imager.imager('imager_t2.ini',self.base_directory),
+                        imager.imager('imager_t3.ini',self.base_directory),
+                        imager.imager('imager_t4.ini',self.base_directory)]
                         
 	def load_config(self):
 
@@ -879,7 +879,7 @@ class control:
                 if (objname == 'arc'):
                         self.spectrograph.thar_turn_on()
                 if (objname == 'flat'):
-                        self.spectrograph.white_turn_on()
+                        self.spectrograph.flat_turn_on()
                 
                 #S These factors are necessary for all types of exposures,
                 #S so we'll put them in the equipment check
@@ -897,8 +897,8 @@ class control:
                 if (objname == 'arc'):
                         #S Move the I2 stage out of the way of the slit.
                         self.spectrograph.i2stage_move('out')
-                        #S Ensure that the white lamp is off
-                        self.spectrograph.white_turn_off()
+                        #S Ensure that the flat lamp is off
+                        self.spectrograph.flat_turn_off()
                         #S Move filter wheel where we want it.
                         #TODO A move filterwheel function
                         #S Make sure the calibration shutter is open
@@ -913,7 +913,7 @@ class control:
                         else:
                                 time.sleep(0)
                             
-                #S Flat exposures require the white lamp to be on for ten minutes too.
+                #S Flat exposures require the flat lamp to be on for ten minutes too.
                 #S Same questions as for thar specs.
                 elif (objname == 'flat'):
                         #S Move the I2 stage out of the way of the slit.
@@ -928,7 +928,7 @@ class control:
                         #TODO Calibrtoin shutter open.
 
                         #S Time left for warm up
-                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.white_file)
+                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.flat_file)
                         print '\t\t\t\t WARM TIME IS '+str(warm_time)
                         #S Make sure the lamp has been on long enough, or sleep until it has.
                         if (warm_time > 0):
@@ -941,7 +941,7 @@ class control:
                 elif (objname == 'bias') or (objname == 'dark'):
                         #S Make sure the lamps are off
                         self.spectrograph.thar_turn_off()
-                        self.spectrograph.white_turn_off()
+                        self.spectrograph.flat_turn_off()
                         #S Make sure the calibrations shutter is closed.
                         #TODO Calibration shutter closed
 
@@ -953,7 +953,7 @@ class control:
                         self.spectrograph.i2stage_move('out')
                         #S Make sure the lamps are off
                         self.spectrograph.thar_turn_off()
-                        self.spectrograph.white_turn_off()
+                        self.spectrograph.flat_turn_off()
                         #S Make sure the calibrations shutter is closed.
                         #TODO Calibration shutter closed
 
@@ -970,7 +970,7 @@ class control:
                         self.spectrograph.i2stage_move('in')
                         #S Make sure the lamps are off
                         self.spectrograph.thar_turn_off()
-                        self.spectrograph.white_turn_off()
+                        self.spectrograph.flat_turn_off()
                         #S Let's query the cellheater's setpoint for checks onthe temperature
                         
                         self.spectrograph.cell_heater_set_temp(55.00)
@@ -1232,7 +1232,7 @@ class control:
                 #S PDU Header info
                 self.spectrograph.update_dynapower1()
                 self.spectrograph.update_dynapower2()
-                dyna1keys  = ['tharLamp','whiteLamp','expmeter','i2heater']
+                dyna1keys  = ['tharLamp','flatLamp','expmeter','i2heater']
                 for key in dyna1keys:
                         f[key] = (self.spectrograph.dynapower1_status[key],"Outlet for "+key)
                 dyna2keys = ['i2stage']
@@ -2267,7 +2267,7 @@ class control:
                 self.spectrograph.thar_turn_off()
                 
                 #S Prepping flat lamp
-                self.spectrograph.white_turn_on()
+                self.spectrograph.flat_turn_on()
                 #S For the number of sets (e.g. the number of different exposure times we need to take any number
                 #S of images for)
                 for set_num in range(len(self.calib_dict['flat_nums'])):
@@ -2280,7 +2280,7 @@ class control:
 
 
                 #S Turn the flat lamp off
-                self.spectrograph.white_turn_off()
+                self.spectrograph.flat_turn_off()
 
                 #S Lets take darks
                 #S For the number of sets (e.g. the number of different exposure times we need to take any number

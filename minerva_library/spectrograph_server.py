@@ -70,7 +70,10 @@ class server:
                         self.logger_name = config['LOGNAME']
                         self.header_buffer = ''
                         self.thar_file = config['THARFILE']
-                        self.white_file = config['WHITEFILE']
+                        self.flat_file = config['FLATFILE']
+                        self.i2positions = config['I2POSITIONS']
+                        for key in self.i2positions.keys():
+                                self.i2positions[key] = float(self.i2positions[key])
 		except:
 			print('ERROR accessing ', self.name, ".", 
 				   self.name, " was not found in the configuration file", configfile)
@@ -205,10 +208,10 @@ class server:
 			response = self.thar_turn_on()
 		elif tokens[0] == 'thar_turn_off':
 			response = self.thar_turn_off()
-		elif tokens[0] == 'white_turn_on':
-			response = self.white_turn_on()
-		elif tokens[0] == 'white_turn_off':
-			response = self.white_turn_off()
+		elif tokens[0] == 'flat_turn_on':
+			response = self.flat_turn_on()
+		elif tokens[0] == 'flat_turn_off':
+			response = self.flat_turn_off()
 		elif tokens[0] == 'time_tracker_check':
                         response = self.time_tracker_check(tokens[1])
                 elif tokens[0] == 'update_dynapower1':
@@ -360,7 +363,7 @@ class server:
 		return 'success'
 
         ###
-        # THORLABS STAGE, For Iodine Lamp
+        # THORLABS STAGE, For Iodine Cell, i2stage, i2motor
         ###
 
         #TODO Is it too much to be logging at each connect/disconnect? I think
@@ -450,7 +453,7 @@ class server:
 
 
         ###
-	# CELL HEATER FUNCTIONS/COMMANDS
+	# CELL HEATER FUNCTIONS/COMMANDS, cellheater, cell_heater
 	###
 
         #S Get the cell heater's status, used in a lot of the other functions. Returns
@@ -596,10 +599,9 @@ class server:
                 return 'success ' + str(pressure)
 
 	###
-	# LAMPS
+	# THAT AND FLAT LAMP FUNCTIONS, turn_on, turn_off, time_tracker, time_tracker_check
 	###
 
-         #TODODYNA need to incorporate outlet names, etc.        
         #S Functions for toggling the ThAr lamp
         def thar_turn_on(self):
                 self.dynapower1.on('tharLamp')
@@ -609,14 +611,14 @@ class server:
                 self.dynapower1.off('tharLamp')
                 self.time_tracker_off(self.thar_file)
                 return 'success'
-        #S Functions for toggling the White lamp
-        def white_turn_on(self):
-                self.time_tracker_on(self.white_file)
-                self.dynapower1.on('whiteLamp')
+        #S Functions for toggling the Flat lamp
+        def flat_turn_on(self):
+                self.time_tracker_on(self.flat_file)
+                self.dynapower1.on('flatLamp')
                 return 'success'
-        def white_turn_off(self):
-                self.dynapower1.off('whiteLamp')
-                self.time_tracker_off(self.white_file)
+        def flat_turn_off(self):
+                self.dynapower1.off('flatLamp')
+                self.time_tracker_off(self.flat_file)
                 return 'success'
 
         #S Functions for tracking the time something has been on.
@@ -630,11 +632,19 @@ class server:
                 #S the logger wasn't informed of a pwer off. In which case,
                 #S we'll leave what ever the last start time was in there to
                 #S be safe and continue from there.
-                fd = open(extra_path+filename,'r')
-                lst = fd.readlines()
-                fd.close()
-                if len(lst[-1].split(',')) == 1 :
-                       return
+                #S Here, it will try and open an existing log file for a lamp.
+                try:
+                        fd = open(extra_path+filename,'r')
+                        lst = fd.readlines()
+                        fd.close()
+                        #S if it does open and the lamp appears to be on,
+                        #S leave it on.
+                        if len(lst[-1].split(',')) == 1:
+                               return 'success'
+                except:
+                        pass
+                        
+                #S Otherwise, let's create a file, or just write the new time.
                 #S Format for datetime objects being used.
                 fmt = '%Y-%m-%dT%H:%M:%S'
                 #S Get datetime string of current time.
@@ -656,17 +666,21 @@ class server:
                 nowstr = now.strftime(fmt)
                 #S Open and read log. For some reason can't append and
                 #S read at sametime.
-                #TODO Find way to read file from bottom up, only need
-                #TODO last two lines.
-                f = open(extra_path+filename,'r')
-                lst = f.readlines()
-                f.close()
-                #S Check to see if there is a full line of entries at EOF, and if so,
-                #S skip the saving and update. this is because if there is a full
-                #S list of entries, this timeTrackOFF was envoked by the CtrlHandler.
-                #S The lamp was probably off already, but just in case we tell it again.
-                if len(lst[-1].split(',')) == 3:
-                        return
+                #S Try and open existing lamp log file.
+                try:
+                        f = open(extra_path+filename,'r')
+                        lst = f.readlines()
+                        f.close()
+                        #S Check to see if there is a full line of entries at EOF, and if so,
+                        #S skip the saving and update. this is because if there is a full
+                        #S list of entries, this timeTrackOFF was envoked by the CtrlHandler.
+                        #S The lamp was probably off already, but just in case we tell it again.
+                        if len(lst[-1].split(',')) == 3:
+                                return
+                except:
+                        lst = ['0,0,0','0,0,0']
+                
+                #S Otherwise, were going to do nothing. We'll keep lst in tries really.
                 #S Get previous total time on. See the except for details on
                 #S what should be happening. 
                 try:
@@ -693,6 +707,7 @@ class server:
                         start = datetime.datetime.strptime(lst[-1],fmt)
                 except:
                         self.logger.error('ERROR: Start time was screwed, check '+filename)
+                        return 'fail'
                 #S Update total time on
                 newtot_seconds = prevtot + (now-start).total_seconds()
                 #S Make it a string of decimal hours
@@ -719,9 +734,12 @@ class server:
                 #S read at sametime.
                 #TODO Find way to read file from bottom up, only need
                 #TODO last two lines.
-                f = open(extra_path+filename,'r')
-                lst = f.readlines()
-                f.close()
+                try:
+                        f = open(extra_path+filename,'r')
+                        lst = f.readlines()
+                        f.close()
+                except:
+                        lst = '0,0,0'
                 #S Check to see if there is a full line of entries at EOF, and if so,
                 #S skip the saving and update. this is because if there is a full
                 #S list of entries, this timeTrackOFF was envoked by the CtrlHandler.
@@ -739,8 +757,15 @@ class server:
                 return 'success ' + str(onTime)
 
         
-        ### Extra dynapower stuff
+        ###
+        # DYNAPOWER STATUS QUERY for spectrograph.py
+        ###
 
+        #S These are commands to return the updated status of the dynapowers
+        #S to spectrogrsph for writing heades. The dynapower.updtaeStatus
+        #S returns a dictionary which we convert to a string with json.dumps()
+        #S and concatenate that onto 'success '. See how this response is handled
+        #S in spectrograph.py.
         def update_dynapower1(self):
                 status_dict = self.dynapower1.updateStatus()
                 dict_str = json.dumps(status_dict)
@@ -855,7 +880,7 @@ class server:
         def safe_close(self,signal):
                 self.dynapower1.off('expmeter')
 		self.thar_turn_off()
-		self.white_turn_off()
+		self.flat_turn_off()
 		self.i2stage_disconnect()
 
                 
@@ -863,7 +888,7 @@ class server:
 if __name__ == '__main__':
 
 	base_directory = 'C:\minerva-control'
-
+        ipdb.set_trace()
 	test_server = server('spectrograph.ini',base_directory)
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 

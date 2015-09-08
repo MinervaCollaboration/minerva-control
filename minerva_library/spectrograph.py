@@ -59,7 +59,7 @@ class spectrograph:
                         for key in self.i2positions.keys():
                                 self.i2positions[key] = float(self.i2positions[key])
                         self.thar_file = config['THARFILE']
-                        self.white_file = config['WHITEFILE']
+                        self.flat_file = config['FLATFILE']
 
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -390,23 +390,23 @@ class spectrograph:
         ###
         
         def cell_heater_on(self):
-                response = self.send('cell_heater_on None',20.1)
+                response = self.send('cell_heater_on None',10)
                 return response
         def cell_heater_off(self):
-                response = self.send('cell_heater_off None',20.2)
+                response = self.send('cell_heater_off None',10)
                 return response
         #TODO I don't think the second split is necessary on all these 'returns'
         def cell_heater_temp(self):
-                response = self.send('cell_heater_temp None',20.3)
+                response = self.send('cell_heater_temp None',10)
                 print response
                 return float(response.split()[1].split('\\')[0])
 
         def cell_heater_set_temp(self, temp):
-                response = self.send('cell_heater_set_temp ' + str(temp),20.4)
+                response = self.send('cell_heater_set_temp ' + str(temp),10)
                 return float(response.split()[1].split('\\')[0])
 
         def cell_heater_get_set_temp(self):
-                response = self.send('cell_heater_get_set_temp None',20.5)
+                response = self.send('cell_heater_get_set_temp None',10)
                 return float(response.split()[1].split('\\')[0]) 
 
         # close the valves, hold the pressure (during the night)
@@ -433,28 +433,30 @@ class spectrograph:
                 response = self.send('get_atm_pressure None',5)
                 return float(response.split()[1].split('\\')[0])
         ###
-        # THORLABS STAGE, For Iodine Lamp
+        # THORLABS STAGE, For Iodine Cell
         ###
 
-        #TODO Is it too much to be logging at each connect/disconnect? I think
-        #TODO so, so I commented them out but did leave in error logs. There is also opportunity to
-        #TODO make moveI2Stage check against current position and bypass command if so.
-        #TODO I think this is negligible in the time it would take to not move, and sending the
-        #TODO command should be quick anyway. Might as well I'm thinking.
-        
         #S Initialize the stage, needs to happen before anyhting else.
         def i2stage_connect(self):
                 response = self.send('i2stage_connect None',10)
                 return response
- 
+        
+        #S Disconnect the i2stage. If not done correctly, python.exe crash will happen.
+        #S There is a safety disconnect in the safe_close() of spectrograph_server.py. 
         def i2stage_disconnect(self):
                 response = self.send('i2stage_disconnect None',10)
                 return response
 
+        #S Query the position of the i2stage. 
+        #S response is 'success '+str(position)
         def i2stage_get_pos(self):
                 response = self.send('i2stage_get_pos None',10)
                 return float(response.split()[1].split('\\')[0])
-
+        
+        #S Send a command to move the i2stage to one of the set positions.
+        #S The positions are defined in spectrograph.ini AND spectrograph_server.ini,
+        #S but I'm fairly certain they don't need to be in spectrograph.ini. Left
+        #S Them just in case.
         def i2stage_move(self,locationstr):
                 #S some hackery for writing info to headers in control.py
                 #TODO Can and should be gone about in a better way
@@ -462,8 +464,10 @@ class spectrograph:
                 response = self.send('i2stage_move '+locationstr,10)
                 return response
 
+        ###
+        # THAR AND FLAT LAMPS
+        ###
 
-         #TODODYNA need to incorporate outlet names, etc.        
         #S Functions for toggling the ThAr lamp
         def thar_turn_on(self):
                 response = self.send('thar_turn_on None',10)
@@ -475,27 +479,43 @@ class spectrograph:
 
 
 
-        #S Functions for toggling the White lamp
-        def white_turn_on(self):
-                response = self.send('white_turn_on None',10)
+        #S Functions for toggling the flat lamp
+        def flat_turn_on(self):
+                response = self.send('flat_turn_on None',10)
                 return response
 
-
-        def white_turn_off(self):
-                response = self.send('white_turn_off None',10)
+        def flat_turn_off(self):
+                response = self.send('flat_turn_off None',10)
                 return response
 
+        #S This is used to check how long the lamp has been turned on for
+        #S from the LAST time it was turned on, not total time on. Used
+        #S for equipment checks in control.py, so needed to send to
+        #S the server.
         def time_tracker_check(self,filename):
                 response = self.send("time_tracker_check "+filename,10)
-                #return response
                 return float(response.split()[1].split('\\')[0])
-
+        
+        #S Dynapowers are now objects for the spectrograph server to control,
+        #S but we still need to communicate statuses from server to write
+        #S headers in control.py. Made this weird attribute for spectrograph
+        #S objects, dynapower status. We only have two dynapowers anyway,
+        #S so I'm thinking this will be fine.
+        #S Another thought was to give spectrograph object its own dynapower
+        #S classes, but this could create confusion and we should try and keep
+        #S them localizex.
         def update_dynapower1(self):
+                #S the current response from the server is a 'success '+json.dumps(status_dictionary)
+                #S so we need to do some tricky parsing. 
                 temp_response = self.send('update_dynapower1 None',10)
-                #ipdb.set_trace()
+                #S Empty string where we'll be putting dictionary entries.
                 status_str = ''
+                #S This splits the response string at spaces, then concatenates all but the first
+                #S split, which was 'success'. Look at how json.dumps writes strings to see why this
+                #S works
                 for p in temp_response.split(' ')[1:]:
                         status_str = status_str + p + ' '
+                #S assign that attribute dictionary to the json.loads(status_str)        
                 self.dynapower1_status = json.loads(status_str)
         def update_dynapower2(self):
                 temp_response = self.send('update_dynapower2 None',10)
