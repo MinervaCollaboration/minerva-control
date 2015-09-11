@@ -62,7 +62,9 @@ class site:
 			'windDirectionDegrees':[0.0,360.0],
 			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude':[-90,0],
-			'relativeSkyTemp':[-999,-35],
+			'MearthCloud':[-999,-35]
+			'HATCloud': [-999,-999],			
+			'AuroraCloud': [-999,-999],
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
 			}
 
@@ -78,7 +80,9 @@ class site:
 			'windDirectionDegrees':[0.0,360.0],
 			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude':[-90,0],
-			'relativeSkyTemp':[-999,-38],
+			'MearthCloud':[-999,-38],
+			'HATCloud': [-999,-999],			
+			'AuroraCloud': [-999,-999],
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
 			}
 			
@@ -139,40 +143,28 @@ class site:
 			for parameter in data[1:-1]:
 				weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
 
-			# add in the cloud monitor
-			url = "http://mearth.sao.arizona.edu/weather/now"
 
-			# read the webpage
-			self.logger.debug('Requesting URL: ' + url)
-			request = urllib2.Request(url)
-			try:
-				response = urllib2.urlopen(request)
-			except:
-				self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
-				site.weather = -1
-				return -1
-			data = response.read().split()
-			self.logger.info(data)
+			#S Acquire readings from the three cloud monitors at the address below. Order at 
+			#S website is Date, Mearth, HAT, Aurora.
+			url = 'http://linmax.sao.arizona.edu/temps/sky_temps'
+			#S Try everything, but if anyhting fails we really want to stay closed.
+			try: 
+				#S Read the last line from the url above, and split it at the spaces.
+				cloudstr = os.popen('curl -s http://linmax.sao.arizona.edu/temps/sky_temp | tail -1').read().split(' ')
+				#S Get the date from the line by concatenating the first split, then adding 7:00:00 to put in UTC.
+				weather['cloudDate'] = datetime.datetime.strptime(cloudstr[0]+cloudstr[1],'%b-%d-%Y %H:%M:%S') + datetime.datetime.timedelta(hours=7)
+				#S Assign as specified.
+				weather['MearthCloud'] = float(cloudstr[2])
+				weather['HATCloud'] = float(cloudstr[3])
+				weather['AuroraCloud'] = float(cloudstr[4])
+			except: 
+				self.logger.error('Error reading the page for cloud temps at '+url)
+				#S We'll set everything to close essentially, and make cloudDate utcnow.
+				weather['cloudDate'] = datetime.datetime.utcnow()
+				weather['MearthCloud'] = 999
+				weather['HATCloud'] = 999
+				weather['AuroraCloud'] = 999
 
-			if len(data) == 0:
-				self.logger.error('Error reading the weather page; response: ' + str(data))
-				skyTemp = 999
-				cloudDate = datetime.datetime.utcnow()
-			elif data[0] == '':
-				self.logger.error('Error reading the weather page (empty response)')
-				site.weather = -1
-				return -1
-			elif len(data) <> 14:
-				self.logger.error('Error reading the weather page; response: ' + str(data))
-				site.weather = -1
-				return -1
-			else:
-				skyTemp = float(data[13])
-				cloudDate = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
-		
-			# MJD to datetime
-			weather['cloudDate'] = cloudDate
-			weather['relativeSkyTemp'] = skyTemp
 			
 		elif self.logger_name == 'site_Simulate' or self.logger_name == 'site_Wellington':
                         # get values that pass through
@@ -184,7 +176,9 @@ class site:
                         weather['outsideHumidity'] = 0.0
                         weather['outsideDewPt'] = 0.0
                         weather['wxt510Rain'] = 0.0
-                        weather['relativeSkyTemp'] = 999
+                        weather['MearthCloud'] = 999
+                        weather['AuroraCloud'] = 999
+                        weather['HATCloud'] = 999
                         weather['totalRain'] = 0.0
                         weather['barometer'] = 1000.0
                         weather['windGustSpeed'] = 0.0
@@ -194,11 +188,13 @@ class site:
 		weather['sunAltitude'] = self.sunalt()
 		
 		# make sure all required keys are present
+                #S Do we want to require other cloud monitors?
+		#TODO See above
 		pageError = False
 		requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
                                 'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
 				'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
-				'cloudDate', 'relativeSkyTemp']
+				'cloudDate', 'MearthCloud']
 		
 		for key in requiredKeys:
 			if not key in weather.keys():
@@ -239,9 +235,32 @@ class site:
 			time.sleep(1)
 			self.getWeather()
 
+
+		#S External temperature check, want to use Mearth, then Aurora if Mearth not available, and then 
+		#S HAT if niether of those two are found. Currently, we are assuming a value of 0 means disconnected
+		#S for any of the three sensors.
+		if self.weather['MearthCloud'] <> 0:
+			key = 'MearthCloud'
+			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
+				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
+				retval = False
+		elif self.weather['AuroraCloud'] <> 0:
+			key = 'AuroraCloud'
+			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
+				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
+				retval = False
+		elif self.weather['HATCloud'] <> 0:
+			key = 'HATCloud'
+			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
+				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
+				retval = False
+		else:
+			self.logger.info('Not OK to open: all cloud sensors down')
+			retval = False
+
 		# make sure each parameter is within the limits for safe observing
 		for key in weatherLimits:
-			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
+			if 'Cloud' not in key and (self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]):
 				keyname = key
 				if keyname == 'relativeSkyTemp': keyname = 'Clouds'
 				self.logger.info('Not OK to open: ' + keyname + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
