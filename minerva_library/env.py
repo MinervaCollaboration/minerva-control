@@ -62,7 +62,7 @@ class site:
 			'windDirectionDegrees':[0.0,360.0],
 			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude':[-90,0],
-			'MearthCloud':[-999,-35]
+			'MearthCloud':[-999,-35],
 			'HATCloud': [-999,-999],			
 			'AuroraCloud': [-999,-999],
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
@@ -86,9 +86,9 @@ class site:
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
 			}
 			
-	def setup_logger(self,night='dump'):
+	def setup_logger(self):
 			
-		log_path = self.base_directory + '/log/' + night
+		log_path = self.base_directory + '/log/' + self.night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
 		
                 # setting up aqawan logger                                                                                            
@@ -150,20 +150,24 @@ class site:
 			#S Try everything, but if anyhting fails we really want to stay closed.
 			try: 
 				#S Read the last line from the url above, and split it at the spaces.
-				cloudstr = os.popen('curl -s http://linmax.sao.arizona.edu/temps/sky_temp | tail -1').read().split(' ')
+				cloudstr = os.popen('curl -s ' + url + ' | tail -1').read().split(' ')
 				#S Get the date from the line by concatenating the first split, then adding 7:00:00 to put in UTC.
-				weather['cloudDate'] = datetime.datetime.strptime(cloudstr[0]+cloudstr[1],'%b-%d-%Y %H:%M:%S') + datetime.datetime.timedelta(hours=7)
+				weather['cloudDate'] = datetime.datetime.strptime(cloudstr[0]+' '+cloudstr[1],'%b-%d-%Y %H:%M:%S') + datetime.timedelta(hours=7)
 				#S Assign as specified.
+
 				weather['MearthCloud'] = float(cloudstr[2])
 				weather['HATCloud'] = float(cloudstr[3])
 				weather['AuroraCloud'] = float(cloudstr[4])
 			except: 
-				self.logger.error('Error reading the page for cloud temps at '+url)
-				#S We'll set everything to close essentially, and make cloudDate utcnow.
-				weather['cloudDate'] = datetime.datetime.utcnow()
-				weather['MearthCloud'] = 999
-				weather['HATCloud'] = 999
-				weather['AuroraCloud'] = 999
+				self.weather = -1
+				pageError = True
+				
+#				self.logger.error('Error reading the page for cloud temps at '+url)
+#				#S We'll set everything to close essentially, and make cloudDate utcnow.
+#				weather['cloudDate'] = datetime.datetime.utcnow()
+#				weather['MearthCloud'] = 999
+#				weather['HATCloud'] = 999
+#				weather['AuroraCloud'] = 999
 
 			
 		elif self.logger_name == 'site_Simulate' or self.logger_name == 'site_Wellington':
@@ -194,7 +198,7 @@ class site:
 		requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
                                 'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
 				'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
-				'cloudDate', 'MearthCloud']
+				'cloudDate', 'MearthCloud', 'HATCloud', 'AuroraCloud']
 		
 		for key in requiredKeys:
 			if not key in weather.keys():
@@ -227,7 +231,10 @@ class site:
 		if os.path.exists('cloudOverride.txt'): self.cloudOverride = True
 
 		if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]
-		if self.cloudOverride: weatherLimits['relativeSkyTemp'] = [-999,999]
+		if self.cloudOverride: 
+			weatherLimits['MearthCloud'] = [-999,999]
+			weatherLimits['HATCloud'] = [-999,999]
+			weatherLimits['AuroraCloud'] = [-999,999]
 
 		# get the current weather, timestamp, and Sun's position
 		self.getWeather()
@@ -262,7 +269,6 @@ class site:
 		for key in weatherLimits:
 			if 'Cloud' not in key and (self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]):
 				keyname = key
-				if keyname == 'relativeSkyTemp': keyname = 'Clouds'
 				self.logger.info('Not OK to open: ' + keyname + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False
 

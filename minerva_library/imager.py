@@ -73,9 +73,15 @@ class imager:
 			print('ERROR accessing config file: ' + self.config_file)
 			sys.exit()
 
-	def setup_logger(self,night='dump'):
+                today = datetime.datetime.utcnow()
+                if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+                        today = today + datetime.timedelta(days=1)
+                self.night = 'n' + today.strftime('%Y%m%d')
+
+
+	def setup_logger(self):
 			
-		log_path = self.base_directory + '/log/' + night
+		log_path = self.base_directory + '/log/' + self.night
 		if os.path.exists(log_path) == False:os.mkdir(log_path)
 		
                 fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
@@ -247,10 +253,9 @@ class imager:
 			time.sleep(1)
 			
 	#set path for which new images will be saved,if not set image will go into dump folder
-	def set_dataPath(self,night='dump'):
+	def set_dataPath(self):
 		
-		self.night = night
-		if self.send('set_data_path ' + night,3) == 'success':
+		if self.send('set_data_path ' + self.night,3) == 'success':
 			return True
 		else:
 			return False

@@ -1194,8 +1194,10 @@ class control:
                 f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
                 f['RAIN'] = (self.site.weather['wxt510Rain'],"Current Rain (mm?)")
                 f['TOTRAIN'] = (self.site.weather['totalRain'],"Total rain since ?? (mm?)")
-                f['OUTTEMP'] = (self.site.weather['outsideTemp'],"Outside Temperature (C)")
-                f['SKYTEMP'] = (self.site.weather['relativeSkyTemp'],"Sky - Ambient (C)")
+                f['OUTTEMP'] = (self.site.weather['outsideTemp'], "Outside Temperature (C)")
+                f['MCLOUD'] = (self.site.weather['MearthCloud'],"Mearth Cloud Sensor (C)")
+                f['HCLOUD'] = (self.site.weather['HATCloud'],"HAT Cloud Sensor (C)")
+                f['ACLOUD'] = (self.site.weather['AuroraCloud'],"Aurora Cloud Sensor (C)")
                 f['DEWPOINT'] = (self.site.weather['outsideDewPt'],"Dewpoint (C)")
                 f['WINDSPD'] = (self.site.weather['windSpeed'],"Wind Speed (mph)")
                 f['WINDGUST'] = (self.site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
@@ -1419,7 +1421,9 @@ class control:
 			f['RAIN'] = (str(self.site.weather['wxt510Rain']),"Current Rain (mm?)")
 			f['TOTRAIN'] = (str(self.site.weather['totalRain']),"Total rain since ?? (mm?)")
 			f['OUTTEMP'] = (str(self.site.weather['outsideTemp']),"Outside Temperature (C)")
-			f['SKYTEMP'] = (str(self.site.weather['relativeSkyTemp']),"Sky - Ambient (C)")
+			f['MCLOUD'] = (self.site.weather['MearthCloud'],"Mearth Cloud Sensor (C)")
+			f['HCLOUD'] = (self.site.weather['HATCloud'],"HAT Cloud Sensor (C)")
+			f['ACLOUD'] = (self.site.weather['AuroraCloud'],"Aurora Cloud Sensor (C)")
 			f['DEWPOINT'] = (str(self.site.weather['outsideDewPt']),"Dewpoint (C)")
 			f['WINDSPD'] = (str(self.site.weather['windSpeed']),"Wind Speed (mph)")
 			f['WINDGUST'] = (str(self.site.weather['windGustSpeed']),"Wind Gust Speed (mph)")
@@ -1919,13 +1923,16 @@ class control:
 			#        'cloudDate':[],
 			'outsideHumidity':[],
 			'outsideDewPt':[],
-			'relativeSkyTemp':[],
+			'MearthCloud':[],
+			'HATCloud':[],
+			'AuroraCloud':[],
 			'outsideTemp':[],
 			'windSpeed':[],
 			'windDirectionDegrees':[],
 			#        'date':[],
 			#        'sunAltitude':[],
 			}
+#		ipdb.set_trace()
 		for log in logs:
 			with open(log,'r') as f:
 				for line in f:
@@ -1942,7 +1949,9 @@ class control:
 							try:
 								value = float(line.split('=')[-1].strip())
 								weatherstats[key].append((time,value))
-							except: pass
+							except: 
+								self.logger.exception("what's going on?")
+								pass
 
 		# compose the observing report
 		body = "Dear humans,\n\n" + \

@@ -133,7 +133,7 @@ class server:
         #S Finds path for data, creates if none exist. What is the point of the
 	#S night arguement though? Doesn;t go into self., as that's defined
 	#S earlier. 
-	def set_data_path(self,night='dump'):
+	def set_data_path(self):
 		self.data_path = self.data_path_base + '\\' + self.night
 		if not os.path.exists(self.data_path):
 			os.makedirs(self.data_path)

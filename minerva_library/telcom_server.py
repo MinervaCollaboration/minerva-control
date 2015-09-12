@@ -34,11 +34,14 @@ class server:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
 			
-
+                today = datetime.datetime.utcnow()
+                if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+                        today = today + datetime.timedelta(days=1)
+                self.night = 'n' + today.strftime('%Y%m%d')
 		
-	def setup_logger(self,night ='dump'):
+	def setup_logger(self):
 		
-		log_directory = self.base_directory + '/log/' + night
+		log_directory = self.base_directory + '/log/' + self.night
 		self.logger = logging.getLogger(self.logger_name)
 		formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
 		if os.path.exists(log_directory) == False:

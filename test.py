@@ -12,6 +12,9 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+	minerva.endNight(num=2,email=True)
+	ipdb.set_trace()
+
         time.sleep(5)
         
 #        minerva.spectrograph.get_vacuum_pressure()
@@ -25,7 +28,7 @@ if __name__ == '__main__':
         #TODO
         #ipdb.set_trace()
 	minerva.telescope_initialize(tele_list = [3,4])
-	return
+	
         minerva.takeSpectrum(60.0,'test',expmeter=1000000.0)
 
         ipdb.set_trace()

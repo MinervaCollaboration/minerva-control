@@ -42,11 +42,15 @@ class server:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
 			
+                today = datetime.datetime.utcnow()
+                if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+                        today = today + datetime.timedelta(days=1)
+                self.night = 'n' + today.strftime('%Y%m%d')
 
 		
-	def setup_logger(self,night ='dump'):
+	def setup_logger(self):
 
-		log_path = self.base_directory + '/log/' + night
+		log_path = self.base_directory + '/log/' + self.night
                 if os.path.exists(log_path) == False:os.mkdir(log_path)
 
                 fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
@@ -275,8 +279,8 @@ class server:
 			return 'fail'
 		return 'success'
 		
-	def set_data_path(self,night='dump'):
-		self.data_path = self.data_path_base + '\\' + night
+	def set_data_path(self):
+		self.data_path = self.data_path_base + '\\' + self.night
 		if not os.path.exists(self.data_path):
 			os.makedirs(self.data_path)
 		return 'success'
