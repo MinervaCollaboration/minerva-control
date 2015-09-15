@@ -23,7 +23,7 @@ class server:
                         today = today + datetime.timedelta(days=1)
 		night = 'n' + today.strftime('%Y%m%d')
 
-		self.setup_logger(night=night)
+		self.setup_logger()
 		self.set_data_path()
 		self.connect_camera()
 		

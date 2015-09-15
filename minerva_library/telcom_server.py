@@ -18,7 +18,7 @@ class server:
                         today = today + datetime.timedelta(days=1)
 		night = 'n' + today.strftime('%Y%m%d')
 
-		self.setup_logger(night=night)
+		self.setup_logger()
 		
 #==============utility functions=================#
 #these methods are not directly called by client
@@ -59,7 +59,8 @@ class server:
 		try:
 			# attach to PWI
 			pwa_app = pywinauto.application.Application()
-			w_handle = pywinauto.findwindows.find_windows(title_re='PWI*', class_name='WindowsForms10.Window.8.app.0.33c0d9d')[0]
+			w_handle = pywinauto.findwindows.find_windows(title_re='PWI*', class_name=\
+				'WindowsForms10.Window.8.app.0.33c0d9d')[0]
 			window = pwa_app.window_(handle=w_handle)
 
 			# select the mount tab
@@ -72,19 +73,29 @@ class server:
 			ctrl = window['ComboBox']
 			ctrl.Click()
 			ctrl.Select(0)
-
 			# click OK on the "home" pop up window
-                        w_handle2 = pywinauto.findwindows.find_windows(title=u'Home')[0]
-                        window2 = pwa_app.window_(handle=w_handle2)
-                        window2.SetFocus()
-                        SendKeys.SendKeys("{ENTER}")
-
+			#S Get the window containing our button, which is technically a DialogBox
+			w_handle2 = (pywinauto.findwindows.find_windows(title=u'Home'))[0]
+			window2 = pwa_app.window_(handle=w_handle2)
+			#S Counting iterations through trying to smash 'enter' for the dialogbox
+			ok_iter = 0
+			iter_limit = 5
+			#S While this dialogbox exists, were going to keep on hitting enter at it,
+			#S AFTER we reset the focus to the correct button.
+			while window2.Exists() and ok_iter<iter_limit:
+				#S Increment iterations
+				ok_iter += 1
+				#S This selects the 'OK' button, then will hit enter while the DialogBox exists.
+				window2['OK'].SetFocus()
+				SendKeys.SendKeys("{ENTER}")
+			#S This is to throw an exception if we hit the iteration limit.
+			if ok_iter == iter_limit:
+				raise ValueError('Tried to HOME telescope '+str(ok_iter)+' times.')
 			return 'success'
 		except:
 			self.logger.exception("homing telescope failed")
 			return 'fail'
-
-        def home_rotator(self):
+	def home_rotator(self):
 		try:
 			# attach to PWI
 			pwa_app = pywinauto.application.Application()
