@@ -79,7 +79,7 @@ class server:
 			window2 = pwa_app.window_(handle=w_handle2)
 			#S Counting iterations through trying to smash 'enter' for the dialogbox
 			ok_iter = 0
-			iter_limit = 5
+			iter_limit = 15
 			#S While this dialogbox exists, were going to keep on hitting enter at it,
 			#S AFTER we reset the focus to the correct button.
 			while window2.Exists() and ok_iter<iter_limit:
@@ -87,7 +87,9 @@ class server:
 				ok_iter += 1
 				#S This selects the 'OK' button, then will hit enter while the DialogBox exists.
 				window2['OK'].SetFocus()
+				time.sleep(0.05)
 				SendKeys.SendKeys("{ENTER}")
+				#TODO Do we want it to sleep for a millisecond too? 
 			#S This is to throw an exception if we hit the iteration limit.
 			if ok_iter == iter_limit:
 				raise ValueError('Tried to HOME telescope '+str(ok_iter)+' times.')
