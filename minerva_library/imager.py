@@ -255,7 +255,7 @@ class imager:
 	#set path for which new images will be saved,if not set image will go into dump folder
 	def set_dataPath(self):
 		
-		if self.send('set_data_path ' + self.night,3) == 'success':
+		if self.send('set_data_path',3) == 'success':
 			return True
 		else:
 			return False
@@ -473,7 +473,7 @@ if __name__ == '__main__':
 		elif choice == 'b':
 			test_imager.expose()
 		elif choice == 'c':
-			test_imager.set_data_path('test_directory')
+			test_imager.set_data_path()
 		elif choice == 'd':
 			test_imager.set_binning()
 		elif choice == 'e':

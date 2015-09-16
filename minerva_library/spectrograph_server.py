@@ -177,7 +177,7 @@ class server:
 		elif tokens[0] == 'set_camera_param':
 			response = self.set_camera_param(tokens[1])
 		elif tokens[0] == 'set_data_path':
-			response = self.set_data_path(tokens[1])
+			response = self.set_data_path()
 		elif tokens[0] == 'get_status':
 			response = self.get_status(tokens[1])
 		elif tokens[0] == 'get_fits_header':

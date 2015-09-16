@@ -157,7 +157,7 @@ class spectrograph:
 	#set path for which new images will be saved,if not set image will go into dump folder
 	def set_data_path(self):
 		
-		if self.send('set_data_path ' + self.night,3) == 'success':
+		if self.send('set_data_path',3) == 'success':
 			self.logger.info('successfully set datapath') 
 			return True
 		else:

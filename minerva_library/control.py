@@ -446,11 +446,11 @@ class control:
 	def imager_setDatapath(self,night,num=0):
 	
 		if num >= 1 and num <= len(self.cameras):
-			self.cameras[num-1].set_dataPath(night)
+			self.cameras[num-1].set_dataPath()
 		else:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
-				threads[t] = threading.Thread(target = self.cameras[t].set_dataPath,args=(night,))
+				threads[t] = threading.Thread(target = self.cameras[t].set_dataPath)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -1949,9 +1949,7 @@ class control:
 							try:
 								value = float(line.split('=')[-1].strip())
 								weatherstats[key].append((time,value))
-							except: 
-								self.logger.exception("what's going on?")
-								pass
+							except: pass
 
 		# compose the observing report
 		body = "Dear humans,\n\n" + \
