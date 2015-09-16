@@ -86,7 +86,7 @@ class CDK700:
 			self.focus = 25000.0  #status.focuser.position
 			
 	#additional higher level routines
-	def initialize(self):
+	def initialize(self,tracking=False):
 
 		# turning on mount tracking
 		self.logger.info('Connecting to mount')
@@ -96,8 +96,11 @@ class CDK700:
 		self.mountEnableMotors()
 		
 		# turning on mount tracking
-		self.logger.info('Turning mount tracking on')
-		self.mountTrackingOn()
+		#S I'm defaulting this off, but including an arguement in case we do want it
+		#S This could be for initializing at 4PM start, or for testing. 
+		if tracking:
+			self.logger.info('Turning mount tracking on')
+			self.mountTrackingOn()
 
 		# turning on rotator tracking
 		self.logger.info('Turning rotator tracking on')
@@ -727,7 +730,18 @@ class CDK700:
 		
 		self.logger.info('Homing the telscope')
 		if self.telcom.home():return True
-		else: return False
+		else: 
+			body = 'Dear humans,\n\n'\
+			    'I failed to home correctly, and will need someone to help me through the process.'\
+			    'Some investigation is in order to why this happened, and could be due to a number of reasons:\n'\
+			    '1) Pywinauto may not have been able to get a hold of the correct windows.\n'\
+			    '2) Hitting enter at the "OK" button on the pup-up DialogBox failed to get rid '\
+			    'of the window after some attempts (should be five)\n'\
+			    '3) I could have had an interruption in other software, causing a potential fail(?)\n\n'\
+			    'Love,\n'\
+			    '-MINERVA'
+#			mail.send(self.logger_name+' failed to home correctly',body,level='serious')
+			return False
 		
 	def home_rotator(self):
 		self.logger.info('Connecting to rotator')
