@@ -87,8 +87,10 @@ class server:
 				ok_iter += 1
 				#S This selects the 'OK' button, then will hit enter while the DialogBox exists.
 				window2['OK'].SetFocus()
+				#window2['OK'].Click()
+                                SendKeys.SendKeys("{ENTER}")
 				time.sleep(0.05)
-				SendKeys.SendKeys("{ENTER}")
+
 				#TODO Do we want it to sleep for a millisecond too? 
 			#S This is to throw an exception if we hit the iteration limit.
 			if ok_iter == iter_limit:
