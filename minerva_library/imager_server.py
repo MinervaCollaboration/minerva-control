@@ -294,11 +294,12 @@ class server:
 			#S be communicated back to Main, but am still thinking about it.
 			#TODO
 			files = glob.glob(self.data_path + "/*.fits")
-			compress_thread = threading.Thread(target = self.compress_thread,args = files)
-			comrpess_thread.start()
+			compress_thread = threading.Thread(target = self.compress_thread,args = (files,))
+			compress_thread.start()
 			return 'success'
 		
 		except:
+                        self.logger.exception('Compress thread failed to start')
 			return 'fail'
 
 	def compress_thread(self, files):
