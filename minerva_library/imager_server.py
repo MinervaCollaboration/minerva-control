@@ -286,14 +286,26 @@ class server:
 		return 'success'
 		
 	def compress_data(self):
-		files = glob.glob(self.data_path + "/*.fits")
 		try:
-			for filename in files:
-				logging.info('Compressing ' + filename)
-				subprocess.call([self.base_directory + '/cfitsio/fpack.exe','-D',filename])
+			#S This will throw if it doesn;t have data path, which
+			#S seems like the only place how compression won't work now. 
+			#S Still need to practice caution though, as the thread that 
+			#S this function starts may still barf. I'm not sure if this should
+			#S be communicated back to Main, but am still thinking about it.
+			#TODO
+			files = glob.glob(self.data_path + "/*.fits")
+			compress_thread = threading.Thread(target = self.compress_thread,args = files)
+			comrpess_thread.start()
 			return 'success'
+		
 		except:
 			return 'fail'
+
+	def compress_thread(self, files):
+		for filename in files:
+			logging.info('Compressing ' + filename)
+			subprocess.call([self.base_directory + '/cfitsio/fpack.exe','-D',filename])
+		
 
 	def getMean(self):
 		try:

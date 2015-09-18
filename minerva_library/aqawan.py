@@ -49,6 +49,7 @@ class aqawan:
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
+		self.isOpen = False
 
 
 	def setup_logger(self):

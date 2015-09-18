@@ -241,7 +241,7 @@ class control:
 #=====================================================#
 
 	#S New command format, which allows for incomplete lists of telescopes				
-	def telescope_initialize(self,tele_list = 0):
+	def telescope_initialize(self,tele_list = 0, tracking = False):
                 #S check if tele_list is only an int
                 if type(tele_list) is int:
                         #S Catch to default a zero arguement or outside array range tele_list
@@ -262,7 +262,9 @@ class control:
                 #S the number corresponding to each scope. So this is really saying
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
-                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].initialize)
+                                kwargs={}
+				kwargs['tracking']=tracking
+				threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].initialize,kwargs=kwargs)
                                 threads[t].start()
                 #S Join all the threads together
                 for t in range(len(tele_list)):
@@ -779,7 +781,9 @@ class control:
 		hdr = pyfits.getheader(filename)
 		platescale = float(hdr['PIXSCALE'])
 		dec = float(hdr['CRVAL2'])*math.pi/180.0 # declination in radians
-		PA = math.acos(-float(hdr['CD1_1'])*3600.0/platescale) # position angle in radians
+
+		arg = max(min(-float(hdr['CD1_1'])*3600.0/platescale,1.0),-1.0)
+		PA = math.acos(arg) # position angle in radians
 		self.logger.info(telescope_name + "Image PA=" + str(PA))
 
 		m0 = 22
@@ -1402,18 +1406,16 @@ class control:
 		f['OTAFAN'] = (telescopeStatus.fans.on,"OTA Fans on?")    
 
 		# Telemetry
-		if telescopeStatus.temperature == None:
-			f['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
-			f['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
-			f['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
-			f['AMBTMP'] = ("UNKNOWN","Ambient Temp (C)")
-			f['BCKTMP'] = ("UNKNOWN","Backplate Temp (C)")
-		else:
-			f['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
-			f['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
-			f['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
-			f['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
-			f['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
+		try: f['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
+		except: f['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
+		try: f['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
+		except: f['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
+		try: f['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
+		except: f['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
+		try: f['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
+		except: f['AMBTMP'] = ("UNKNOWN","Ambient Temp (C)")
+		try: f['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
+		except: f['BCKTMP'] = ("UNKNOWN","Backplate Temp (C)")
 
 		if self.site.weather != -1:
 			# Weather station
@@ -2005,11 +2007,27 @@ class control:
 		self.logger.info(telescope_name+' Checking schedule for ')
 		self.scheduleIsValid(telescope_num)
 
-		# home and initialize the telescope
-#		self.telescopes[telescope_num-1].home()
+		#S Initialize, home, and park telescope. 
+		#S Enable mount and connect to motors.
+		self.telescopes[telescope_num-1].initialize(tracking=False)
+
+		'''
+		#S Send her home, make sure everything is running right. 
+		self.telescopes[telescope_num-1].home()
+		time.sleep(300)
+		#S Same for rotator
 		self.telescopes[telescope_num-1].home_rotator()
+		time.sleep(420)
+		#S Do an initial connection to autofocus, this way we can use it later 
+		#S without issue. For some reason, we can't autofocus unless we have started
+		#S stopped it once.
 		self.telescopes[telescope_num-1].initialize_autofocus()
-		time.sleep(360)
+		#S Let her run?
+		time.sleep(60)
+		'''
+
+		#S Finally (re)park the telescope. 
+		self.telescopes[telescope_num-1].park()
 
 		# wait for the camera to cool down
 		self.cameras[telescope_num-1].cool()
@@ -2026,12 +2044,16 @@ class control:
 			# Take biases and darks (skip if we don't have time before twilight)
 			self.logger.info(telescope_name + 'Waiting until darker before biases/darks (' + str(waittime) + ' seconds)')
 			time.sleep(waittime)
+			#S Re-initialize, and turn tracking on. 
 			self.doBias(CalibInfo['nbias'],telescope_num)
 			self.doDark(CalibInfo['ndark'], CalibInfo['darkexptime'],telescope_num)
 
 		# Take Evening Sky flats
+		#S Initialize again, but with tracking on.
+		self.telescopes[telescope_num-1].initialize(tracking=True)
 		flatFilters = CalibInfo['flatFilters']
 		self.doSkyFlat(flatFilters, False, CalibInfo['nflat'],telescope_num)
+		
 		
 		# Wait until nautical twilight ends 
 		timeUntilTwilEnd = (self.site.NautTwilEnd() - datetime.datetime.utcnow()).total_seconds()

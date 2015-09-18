@@ -95,16 +95,15 @@ class CDK700:
 		self.logger.info('Enabling motors')
 		self.mountEnableMotors()
 		
-		# turning on mount tracking
+		# turning on mount tracking, rotator tracking
 		#S I'm defaulting this off, but including an arguement in case we do want it
 		#S This could be for initializing at 4PM start, or for testing. 
 		if tracking:
 			self.logger.info('Turning mount tracking on')
 			self.mountTrackingOn()
+			self.logger.info('Turning rotator tracking on')
+			self.rotatorStartDerotating()
 
-		# turning on rotator tracking
-		self.logger.info('Turning rotator tracking on')
-		self.rotatorStartDerotating()
 		
 	def load_config(self):
 		
@@ -740,7 +739,7 @@ class CDK700:
 			    '3) I could have had an interruption in other software, causing a potential fail(?)\n\n'\
 			    'Love,\n'\
 			    '-MINERVA'
-#			mail.send(self.logger_name+' failed to home correctly',body,level='serious')
+			mail.send(self.logger_name+' failed to home correctly',body,level='serious')
 			return False
 		
 	def home_rotator(self):

@@ -62,7 +62,7 @@ class site:
 			'windDirectionDegrees':[0.0,360.0],
 			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude':[-90,0],
-			'MearthCloud':[-999,-35],
+			'MearthCloud':[-999,-30],
 			'HATCloud': [-999,-999],			
 			'AuroraCloud': [-999,-999],
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
@@ -80,7 +80,7 @@ class site:
 			'windDirectionDegrees':[0.0,360.0],
 			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude':[-90,0],
-			'MearthCloud':[-999,-38],
+			'MearthCloud':[-999,-32],
 			'HATCloud': [-999,-999],			
 			'AuroraCloud': [-999,-999],
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
@@ -144,6 +144,8 @@ class site:
 				weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
 
 
+
+			'''
 			#S Acquire readings from the three cloud monitors at the address below. Order at 
 			#S website is Date, Mearth, HAT, Aurora.
 			url = 'http://linmax.sao.arizona.edu/temps/sky_temps'
@@ -168,7 +170,35 @@ class site:
 #				weather['MearthCloud'] = 999
 #				weather['HATCloud'] = 999
 #				weather['AuroraCloud'] = 999
+'''
 
+			# add in the cloud monitor
+			url = "http://mearth.sao.arizona.edu/weather/now"
+
+			# read the webpage
+			self.logger.debug('Requesting URL: ' + url)
+			request = urllib2.Request(url)
+			try:
+				response = urllib2.urlopen(request)
+			except:
+				self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
+				site.weather = -1
+				return -1
+			data = response.read().split()
+			if data[0] == '':
+				self.logger.error('Error reading the weather page (empty response)')
+				site.weather = -1
+				return -1
+			if len(data) <> 14:
+				self.logger.error('Error reading the weather page; response: ' + str(data))
+				site.weather = -1
+				return -1
+
+			# MJD to datetime
+			weather['cloudDate'] = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
+			weather['MearthCloud'] = float(data[13])
+			weather['HATCloud'] = 999
+			weather['AuroraCloud'] = 999
 			
 		elif self.logger_name == 'site_Simulate' or self.logger_name == 'site_Wellington':
                         # get values that pass through

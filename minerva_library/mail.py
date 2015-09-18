@@ -8,8 +8,9 @@ import socket
 from email.mime.text import MIMEText
 sys.dont_write_bytecode = True
 
-def send(subject,body,level='normal',attachment=None):
 
+def send(subject,body,level='normal',attachment=None):
+	#return
 	host = socket.gethostname()
 	if host == 'Main':
         	credential_directory = '/home/minerva/minerva-control/credentials/'

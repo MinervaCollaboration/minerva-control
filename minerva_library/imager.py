@@ -403,6 +403,10 @@ class imager:
 		return 'false'		
 
 	def compress_data(self):
+		#S I think we've given this too short of a time to reasonably compress
+		#S the amount of data? On a few instances the thread died from connection being lost
+		#S due to timeout.
+		#TODO Increase tiimeout
 		if self.send('compress_data none',30) == 'success': return True
 		else: return False
 
