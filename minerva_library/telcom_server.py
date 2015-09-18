@@ -88,7 +88,7 @@ class server:
 				#S This selects the 'OK' button, then will hit enter while the DialogBox exists.
 				window2['OK'].SetFocus()
 				#window2['OK'].Click()
-                                SendKeys.SendKeys("{ENTER}")
+				SendKeys.SendKeys("{ENTER}")
 				time.sleep(0.05)
 
 				#TODO Do we want it to sleep for a millisecond too? 
