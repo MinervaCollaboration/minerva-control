@@ -38,19 +38,17 @@ class aqawan:
 			self.IP = config['Setup']['IP']
 			self.PORT = config['Setup']['PORT']
 			self.logger_name = config['Setup']['LOGNAME']
+			self.num = config['Setup']['NUM']
 			self.mailsent = False
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit() 
-		
-		self.lastClose = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 		
 		today = datetime.datetime.utcnow()
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
 		self.isOpen = False
-
 
 	def setup_logger(self):
 			
@@ -321,7 +319,6 @@ class aqawan:
 					self.close_both() # keep trying!
 				else:
 					self.logger.info('Closed both shutters')
-					self.lastClose = datetime.datetime.utcnow()
 					if self.mailsent:
 						mail.send("Aqawan " + str(self.num) + " closed; crisis averted!","Love,\nMINERVA",level="critical")
 						self.mailsent = False

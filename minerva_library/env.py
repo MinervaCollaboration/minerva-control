@@ -44,6 +44,8 @@ class site:
 		self.night = 'n' + today.strftime('%Y%m%d')
 		self.startNightTime = datetime.datetime(today.year, today.month, today.day, 17) - datetime.timedelta(days=1)
 
+		self.lastClose = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+
 		self.obs = ephem.Observer()
 		self.obs.lat = ephem.degrees(str(self.latitude)) # N
 		self.obs.lon = ephem.degrees(str(self.longitude)) # E

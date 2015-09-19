@@ -135,20 +135,27 @@ class imager:
 			s.sendall(msg)
 		except:
 			self.logger.error(telescope_name + "connection lost")
-			return 'fail'
+			self.recover()
+			return self.send(msg,timeout)
+
+#			return 'fail'
 		try:
 			s.settimeout(timeout)
 			data = s.recv(1024)
 		except:
 			self.logger.error(telescope_name + "connection timed out")
-			return 'fail'
+			self.recover()
+			return self.send(msg,timeout)
+#			return 'fail'
 		try:
 			command = msg.split()[0]
 			data = repr(data).strip("'")
 			data_ret = data.split()[0]
 		except:
 			self.logger.error(telescope_name + "error processing server response")
-			return 'fail'
+			self.recover()
+			return self.send(msg,timeout)
+#			return 'fail'
 
 		if data_ret == 'fail': self.logger.error(telescope_name + "command failed("+command+')')
 		return data
@@ -425,10 +432,9 @@ class imager:
 		telescope_name = 'T(' + self.telnum + '): '
 		self.nfailed = self.nfailed + 1
 
-		try: self.disconnect_camera()
-		except: pass
-
 		if self.nfailed == 1:
+			try: self.disconnect_camera()
+			except: pass
 			# attempt to reconnect
 			self.logger.warning(telescope_name + 'Camera failed to connect; retrying') 
 			self.connect_camera()
@@ -443,7 +449,8 @@ class imager:
 		elif self.nfailed == 4:
 			self.logger.error(telescope_name + 'Camera failed to connect!') 
 			mail.send("Camera " + self.logger_name + " failed to connect","please do something",level="serious")
-			sys.exit()
+			thread.exit()
+#			sys.exit()
 
 		
 #test program, edit camera name to test desired camera

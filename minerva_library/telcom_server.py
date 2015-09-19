@@ -140,6 +140,9 @@ class server:
 			ctrl.Click()
 
 			# wait a few seconds
+			#S I wonder if this has to do with needing a refresh of control identifirs?
+			#S maybe we could try refinding the window, etc..
+			#TODO
 			time.sleep(5)
 
 			# select the auto focus tab

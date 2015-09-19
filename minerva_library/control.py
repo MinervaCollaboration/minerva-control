@@ -1,3 +1,4 @@
+
 # master control class for Minerva telescope array,
 # most methods operate all instruments in the array in parallel
 
@@ -492,28 +493,24 @@ class control:
 			self.logger.info(telescope_name + 'error loading calib info: ' + self.site.night + '.T' + str(num) + '.txt')
 			sys.exit()
 		
-	#open dome with weather check
-	def domeOpen(self):
-		if (datetime.datetime.utcnow() - self.domes[0].lastClose) < datetime.timedelta(minutes=20):
-			self.logger.info('Domes closed at ' + str(self.domes[0].lastClose) + '; waiting 20 minutes for conditions to improve')
-		else:
-			if self.site.oktoopen():
-				self.logger.debug('Weather is good; opening dome')
-				return self.dome_open()
-			else:
-				if site.sunalt() < 6:
-					self.logger.info('Weather still not ok; resetting timeout')
-					self.domes[0].lastClose = self.domes[1].lastClose = datetime.datetime.utcnow()
-		return False
-
-	#periodically check weather condition, decide weather to open/close dome
+	# check weather condition; close if bad, open and send heartbeat if good; update dome status
 	def domeControl(self):
 		while self.observing:
 			t0 = datetime.datetime.utcnow()
-			if not self.site.oktoopen(open=True):
-				self.dome_close()
+
+			if not self.site.oktoopen(open=self.domes[0].isOpen):
+				if self.site.sunalt() < 0.0:
+					self.logger.info('Weather not ok to open; resetting timeout')
+					self.site.lastClose = datetime.datetime.utcnow()
+					self.dome_close()
+			elif (datetime.datetime.utcnow() - self.site.lastClose).total_seconds() < (20.0*60.0):
+				self.logger.info('Conditions must be favorable for 20 minutes before opening; last bad weather at ' + str(self.site.lastClose))
+				self.dome_close() # should already be closed, but for good measure...
 			else:
-				self.domeOpen()
+				self.logger.debug('Weather is good; opening dome')				
+				openthread = threading.Thread(target=self.dome_open)
+				openthread.start()
+
 				# only send heartbeats when it's ok to open
 				for i in range(len(self.domes)):
 					self.domes[i].heartbeat()
@@ -1310,7 +1307,7 @@ class control:
 		f['OBSERVER'] = ('MINERVA Robot',"Observer")
 		f['TELESCOP'] = "T" + str(camera_num)
 		f['OBJECT'] = objname
-		f['APTDIA'] = "700"
+		f['APTDIA'] = 700
 		f['APTAREA'] = "490000"
 		gitNum = "100" #for testing purpose
 		f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
@@ -1848,7 +1845,7 @@ class control:
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
 		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
-			today = today + datetime.timedelta(days=1)
+			today = today + datetime.timedelta(days=1.0)
 		night = 'n' + today.strftime('%Y%m%d')
 
 		#set correct path for the night
@@ -2002,9 +1999,7 @@ class control:
 			return
 		
 		#set up night's directory
-		self.logger.info(telescope_name+' Setting up night directory')
 		self.prepNight(telescope_num)
-		self.logger.info(telescope_name+' Checking schedule for ')
 		self.scheduleIsValid(telescope_num)
 
 		#S Initialize, home, and park telescope. 
@@ -2061,6 +2056,13 @@ class control:
 		if timeUntilTwilEnd > 0:
 			self.logger.info(telescope_name + 'Waiting for nautical twilight to end (' + str(timeUntilTwilEnd) + 'seconds)')
 			time.sleep(timeUntilTwilEnd)
+
+		if telescope_num > 2: dome = self.domes[1]
+		else: dome = self.domes[0]
+
+		while not dome.isOpen and datetime.datetime.utcnow() < self.site.NautTwilBegin():
+			self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
+			time.sleep(60)
 
 		# find the best focus for the night
 		if datetime.datetime.utcnow() < self.site.NautTwilBegin():
