@@ -209,6 +209,7 @@ class aqawan:
 		while status['Shutter' + str(shutter)] == 'OPENING' and elapsedTime < timeout:
 			status = self.status()
 			elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
+			time.sleep(15.0) # make sure we don't block heartbeats
 
 		# Did it fail to open?
 		if status['Shutter' + str(shutter)] <> 'OPEN':

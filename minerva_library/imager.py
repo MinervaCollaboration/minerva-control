@@ -255,7 +255,7 @@ class imager:
 	#set path for which new images will be saved,if not set image will go into dump folder
 	def set_dataPath(self):
 		
-		if self.send('set_data_path',3) == 'success':
+		if self.send('set_data_path none',3) == 'success':
 			return True
 		else:
 			return False

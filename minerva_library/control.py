@@ -2018,13 +2018,14 @@ class control:
 		#S Same for rotator
 		self.telescopes[telescope_num-1].home_rotator()
 		time.sleep(420)
+		'''
 		#S Do an initial connection to autofocus, this way we can use it later 
 		#S without issue. For some reason, we can't autofocus unless we have started
 		#S stopped it once.
 		self.telescopes[telescope_num-1].initialize_autofocus()
 		#S Let her run?
 		time.sleep(60)
-		'''
+		
 
 		#S Finally (re)park the telescope. 
 		self.telescopes[telescope_num-1].park()
