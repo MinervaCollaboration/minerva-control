@@ -13,7 +13,6 @@ class server:
 
 		self.config_file = config
 		self.base_directory = base
-		self.data_path_base = 'D:\minerva\data'
 		self.load_config()
 
 		
@@ -35,7 +34,7 @@ class server:
 			config = ConfigObj(self.base_directory+ '/config/' + self.config_file)
 			self.host = config['HOST']
 			self.port = int(config['PORT'])
-			self.data_base_directory = config['DATA_BASE_D']
+			self.data_path_base = config['DATA_PATH']
 			self.logger_name = config['LOGNAME']
 			self.header_buffer = ''
 		except:
@@ -476,11 +475,14 @@ class server:
 		self.run_server()
 
 if __name__ == '__main__':
+    if socket.gethostname() == 'Minervared2-PC':
+        config_file = 'imager_server_red.ini'
+    else:
 	config_file = 'imager_server.ini'
-	base_directory = 'D:\minerva-control'
+    base_directory = 'C:\minerva-control'
 	
-	test_server = server(config_file,base_directory)
-	test_server.run_server()
+    test_server = server(config_file,base_directory)
+    test_server.run_server()
 	
 	
 	
