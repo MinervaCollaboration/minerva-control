@@ -52,6 +52,7 @@ class site:
 		self.obs.elevation = self.elevation # meters
 
 		# define more conservative limits to open to prevent cycling when borderline conditions
+		#TODO Revert wxtrain
 		self.openLimits = {
 			'totalRain':[0.0,1000.0],
 			'wxt510Rain':[0.0,0.0], 
@@ -72,7 +73,7 @@ class site:
 
 		self.closeLimits = {
 			'totalRain':[0.0,1000.0],
-			'wxt510Rain':[0.0,0.0], 
+			'wxt510Rain':[0.0,0], 
 			'barometer':[0,2000], 
 			'windGustSpeed':[0.0,40.0], 
 			'outsideHumidity':[0.0,80.0], 
@@ -82,7 +83,7 @@ class site:
 			'windDirectionDegrees':[0.0,360.0],
 			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude':[-90,0],
-			'MearthCloud':[-999,-32],
+			'MearthCloud':[-999,-28],
 			'HATCloud': [-999,-999],			
 			'AuroraCloud': [-999,-999],
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]

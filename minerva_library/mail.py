@@ -10,7 +10,7 @@ sys.dont_write_bytecode = True
 
 
 def send(subject,body,level='normal',attachment=None):
-	#return
+	return
 	host = socket.gethostname()
 	if host == 'Main':
         	credential_directory = '/home/minerva/minerva-control/credentials/'

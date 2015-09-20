@@ -353,6 +353,7 @@ class imager:
 	#write fits header for self.file_name, header_info must be in json format
 	def write_header(self, header_info):
 		if self.file_name == '':
+			self.logger.error('Empty file name')
 			return False
 		i = 800
 		length = len(header_info)
@@ -360,11 +361,13 @@ class imager:
 			if self.send('write_header ' + header_info[i-800:i],3) == 'success':
 				i+=800
 			else:
+				self.logger.error('Error sending header string::: ' +header_info[i-800:i])
 				return False
 
 		if self.send('write_header_done ' + header_info[i-800:length],10) == 'success':
 			return True
 		else:
+			self.logger.error('Failed to finish writing header')			
 			return False
 	#returns file name of the image saved, return 'false' if error occurs
 	def take_image(self,exptime=1,filterInd='zp',objname = 'test' ):

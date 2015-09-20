@@ -276,6 +276,7 @@ class server:
 			f.flush()
 			f.close()
 		except:
+			self.logger.exception('Error updating header for ' +self.file_name)
 			return 'fail'
 		return 'success'
 		

@@ -2039,7 +2039,9 @@ class control:
 		if waittime > 0:
 			# Take biases and darks (skip if we don't have time before twilight)
 			self.logger.info(telescope_name + 'Waiting until darker before biases/darks (' + str(waittime) + ' seconds)')
-			time.sleep(waittime)
+			#S Commented out for testing, need to uncomment!!
+			#TODO
+			#time.sleep(waittime)
 			#S Re-initialize, and turn tracking on. 
 			self.doBias(CalibInfo['nbias'],telescope_num)
 			self.doDark(CalibInfo['ndark'], CalibInfo['darkexptime'],telescope_num)
