@@ -1057,8 +1057,8 @@ class control:
                 f['SITEALT'] = (self.site.obs.elevation,"Site Altitude (m)")
                 f['JD'] = (0.0,"Julian Date at the start of exposure")
                 f['FOCALLEN'] = (4560.0,"Focal length of the telescope in mm")
-                f['APTDIA'] = (700,"")
-                f['APTAREA'] = (490000,"")
+                f['APTDIA'] = ("700","")
+                f['APTAREA'] = ("490000","")
                 f['SWCREATE'] = ("SI2479E 2011-12-02","Name of the software that created the image")
                 f['INSTRUME'] = ('KiwiSpec','Name of the instrument')
                 f['OBSERVER'] = ('MINERVA Robot',"Observer")
@@ -1196,9 +1196,9 @@ class control:
                 f['RAIN'] = (self.site.weather['wxt510Rain'],"Current Rain (mm?)")
                 f['TOTRAIN'] = (self.site.weather['totalRain'],"Total rain since ?? (mm?)")
                 f['OUTTEMP'] = (self.site.weather['outsideTemp'], "Outside Temperature (C)")
-                f['MCLOUD'] = (self.site.weather['MearthCloud'],"Mearth Cloud Sensor (C)")
-                f['HCLOUD'] = (self.site.weather['HATCloud'],"HAT Cloud Sensor (C)")
-                f['ACLOUD'] = (self.site.weather['AuroraCloud'],"Aurora Cloud Sensor (C)")
+                f['MCLOUD'] = (str(self.site.weather['MearthCloud']),"Mearth Cloud Sensor (C)")
+                f['HCLOUD'] = (str(self.site.weather['HATCloud']),"HAT Cloud Sensor (C)")
+                f['ACLOUD'] = (str(self.site.weather['AuroraCloud']),"Aurora Cloud Sensor (C)")
                 f['DEWPOINT'] = (self.site.weather['outsideDewPt'],"Dewpoint (C)")
                 f['WINDSPD'] = (self.site.weather['windSpeed'],"Wind Speed (mph)")
                 f['WINDGUST'] = (self.site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
@@ -1307,7 +1307,7 @@ class control:
 		f['OBSERVER'] = ('MINERVA Robot',"Observer")
 		f['TELESCOP'] = "T" + str(camera_num)
 		f['OBJECT'] = objname
-		f['APTDIA'] = 700
+		f['APTDIA'] = "700"
 		f['APTAREA'] = "490000"
 		gitNum = "100" #for testing purpose
 		f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
@@ -1420,9 +1420,9 @@ class control:
 			f['RAIN'] = (str(self.site.weather['wxt510Rain']),"Current Rain (mm?)")
 			f['TOTRAIN'] = (str(self.site.weather['totalRain']),"Total rain since ?? (mm?)")
 			f['OUTTEMP'] = (str(self.site.weather['outsideTemp']),"Outside Temperature (C)")
-			f['MCLOUD'] = (self.site.weather['MearthCloud'],"Mearth Cloud Sensor (C)")
-			f['HCLOUD'] = (self.site.weather['HATCloud'],"HAT Cloud Sensor (C)")
-			f['ACLOUD'] = (self.site.weather['AuroraCloud'],"Aurora Cloud Sensor (C)")
+			f['MCLOUD'] = (str(self.site.weather['MearthCloud']),"Mearth Cloud Sensor (C)")
+			f['HCLOUD'] = (str(self.site.weather['HATCloud']),"HAT Cloud Sensor (C)")
+			f['ACLOUD'] = (str(self.site.weather['AuroraCloud']),"Aurora Cloud Sensor (C)")
 			f['DEWPOINT'] = (str(self.site.weather['outsideDewPt']),"Dewpoint (C)")
 			f['WINDSPD'] = (str(self.site.weather['windSpeed']),"Wind Speed (mph)")
 			f['WINDGUST'] = (str(self.site.weather['windGustSpeed']),"Wind Gust Speed (mph)")

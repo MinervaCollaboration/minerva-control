@@ -180,7 +180,10 @@ class imager:
                 lastTimeNotAtTemp = datetime.datetime.utcnow() - datetime.timedelta(seconds=oscillationTime)
                 elapsedTimeAtTemp = oscillationTime
 
-		# Wait for temperature to settle (timeout of 15 minutes)                                                                           
+		# Wait for temperature to settle (timeout of 15 minutes)
+#		self.logger.error("***COOLING DISASBLED!!!***")#
+#		return True
+
                 while elapsedTime < settleTime and ((abs(self.setTemp - currentTemp) > self.maxdiff) or elapsedTimeAtTemp < oscillationTime):
                         self.logger.info(telescope_name + 'Current temperature (' + str(currentTemp) +
                                          ') not at setpoint (' + str(self.setTemp) +
