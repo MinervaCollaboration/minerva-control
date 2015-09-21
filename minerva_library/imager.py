@@ -440,7 +440,7 @@ class imager:
 
 		if self.nfailed == 1:
 			try: self.disconnect_camera()
-			except: pass
+			except: self.logger.error(telecsope_name+' failed to disconnect camera, movig on to a restart of maxim')
 			# attempt to reconnect
 			self.logger.warning(telescope_name + 'Camera failed to connect; retrying') 
 			self.connect_camera()

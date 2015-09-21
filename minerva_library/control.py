@@ -1855,12 +1855,27 @@ class control:
 	
 		if email: mail.send('T' + str(num) + ' Starting observing','Love,\nMINERVA')
 
-	def backup(self, num):
+	def backup(self, num, night=None):
 		
-		dataPath = '/Data/t' + str(num) + '/' + self.site.night + '/'
-		backupPath = '/home/minerva/backup/t' + str(num) + '/' + self.site.night + '/'
+		if night == None:
+			night = self.site.night
+
+
+		dataPath = '/Data/t' + str(num) + '/' + night + '/'
+		backupPath = '/home/minerva/backup/t' + str(num) + '/' + night + '/'
 		if not os.path.exists(backupPath):
 			os.mkdir(backupPath)
+		self.logger.info('backing up files from ' + dataPath + ' to ' + backupPath)
+
+		# wait for compression to complete
+		files = [1]
+		t0 = datetime.datetime.utcnow()
+		elapsedTime = 0.0
+		timeout = 300.0
+		while len(files) <> 0 and elapsedTime < timeout:
+			time.sleep(5.0)
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			files = glob.glob(dataPath + '*.fits')
 
 		files = glob.glob(dataPath + '*')
 		for f in files:
