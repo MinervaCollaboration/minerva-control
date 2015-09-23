@@ -1953,6 +1953,10 @@ class control:
 					if re.search('WARNING: ',line) or re.search("ERROR: ",line):
 						if re.search('WARNING: ',line): errmsg = line.split('WARNING: ')[1].strip()
 						else: errmsg = line.split('ERROR: ')[1].strip()
+						
+						if len(errmsg.split('active ')) > 1:
+							errmsg = errmsg.split('active')[0] + 'active'
+
 						if errmsg not in errors.keys():
 							errors[errmsg] = 1
 						else: errors[errmsg] += 1
