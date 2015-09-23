@@ -30,6 +30,15 @@ class aqawan:
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
 		
+		self.estopmail = "The emergency stop is active in the Aqawan, which prevents us from remotely controlling it.\n\n" +\
+		"To reset the E-stop:\n\n" +\
+		"1) Find the E-stop that was pressed and turn it counter clockwise until it pops up. " +\
+		"There's one next to each door and another inside the aqawan.\n" + \
+		"2) Find the aqawan panel on the inside of the north wall.\n" +\
+		"3) A blue light, labeled 'E-stop reset' on the top left of the panel will be flashing. Push it. " +\
+		"The light should go off when pressed. If not, the E-Stop is probably still depressed.\n\n" +\
+		"Love,\nMINERVA"
+		
 	def load_config(self):
 		#create configuration file object
 	   
@@ -205,8 +214,13 @@ class aqawan:
 		if not 'Success=TRUE' in response:
 			# did the command fail?
 			self.logger.warning(anum + 'Failed to open shutter ' + str(shutter) + ': ' + response)
-			return -1
 			# need to reset the PAC? ("Enclosure not in AUTO"?)
+			if "Estop active" in response:
+				if not self.mailsent:
+					mail.send("Aqawan " + str(self.num) + " Estop has been pressed!",self.estopmail,level='serious')
+					self.mailsent = True
+			return -1
+
 		
 		# Wait for it to open
 		self.logger.info(anum + 'Waiting for shutter ' + str(shutter) + ' to open')
@@ -266,30 +280,30 @@ class aqawan:
 		if not 'Success=TRUE' in response:
 			# did the command fail?
 			self.logger.info(anum + 'Failed to open shutter ' + str(shutter) + ': ' + response)
-			ipdb.set_trace()
+			if "Estop active" in response:
+				if not self.mailsent:
+					mail.send("Aqawan " + str(self.num) + " Estop has been pressed!",self.estopmail,level='serious')
+					self.mailsent = True
+			else: ipdb.set_trace()
 			# need to reset the PAC? ("Enclosure not in AUTO"?)
 		
-			# Wait for it to open
-			status = self.status()
-			while status['Shutter' + str(shutter)] == 'OPENING' and elapsedTime < timeout:
-				status = self.status()
-				elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
-
-			# Did it fail to open?
-			if status['Shutter' + str(shutter)] <> 'OPEN':
-				self.logger.error(anum + 'Error opening Shutter ' + str(shutter) )
-				return -1
-
-			self.logger.info(anum + 'Shutter ' + str(shutter) + ' open')
-			
-	'''
-	too slow!
-	def isOpen(self):
+		# Wait for it to open
 		status = self.status()
-		if status['Shutter1'] == "OPEN" and status['Shutter2'] == "OPEN":
-			return True
-		return False
-	'''
+		while status['Shutter' + str(shutter)] == 'OPENING' and elapsedTime < timeout:
+			status = self.status()
+			elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
+
+		# Did it fail to open?
+		if status['Shutter' + str(shutter)] <> 'OPEN':
+			self.logger.error(anum + 'Error opening Shutter ' + str(shutter) )
+			if "Estop active" in response:
+				if not self.mailsent:
+					mail.send("Aqawan " + str(self.num) + " Estop has been pressed!",self.estopmail,level='serious')
+					self.mailsent = True
+			return -1
+
+		self.logger.info(anum + 'Shutter ' + str(shutter) + ' open')
+			
 
 	#close both shutter
 	def close_both(self):
