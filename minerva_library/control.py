@@ -476,7 +476,7 @@ class control:
 	#load calibration file
 	def loadCalibInfo(self,num):
 
-		telescope_name = 'T(' + str(num) +'): '
+		telescope_name = 'T' + str(num) +': '
 
 		file = self.site.night + '.T' + str(num) + '.txt'
 		self.logger.info(telescope_name + 'loading calib file: ' + file)
@@ -573,7 +573,7 @@ class control:
 
 	def getPA(self,imageName, email=True):
 
-		telescope_name = 'T(' + os.path.splitext(imageName)[0].split('.')[1][1] + '): '
+		telescope_name = 'T' + os.path.splitext(imageName)[0].split('.')[1][1] + ': '
 		
 		self.logger.info(telescope_name + 'Finding PA for ' + imageName)
 		self.astrometry(imageName)
@@ -750,7 +750,7 @@ class control:
 		num = telescope.logger_name.split('_')[-1]
 		telname = "T" + num
 		
-		telescope_name = 'T(' + str(num) +'): '
+		telescope_name = 'T' + str(num) +': '
 
 
 		if os.path.exists("disableGuiding." + telname + ".txt"):
@@ -1262,7 +1262,7 @@ class control:
 	#image is saved on remote computer's data directory set by imager.set_data_path()
 	def takeImage(self, exptime, filterInd, objname, camera_num=0):
 
-		telescope_name = 'T(' + str(camera_num) +'): '
+		telescope_name = 'T' + str(camera_num) +': '
 		#check camera number is valid
 		if camera_num > len(self.cameras) or camera_num < 0:
 			return 'error'
@@ -1452,7 +1452,7 @@ class control:
 		return 'error'
 		
 	def doBias(self,num=11,camera_num=0):
-		telescope_name = 'T(' + str(camera_num) +'): '
+		telescope_name = 'T' + str(camera_num) +': '
 		objectName = 'Bias'
 		for x in range(num):
 			filename = 'error'
@@ -1461,7 +1461,7 @@ class control:
 				filename = self.takeImage(0,'V',objectName,camera_num)
 			
 	def doDark(self,num=11, exptime=60,camera_num=0):
-		telescope_name = 'T(' + str(camera_num) +'): '
+		telescope_name = 'T' + str(camera_num) +': '
 		objectName = 'Dark'
 		for time in exptime:
 			for x in range(num):
@@ -1473,7 +1473,7 @@ class control:
 	#doSkyFlat for specified telescope
 	def doSkyFlat(self,filters,morning=False,num=11,telescope_num=0):
 
-		telescope_name = 'T(' + str(telescope_num) +'): '
+		telescope_name = 'T' + str(telescope_num) +': '
 		if telescope_num < 1 or telescope_num > len(self.telescopes):
 			self.logger.error(telescope_name + 'invalid telescope index')
 			return
@@ -1653,7 +1653,7 @@ class control:
 			night = self.site.night
 
 		targetFile = night + '.T' + str(num) + '.txt'
-		telescope_name = 'T(' + str(num) +'): '
+		telescope_name = 'T' + str(num) +': '
 
 
 		if not os.path.exists(self.base_directory + '/schedule/' + targetFile):
@@ -1740,7 +1740,7 @@ class control:
 	#S telescope commands were switched to.
 	def doScience(self,target,telescope_num = 0):
 
-		telescope_name = 'T(' + str(telescope_num) +'): '
+		telescope_name = 'T' + str(telescope_num) +': '
 		
 		if telescope_num < 1 or telescope_num > len(self.telescopes):
 			self.logger.error('invalid telescope index')
@@ -1903,7 +1903,7 @@ class control:
 		self.backup(num)
 
 		# copy schedule to data directory
-		self.logger.info("Copying schedule file from ./schedule/" + self.site.night + ".txt to " + dataPath)
+		self.logger.info("Copying schedule file from " + self.base_directory + "/schedule/" + self.site.night + ".T" + str(num) + ".txt to " + dataPath)
 		try: shutil.copyfile(self.base_directory + '/schedule/' + self.site.night + ".T" + str(num) + '.txt', dataPath)
 		except: pass
 
@@ -2011,7 +2011,7 @@ class control:
 	#main observing routine, control one telescope
 	def observingScript(self,telescope_num=0):
 		
-		telescope_name = 'T(' + str(telescope_num) +'): '
+		telescope_name = 'T' + str(telescope_num) +': '
 
 		if telescope_num < 1 or telescope_num > len(self.telescopes):
 			self.logger.error(telescope_name + 'invalid telescope index')
@@ -2193,7 +2193,7 @@ class control:
 		self.endNight(telescope_num)
 		
 	def observingScript_catch(self,telescope_num):
-		telescope_name = 'T(' + str(telescope_num) +'): '
+		telescope_name = 'T' + str(telescope_num) +': '
 		try:
 			self.observingScript(telescope_num)
 		except Exception as e:

@@ -11,7 +11,7 @@ if __name__ == '__main__':
 	
 	#run observing script on all telescopes with their own schedule file
 	minerva.observingScript_all()
-	
+	sys.exit()
 	
 	# minerva.telcom_enable()
 	# minerva.telescope_mountGotoAltAz(30,90)

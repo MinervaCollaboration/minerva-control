@@ -108,7 +108,7 @@ class imager:
 		
 	#return a socket object connected to the camera server
 	def connect_server(self):
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 
 		try:
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -128,7 +128,7 @@ class imager:
 		return s
 	#send commands to camera server
 	def send(self,msg,timeout):
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 		try:
 			s = self.connect_server()
 			s.settimeout(3)
@@ -161,7 +161,7 @@ class imager:
 		return data
 		
 	def cool(self):
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 
 		settleTime = 1200
                 oscillationTime = 120.0
@@ -210,7 +210,7 @@ class imager:
 
 	# ask server to connect to camera
 	def connect_camera(self):
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 
 		if (self.send('connect_camera none',30)).split()[0] == 'success':
 			if self.check_filters()==False:
@@ -225,7 +225,7 @@ class imager:
 			
 	def disconnect_camera(self):
 		
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 		if self.send('disconnect_camera none',5) == 'success':
 			self.logger.info(telescope_name + 'successfully disconnected camera')
 			return True
@@ -328,7 +328,7 @@ class imager:
 		else: return False
 
 	def get_temperature(self):
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 
 		result = self.send('get_temperature none',5)
 		try:
@@ -375,7 +375,7 @@ class imager:
 	#returns file name of the image saved, return 'false' if error occurs
 	def take_image(self,exptime=1,filterInd='zp',objname = 'test' ):
 		
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 
 		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
@@ -429,13 +429,13 @@ class imager:
 		self.connect_camera()
 
 	def restartmaxim(self):
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 		self.logger.info(telescope_name + 'Killing maxim') 
 		if self.send('restart_maxim none',15) == 'success': return True
 		else: return False
 		
 	def recover(self):
-		telescope_name = 'T(' + self.telnum + '): '
+		telescope_name = 'T' + self.telnum + ': '
 		self.nfailed = self.nfailed + 1
 
 		if self.nfailed == 1:
