@@ -35,40 +35,46 @@ class imager:
 	def load_config(self):
 	
 		try:
-			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
+                        # common to spectrograph detector and imaging camera
+                        config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.ip = config['Setup']['SERVER_IP']
 			self.port = int(config['Setup']['SERVER_PORT'])
 			self.logger_name = config['Setup']['LOGNAME']
-			self.nps_config = config['Setup']['POWERSWITCH']
-			self.nps_port = config['Setup']['PSPORT']
-			self.telcom_client_config = config['Setup']['TELCOM']
-						
-			self.platescale = float(config['Setup']['PLATESCALE'])
-			self.filters = config['FILTERS']
 			self.setTemp = float(config['Setup']['SETTEMP'])
 			self.maxcool = float(config['Setup']['MAXCOOLING'])
 			self.maxdiff = float(config['Setup']['MAXTEMPERROR'])
 			self.xbin = int(config['Setup']['XBIN'])
 			self.ybin = int(config['Setup']['YBIN'])
+			self.xcenter = config['Setup']['XCENTER']
+			self.ycenter = config['Setup']['YCENTER']
 			self.x1 = config['Setup']['X1']
 			self.x2 = config['Setup']['X2']
 			self.y1 = config['Setup']['Y1']
 			self.y2 = config['Setup']['Y2']
-
 			self.biaslevel = float(config['Setup']['BIASLEVEL'])
 			self.saturation = float(config['Setup']['SATURATION'])
-
-			self.xcenter = config['Setup']['XCENTER']
-			self.ycenter = config['Setup']['YCENTER']
-			self.pointingModel = config['Setup']['POINTINGMODEL']
 			self.datapath = ''
 			self.gitpath = ''
-			self.telescope_name = config['Setup']['TELESCOPE']
-			self.telnum = self.telescope_name[1]
-			self.exptypes = {'Dark' : 0,'Bias' : 0,'SkyFlat' : 1,}
 			self.file_name = 'test'
 			self.night = 'test'
 			self.nfailed = 0
+
+                        #unique to imaging camera
+                        if 'si_imager' <> config['Setup']['LOGNAME'].lower():
+                                self.nps_config = config['Setup']['POWERSWITCH']
+                                self.nps_port = config['Setup']['PSPORT']
+                                self.telcom_client_config = config['Setup']['TELCOM']
+                                self.platescale = float(config['Setup']['PLATESCALE'])
+                                self.filters = config['FILTERS']
+                                self.pointingModel = config['Setup']['POINTINGMODEL']
+                                self.telescope_name = config['Setup']['TELESCOPE']
+                                self.telnum = self.telescope_name[1]
+                                self.exptypes = {'Dark' : 0,'Bias' : 0,'SkyFlat' : 1,}
+
+
+                        # unique to spectrograph detector
+                        else:
+                                pass
 		except:
 			print('ERROR accessing config file: ' + self.config_file)
 			sys.exit()

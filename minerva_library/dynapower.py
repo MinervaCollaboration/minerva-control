@@ -24,10 +24,11 @@ class dynapower:
             return 
 
         #ipdb.set_trace()
+        self.base_directory = base
         self.IP = config['IP']
         self.PORT = config['PORT']
         logger_name = config['LOGNAME']
-        log_file = 'log/' + night + '/' + config['LOGFILE']
+        log_file = self.base_directory+'/log/' + night + '/' + config['LOGFILE']
         self.outlets = config['OUTLETS']
         self.username = config['USER']
         self.password = config['PASSWORD']
@@ -62,13 +63,14 @@ class dynapower:
         if browser:
             self.browserOpen = True
             #S Open the browser, make sure chromedriver.exe is in /dependencies.
-            self.browser = selenium.webdriver.Chrome(base+'/dependencies/'+driverfile)
+            self.browser = selenium.webdriver.Chrome(base+'/dependencies/'+driverfile)            
             #S Navigate to the outlet.htm page of the PDU, with the username and password for
             #S the basic http authentication.
             self.browser.get('http://'+self.username+':'+self.password+'@'+self.IP+'/outlet.htm')
             #S Give it a minute to run all the JavaScript for the page.
-            time.sleep(2)
-            #S Leave the browser open. Think about creating clean up function to close browsers, etc.
+            time.sleep(1)
+            self.browser.set_window_size(10,1000)
+            #S Leave the browser open. 
             
     #S Update the status dictionary for hte PDU
     def updateStatus(self):
@@ -111,7 +113,7 @@ class dynapower:
 
     def send(self,url):
 
-        f = open('credentials/dynapower.txt','r')
+        f = open(self.base_directory+'/credentials/dynapower.txt','r')
         username = f.readline().strip()
         password = f.readline().strip()
         f.close()

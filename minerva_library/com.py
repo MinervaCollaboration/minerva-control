@@ -7,15 +7,16 @@ import time, struct, datetime
 class com:
     
     #S Initialization for com class. Lots of good stuff in here.
-    def __init__(self, id, night, configfile='C:/minerva-control/config/com.ini'):
+    def __init__(self, id, base, night, configfile='C:/minerva-control/config/com.ini'):
         #ipdb.set_trace()
         #S set the id of self to the memory addresss, unique identifier
         self.id = id
+        self.base_directory = base
         
         #S Parses configfile into List based on id
         #? Not sure if this is how id is working, but makes sense. Need to look
         #? into *.ini files more. 
-        configObj = ConfigObj(configfile)
+        configObj = ConfigObj(self.base_directory+configfile)
 
         #S Get the corresponding item/object (Typer??) from list of configObj,
         #S throws if not in configfile, printing to stdout. No log it 
@@ -60,7 +61,7 @@ class com:
 
         #S Looks like log writing stuff, comes from configfile as well.
         logger_name = config['Setup']['LOGNAME']
-        log_file = 'log/' + night + '/' + config['Setup']['LOGFILE']
+        log_file = self.base_directory+'/log/' + night + '/' + config['Setup']['LOGFILE']
 			
 	# setting up logger
         fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"

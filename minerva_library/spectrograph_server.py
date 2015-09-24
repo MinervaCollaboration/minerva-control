@@ -82,7 +82,7 @@ class server:
 	#create logger object and link to log file
 	def setup_logger(self):
                 #S Looks for existing log path, and creates one if none exist.
-		log_path = self.base_directory + '/log/' + self.night
+		log_path = self.base_directory + '\\log\\' + self.night
 		
                 if os.path.exists(log_path) == False:
                         os.mkdir(log_path)
@@ -105,7 +105,7 @@ class server:
                 #clear handlers before setting new ones                                                                               
                 self.logger.handlers = []
 
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
+                fileHandler = logging.FileHandler(log_path + '\\' + self.logger_name + '.log', mode='a')
                 fileHandler.setFormatter(formatter)
                 self.logger.addHandler(fileHandler)
 
@@ -141,8 +141,8 @@ class server:
 
 	#S Create class objects
 	def create_class_objects(self):
-                self.expmeter_com = com.com('expmeter',self.night,configfile=self.base_directory + '/config/com.ini')
-                self.cellheater_com = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
+                self.expmeter_com = com.com('expmeter',self.base_directory,self.night,configfile= '/config/com.ini')
+                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night,configfile= '/config/com.ini')
                 self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
                 self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)
                 self.i2stage_connect()
@@ -440,7 +440,9 @@ class server:
 
                 #S Try to get locationstr from dictionary in config.
                 try:
-                        self.motorI2.mAbs(self.i2positions[locationstr.lower()])
+                                                        
+                        i2stage_move_thread = threading.Thread(target = self.motorI2.mAbs, args = (self.i2positions[locationstr.lower()]))
+                        i2stage_move_thread.start()
                 except:
                         #throw and log error on bad position
                         self.logger.error("ERROR: Iodine failed to move or invalid location.")
@@ -887,8 +889,8 @@ class server:
                 
 if __name__ == '__main__':
 
-	base_directory = 'C:\minerva-control'
-        ipdb.set_trace()
+	base_directory = 'C:\\minerva-control'
+        #ipdb.set_trace()
 	test_server = server('spectrograph.ini',base_directory)
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 

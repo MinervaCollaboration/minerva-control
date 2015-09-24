@@ -52,8 +52,11 @@ class control:
 	def create_class_objects(self):
 		#S Commenting put for operation on minervaMain
 		if socket.gethostname() == 'Kiwispec-PC':
+                        #S Give some time for the spec_server to start up, get settled.
+                        time.sleep(5)
 			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
 			self.site = env.site('site_Wellington.ini',self.base_directory)
+			#imager.imager('si_imager.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
@@ -1244,7 +1247,6 @@ class control:
 
                 
 		header = json.dumps(f)
-		
 		self.logger.info('Waiting for spectrograph imaging thread')
 		# wait for imaging process to complete
 		imaging_thread.join()
