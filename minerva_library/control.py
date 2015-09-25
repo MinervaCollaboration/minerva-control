@@ -1260,7 +1260,7 @@ class control:
 
 	#take one image based on parameter given, return name of the image, return 'error' if fail
 	#image is saved on remote computer's data directory set by imager.set_data_path()
-	def takeImage(self, exptime, filterInd, objname, camera_num=0):
+	def takeImage(self, exptime, filterInd, objname, camera_num=0, defocus=0.0):
 
 		telescope_name = 'T' + str(camera_num) +': '
 		#check camera number is valid
@@ -1290,6 +1290,10 @@ class control:
 		dec = self.ten(telescopeStatus.mount.dec_target)
 		if dec > 90.0: dec = dec-360 # fixes bug in PWI
 		dec = str(dec)
+
+		az = str(float(telescopeStatus.mount.azm_radian)*180.0/math.pi)
+		alt = str(float(telescopeStatus.mount.alt_radian)*180.0/math.pi)
+		airmass = str(1.0/math.cos((90.0 - float(alt))*math.pi/180.0))
 
 		moonpos = self.site.moonpos()
 		moonra = str(moonpos[0])
@@ -1336,8 +1340,16 @@ class control:
 		# Mount specific
 		f['TELRA'] = (telra,"Telescope RA (J2000)")
 		f['TELDEC'] = (teldec,"Telescope Dec (J2000)")
-		f['RA'] = (ra, "Target RA (J2000)")
-		f['DEC'] =  (dec, "Target Dec (J2000)")
+		f['RA'] = (ra, "Solved RA (J2000)") # this will be overwritten by astrometry.net
+		f['DEC'] =  (dec, "Solved Dec (J2000)") # this will be overwritten by astrometry.net
+		f['TARGRA'] = (ra, "Target RA (J2000)")
+		f['TARGDEC'] =  (dec, "Target Dec (J2000)")
+		f['ALT'] = (alt,'Telescope altitude (deg)')
+		f['AZ'] = (az,'Telescope azimuth (deg E of N)')
+#		print airmass
+#		ipdb.set_trace()
+		f['AIRMASS'] = (airmass,"airmass (plane approximation)")
+
 		f['MOONRA'] = (moonra, "Moon RA (J2000)")    
 		f['MOONDEC'] =  (moondec, "Moon Dec (J2000)")
 		f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")    
@@ -1346,6 +1358,7 @@ class control:
 
 		# Focuser Specific
 		f['FOCPOS'] = (telescopeStatus.focuser.position,"Focus Position (microns)")
+		f['DEFOCUS'] = (str(defocus),"Intentional defocus (mm)")
 
 		# Rotator Specific
 		f['ROTPOS'] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
@@ -1814,7 +1827,7 @@ class control:
 						if datetime.datetime.utcnow() > target['endtime']: return
 						if i < target['num'][j]:
 							self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-							filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num)
+							filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num, defocus=target['defocus'])
 							if target['selfguide'] and filename <> 'error': reference = self.guide('/Data/t' + str(telescope_num) + '/' + self.site.night + '/' + filename,reference)
 					
 					
@@ -1836,7 +1849,7 @@ class control:
 							telescope.acquireTarget(target['ra'],target['dec'])
 						if datetime.datetime.utcnow() > target['endtime']: return
 						self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-						filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num)
+						filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num, defocus=target['defocus'])
 						if target['selfguide'] and filename <> 'error': reference = self.guide('/Data/t' + str(telescope_num) + '/' + self.site.night + '/' + filename,reference)
 
 	#prepare logger and set imager data path
