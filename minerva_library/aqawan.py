@@ -39,6 +39,9 @@ class aqawan:
 		"The light should go off when pressed. If not, the E-Stop is probably still depressed.\n\n" +\
 		"Love,\nMINERVA"
 		
+		self.rainChangeDate = datetime.datetime.utcnow()
+		self.lastRain = 0.0
+
 	def load_config(self):
 		#create configuration file object
 	   

@@ -36,6 +36,8 @@ class site:
 		
 		self.observing = True
 		self.weather = -1
+		self.rainChangeDate = datetime.datetime.utcnow() - datetime.timedelta(hours=1.0)
+		self.lastRain = 0.0
 
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
@@ -55,7 +57,7 @@ class site:
 		#TODO Revert wxtrain
 		self.openLimits = {
 			'totalRain':[0.0,1000.0],
-			'wxt510Rain':[0.0,0.0], 
+			'wxt510Rain':[0.0,50.0], 
 			'barometer':[0,2000], 
 			'windGustSpeed':[0.0,35.0], 
 			'outsideHumidity':[0.0,75.0], 
@@ -73,7 +75,7 @@ class site:
 
 		self.closeLimits = {
 			'totalRain':[0.0,1000.0],
-			'wxt510Rain':[0.0,0], 
+			'wxt510Rain':[0.0,50.0], 
 			'barometer':[0,2000], 
 			'windGustSpeed':[0.0,40.0], 
 			'outsideHumidity':[0.0,80.0], 
@@ -276,6 +278,15 @@ class site:
 			self.getWeather()
 
 
+		if self.weather['wxt510Rain'] > self.lastRain:
+			self.lastRain = self.weather['wxt510Rain']
+			self.rainChangeDate = datetime.datetime.utcnow()
+
+		# if it has rained in the last hour, it's not ok to open
+		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 3600.0:
+			self.logger.info('Not OK to open: it last rained at ' + str(self.rainChangeDate) + ", which is less than 1 hour ago")
+			retval = False
+
 		#S External temperature check, want to use Mearth, then Aurora if Mearth not available, and then 
 		#S HAT if niether of those two are found. Currently, we are assuming a value of 0 means disconnected
 		#S for any of the three sensors.
@@ -362,9 +373,9 @@ class site:
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
-	test_site = Site('Mt_Hopkins',base_directory)
+	test_site = site('site_mtHopkins.ini',base_directory)
 	print test_site.night
-	
+	print test_site.oktoopen()
 	
 	
 	
