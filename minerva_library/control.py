@@ -1974,7 +1974,8 @@ class control:
 							errors[errmsg] = 1
 						else: errors[errmsg] += 1
 					elif re.search('=',line):
-						key = line.split('=')[-2].split()[-1]
+						try: key = line.split('=')[-2].split()[-1]
+						except: key = 'fail'
 						if key in weatherstats.keys():
 							time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S")
 							try:
@@ -2376,8 +2377,62 @@ class control:
         def take_rv_spec(self,target):
                 pass
                                 
-                
-		
+	"""
+	###
+	#AUTOFOCUS
+	###
+	#S Small file will be needed for a few minor functions in the fitting process, etc
+	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
+	#S stuff we need to worry about
+	def autofocus(self,telescope_number,af_numsteps=10,af_defocusstep=10):
+	#	pass
+		#S zero index the telenumber
+		num = telescope_number - 1
+		#S Default exposure time for autofocus, seconds
+		af_exptime = 5
+		#S Filter is air I assume
+		af_filter = 'air'
+		#TODO Get last best focus, telescope getstatus?
+		#TODO any other relevant information we need
+		#TODO move to a nice patch of sky, take test image
+		#TODO Move telescope
+		#S begin_af is a really a flag to hold our position until we have all the details
+		#S of the sequence figured out, like exposure time and sky position
+		begin_af = False
+		while not begin_af:
+			aftest_file = self.takeImage(af_exptime,af_filter,af_name,telescope_num)
+			aftest = self.cameras[num].af_imagefit(aftest_file)
+			#S this is to check to see if the brightest star is greater by some amount than the background
+			#S This is a concern for fitting, as getstars can find 'stars' that we can't fit. Need 
+			#S to look into get stars more though...
+			if aftest['max_diff'] < max_diff:
+				af_exptime += 5
+				continue
+			#S I think this should be fittable stars more than anything. 
+			if aftest['num_stars'] < num_stars:
+				#S I think if we don't have enough stars after accounting for exptime, we should try and move
+				#TODO Telescope move
+				continue
+			#S So not that we have 
+		#TODO Determine if exptime, sky patch are good
+		#TODO begin autofocus sequence
+		for imnum in range(number_of_images):
+			#S This takes the image for the autofocus, 
+			af_name = 'afoc'+str(imnum)
+			#S I'm not sure if this is how this works, or how we want to implemenet it.
+			#S Presumably the defocus arguement is how far you want ti off of the current focus, 
+			#S so this should be fine if we set it initially to the minimum of what we want to offset. 
+			af_defocus += af_defocusstep
+			filename = self.takeImage(af_exptime,af_filter,af_name,telescope_num,defocus=af_defocus)
+			#S Need a function in imager_server to perform fitting stuff, return dictionary with the goods
+			af_dict = self.cameras[num].af_imagefit(filename)
+			fwhm_list.append(af_dict['median_fwhm'])
+		#S Now we have a list of fwhm's, lets fit a quadratic to it. 
+		#S We're going to have all of these fitting functions in another file
+		new_best_focus = fit_autofocus(fwhm_list)
+		#S This will return a number or None(?)
+		if new_best_focus <> None:
+	"""		
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
