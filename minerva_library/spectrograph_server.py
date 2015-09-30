@@ -82,7 +82,7 @@ class server:
 	#create logger object and link to log file
 	def setup_logger(self):
                 #S Looks for existing log path, and creates one if none exist.
-		log_path = self.base_directory + '/log/' + self.night
+		log_path = self.base_directory + '\\log\\' + self.night
 		
                 if os.path.exists(log_path) == False:
                         os.mkdir(log_path)
@@ -105,7 +105,7 @@ class server:
                 #clear handlers before setting new ones                                                                               
                 self.logger.handlers = []
 
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
+                fileHandler = logging.FileHandler(log_path + '\\' + self.logger_name + '.log', mode='a')
                 fileHandler.setFormatter(formatter)
                 self.logger.addHandler(fileHandler)
 
@@ -141,10 +141,11 @@ class server:
 
 	#S Create class objects
 	def create_class_objects(self):
-                self.expmeter_com = com.com('expmeter',self.night,configfile=self.base_directory + '/config/com.ini')
-                self.cellheater_com = com.com('I2Heater',self.night,configfile=self.base_directory + '/config/com.ini')
+                self.expmeter_com = com.com('expmeter',self.base_directory,self.night,configfile= '/config/com.ini')
+                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night,configfile= '/config/com.ini')
                 self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
                 self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)
+                
                 self.i2stage_connect()
 
 #==================server functions===================#
@@ -366,12 +367,7 @@ class server:
         # THORLABS STAGE, For Iodine Cell, i2stage, i2motor
         ###
 
-        #TODO Is it too much to be logging at each connect/disconnect? I think
-        #TODO so, so I commented them out but did leave in error logs. There is also opportunity to
-        #TODO make moveI2Stage check against current position and bypass command if so.
-        #TODO I think this is negligible in the time it would take to not move, and sending the
-        #TODO command should be quick anyway. Might as well I'm thinking.
-        
+
         #S Initialize the stage, needs to happen before anyhting else.
         def i2stage_connect(self):
                 #S Unique serial number for I2 stage, hardwaretype for BSC201(?)
@@ -379,16 +375,26 @@ class server:
                 #S in testing though.
                 SN = 40853360
                 HWTYPE = 12
-                
+                #S Decided to place a power cycle before any connectino we make to the i2stage.
+                #S There is an issue that occurs in a dynamic linked librry (.dll) file that PyAPT uses
+                #S if the motor was not discnnected properly. If the issue is hit, it crashes python.exe,
+                #S and will do so until the power is cycled on the motor. So, to try and avoid this as uch
+                #S as possible, a power cycle is being included. The ten second sleep time is there to give
+                #S the motor some time to do it's start up stuff (e.g. it won't connect if you try to
+                #S quickly after the cycle.
+                self.dynapower2.cycle('i2stage',2)
+                time.sleep(10)
                 
                 
                 #S Try and connect and initialize
                 try:
                         #S Connect the motor with credentials above.
+                        #ipdb.set_trace()
                         self.motorI2 = APTMotor(SN , HWTYPE)
                         #S Initialize motor, we can move and get info with this.
                         #S Can't be controllecd by anything else until relesased.
-                        self.motorI2.initializeHardwareDevice()
+                        #S NOTE this is actually included in APTMotor routine, so commenting out.
+                        ## self.motorI2.initializeHardwareDevice()
                         #S Get curtrent position, needed for logging?
                         ## currentPos = self.motorI2.getPos()
                         #S Write it down, commented out for now.
@@ -423,7 +429,15 @@ class server:
                 try:
                         #S Query position
                         current_pos = self.motorI2.getPos()
-                        return 'sucess ' + str(current_pos)
+                        #S We also want to math this to a position string.
+                        #S We always assign it the unknown string first, then it has to be
+                        #S matched to be given an actual location string. Mathcing is rounded
+                        #S to tenthes of a millimeter.
+                        locationstr = 'unknown'
+                        for key in self.i2positions.keys():
+                                if round(current_pos,1) == self.i2positions[key]:
+                                        locationstr = key
+                        return 'success ' + str(current_pos) + ' ' +locationstr
                 except:
                         self.logger.error("The Iodine stage isn't connected (most likely).")
 			return 'fail'
@@ -440,15 +454,20 @@ class server:
 
                 #S Try to get locationstr from dictionary in config.
                 try:
-                        self.motorI2.mAbs(self.i2positions[locationstr.lower()])
+                        pass
+                                                        
+                        i2stage_move_thread = threading.Thread(target = self.motorI2.mAbs, args = (self.i2positions[locationstr.lower()],))
+                        i2stage_move_thread.start()
+                        #S need to log position, stuff, andything else?
+                        self.logger.info("Iodine stage moving from %0.5f mm to %0.5f mm"%(prev_pos,self.i2positions[locationstr.lower()]))
+                        return 'success'
                 except:
                         #throw and log error on bad position
                         self.logger.error("ERROR: Iodine failed to move or invalid location.")
+                        return 'fail'
+                        
 
-                #S need to log position, stuff, andything else?
-                new_pos = self.motorI2.getPos()
-                self.logger.info("Iodine stage moved from %0.5f mm to %0.5f mm"%(prev_pos,new_pos))
-                return 'success'
+
 
 
 
@@ -882,13 +901,17 @@ class server:
 		self.thar_turn_off()
 		self.flat_turn_off()
 		self.i2stage_disconnect()
+		#S Something fucky going on here, won't let me close browsers.
+		#TODO
+		#self.dynapower1.browser.close()
+		#self.dynapower2.browser.close()
 
                 
                 
 if __name__ == '__main__':
 
-	base_directory = 'C:\minerva-control'
-        ipdb.set_trace()
+	base_directory = 'C:\\minerva-control'
+        #ipdb.set_trace()
 	test_server = server('spectrograph.ini',base_directory)
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 

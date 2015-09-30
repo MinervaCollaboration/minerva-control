@@ -52,8 +52,11 @@ class control:
 	def create_class_objects(self):
 		#S Commenting put for operation on minervaMain
 		if socket.gethostname() == 'Kiwispec-PC':
+                        #S Give some time for the spec_server to start up, get settled.
+                        time.sleep(20)
 			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
 			self.site = env.site('site_Wellington.ini',self.base_directory)
+			#imager.imager('si_imager.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
@@ -861,7 +864,77 @@ class control:
 	# EXPOSURES
 	###
 
-
+        #S A function to put moving the i2stage in it's own thread, which will check status of the stage,
+	#S run trouble shooting, and ultimately handle the timeout.
+        def ctrl_i2stage_move(self,locationstr = 'out'):
+                #S Sends command to begin i2stage movement, whcih will start
+                #S a thread in the spectrograph server to move the stage to the
+                #S corresponding location string.
+                self.spectrograph.i2stage_move(locationstr)
+                #S Time out to wait for the stage to get to destination.
+                timeout  = 60
+                #S Start time to measure elapsed time of movement.
+                start = datetime.datetime.utcnow()
+                #S Just priming elapsed time for first time through 'while'
+                elapsed_time = 0
+                #S If we aren't at our target string AND elapsed time is less than the timeout.
+                #S Note that this queries the position string, and compares to the requested. 
+                while (self.spectrograph.i2stage_get_pos()[1] <> locationstr) and (elapsed_time < timeout):
+                        #S Giver her a second
+                        time.sleep(1)
+                        #S Update elapsed time
+                        elapsed_time = (datetime.datetime.utcnow() - start).total_seconds()
+                #S We exited the 'while' above, meaning one of the conditions became false.
+                #S If the target string is our current string, we made it where we want to go. 
+                if self.spectrograph.i2stage_get_pos()[1] == locationstr:
+                        #S Log some info dog
+                        self.logger.info('I2 stage successfully moved to '+locationstr+' after first attempt.')
+                        #S Returns nothing right now, and i think that's all we want.
+                        return
+                #S If we get here, the timeout was surpassed, and we need to try some troubleshooting.
+                #S Our first action will be to send the move command again. no harm here.
+                #S First, we'l log an error saying we're trying again.
+                self.logger.error('I2 stage did not make it to destination, trying to move again')
+                #S Tell it to move
+                self.spectrograph.i2stage_move(locationstr)
+                #S Reset start and elapsed time. This uses same logic above.
+                start = datetime.datetime.utcnow()
+                elapsed_time = 0
+                while (self.spectrograph.i2stage_get_pos()[1] <> locationstr) and (elapsed_time < timeout):
+                        time.sleep(1)
+                        elapsed_time = (datetime.datetime.utcnow() - start).total_seconds()
+                        
+                if self.spectrograph.i2stage_get_pos()[1] == locationstr:
+                        self.logger.info('I2 stage successfully moved to '+locationstr+' after second attempt.')
+                        return
+                self.logger.error('I2 stage did not move to destination, cycling power then trying again')
+                #S This is a little unituitive. We first disconnect. Then we reconnect. The unintuitive part is
+                #S that there is also a power cycle hidden in there. The way that PYAPT works, if there is ever a problem
+                #S with disconnecting to an APT device (e.g. not cleaned up), it crashes python.exe from a .dll command , BUT a power cycle
+                #S cleans this up. That's why a powercycle is hidden in here. So effectively, this is a power cycle. There is also
+                #S some sleep time hidden here (~seconds) to give the stage some time to start up. 
+                self.spectrograph.i2stage_disconnect()
+                self.spectrograph.i2stage_connect()
+                #S Same logic as above.
+                self.spectrograph.i2stage_move(locationstr)
+                start = datetime.datetime.utcnow()
+                elapsed_time = 0
+                while (self.spectrograph.i2stage_get_pos()[1] <> locationstr) and (elapsed_time < timeout):
+                        time.sleep(1)
+                        elapsed_time = (datetime.datetime.utcnow() - start).total_seconds()
+                if self.spectrograph.i2stage_get_pos()[1] == locationstr:
+                        self.logger.info('I2 stage successfully moved to '+locationstr+' after third attempt.')
+                        return
+                #S Exhausted all known solutions so far, so let's send an email.
+                self.logger.error("I2 stage did not move to destination after three attempts, sending email.")
+                body = 'Dear humans,\n\n'\
+                       'For some reason I cannot move my i2stage. I have tried moving it again. I even tried power cycling THEN moving it again. Something weird went '\
+                       'wrong, and I could be stuck. Please investigate. \n\n'\
+                       'Love,\nMINERVA'
+                       
+                mail.send("The iodine stage is not moving.",body,level='serious')
+                
+                        
         #S Here is the general spectrograph equipment check function.
 	#S Somethings, like turning lamps on, need to be called before. More
 	#S to develop on this
@@ -897,7 +970,10 @@ class control:
                 #S but for now it doesn't.
                 if (objname == 'arc'):
                         #S Move the I2 stage out of the way of the slit.
-                        self.spectrograph.i2stage_move('out')
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
+                        i2stage_move_thread.start()
+                        
+                        #self.spectrograph.i2stage_move('out')
                         #S Ensure that the flat lamp is off
                         self.spectrograph.flat_turn_off()
                         #S Move filter wheel where we want it.
@@ -913,12 +989,16 @@ class control:
                                 print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
                         else:
                                 time.sleep(0)
+                        self.logger.info('Waiting on i2stage_move_thread')
+                        i2stage_move_thread.join()
                             
                 #S Flat exposures require the flat lamp to be on for ten minutes too.
                 #S Same questions as for thar specs.
                 elif (objname == 'flat'):
                         #S Move the I2 stage out of the way of the slit.
-                        self.spectrograph.i2stage_move('flat')
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('flat',))
+                        i2stage_move_thread.start()
+                        #self.spectrograph.i2stage_move('flat')
                         #S Ensure that the thar lamp is off
                         self.spectrograph.thar_turn_off()
                         
@@ -937,6 +1017,8 @@ class control:
                                 print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
                         else:
                                 time.sleep(0)
+                        self.logger.info('Waiting on i2stage_move_thread')
+                        i2stage_move_thread.join()
 
                 #S Conditions for both bias and dark.
                 elif (objname == 'bias') or (objname == 'dark'):
@@ -944,19 +1026,30 @@ class control:
                         self.spectrograph.thar_turn_off()
                         self.spectrograph.flat_turn_off()
                         #S Make sure the calibrations shutter is closed.
+                        #S Move the I2 stage out of the way of the slit.
+                        #S Not sure if we need to move it out necessarily, but I think
+                        #S this is better than having it randomly in 'flat' or 'in',
+                        #S and will at least make things orderly.
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
+                        i2stage_move_thread.start()
                         #TODO Calibration shutter closed
+                        self.logger.info('Waiting on i2stage_move_thread')
+                        i2stage_move_thread.join()
 
 
                 #S Conditions for template images, just in case we need them might
                 #S as well have it programmed in.
                 elif template:
                         #S Get that iodine out of my face!
-                        self.spectrograph.i2stage_move('out')
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
+                        i2stage_move_thread.start()
                         #S Make sure the lamps are off
                         self.spectrograph.thar_turn_off()
                         self.spectrograph.flat_turn_off()
                         #S Make sure the calibrations shutter is closed.
                         #TODO Calibration shutter closed
+                        self.logger.info('Waiting on i2stage_move_thread')
+                        i2stage_move_thread.join()
 
                 #S Let's do some science!
                 #S The cell heater should be turned on before starting this, to give
@@ -968,7 +1061,8 @@ class control:
                         #TODO Find a better cellheater temptolerance.
                         TEMPTOLERANCE = 0.501
                         #S Here we need the i2stage in
-                        self.spectrograph.i2stage_move('in')
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
+                        i2stage_move_thread.start()
                         #S Make sure the lamps are off
                         self.spectrograph.thar_turn_off()
                         self.spectrograph.flat_turn_off()
@@ -988,7 +1082,8 @@ class control:
                                 #TODO Error
                
                         
-                                
+                        self.logger.info('Waiting on i2stage_move_thread')
+                        i2stage_move_thread.join()       
 
                         
 
@@ -1229,8 +1324,9 @@ class control:
                         f['TEMP' + str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
                 f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
                 f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
-                f['I2POSA'] = (self.spectrograph.i2stage_get_pos(),'Iodine Stage Actual Position [cm]')
-                f['I2POSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position')
+                f['I2POSAF'] = (self.spectrograph.i2stage_get_pos()[0],'Iodine Stage Actual Position [cm]')
+                f['I2POSAS'] = (self.spectrograph.i2stage_get_pos()[1],'Iodine Stage Actual Position [string]')
+                f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
                 f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
                 #S PDU Header info
                 self.spectrograph.update_dynapower1()
@@ -1244,7 +1340,6 @@ class control:
 
                 
 		header = json.dumps(f)
-		
 		self.logger.info('Waiting for spectrograph imaging thread')
 		# wait for imaging process to complete
 		imaging_thread.join()
