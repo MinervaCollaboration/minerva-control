@@ -130,10 +130,10 @@ class spectrograph:
 			return 'fail'
 		data = repr(data).strip("'")
 		if data.split()[0] == 'success':
-			self.logger.info("command completed")
+			self.logger.info(msg.split()[0] + " command completed")
 		else:
                         #ipdb.set_trace()
-			self.logger.error("command failed")
+			self.logger.error(msg.split()[0] + " command failed")
 		return data
 	#get camera status and write into a json file with name == (self.logger_name + '.json')
 	def write_status(self):
@@ -437,7 +437,7 @@ class spectrograph:
 
         #S Initialize the stage, needs to happen before anyhting else.
         def i2stage_connect(self):
-                response = self.send('i2stage_connect None',10)
+                response = self.send('i2stage_connect None',30)
                 return response
         
         #S Disconnect the i2stage. If not done correctly, python.exe crash will happen.
@@ -450,7 +450,7 @@ class spectrograph:
         #S response is 'success '+str(position)
         def i2stage_get_pos(self):
                 response = self.send('i2stage_get_pos None',10)
-                return float(response.split()[1].split('\\')[0])
+                return [float(response.split()[1].split('\\')[0]),response.split()[2]]
         
         #S Send a command to move the i2stage to one of the set positions.
         #S The positions are defined in spectrograph.ini AND spectrograph_server.ini,
