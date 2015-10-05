@@ -5,7 +5,7 @@ import datetime
 hostname = socket.gethostname()
 
 body = "Dear benevolent humans,\n\n" + \
-       "If someone did not intentionally reboot the me, I require your assistance to recover from a recent power outage. Please:\n\n" + \
+       "If someone did not intentionally reboot me, I require your assistance to recover from a recent power outage. Please:\n\n" + \
        "1) Make sure the telescope is connected, the drives are enabled, and the tracking is off.\n" + \
        "2) Home the telescope\n" + \
        "   * If this fails, you may need to power cycle the 'T# panel' and start over:\n" + \
