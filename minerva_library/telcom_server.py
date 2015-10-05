@@ -142,6 +142,8 @@ class server:
 			# wait a few seconds
 			#S I wonder if this has to do with needing a refresh of control identifirs?
 			#S maybe we could try refinding the window, etc..
+			#TODO I think i figured it. For some reason, the start autofocus tab will return a camera
+			#TODO not ready in the log space. needs to be looked into. 
 			#TODO
 			time.sleep(5)
 

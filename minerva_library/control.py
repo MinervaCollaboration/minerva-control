@@ -70,13 +70,13 @@ class control:
                         
                         self.telescopes = [
                         cdk700.CDK700('telescope_1.ini',self.base_directory),
-                        cdk700.CDK700('telescope_2.ini',self.base_directory),
+#                        cdk700.CDK700('telescope_2.ini',self.base_directory),
                         cdk700.CDK700('telescope_3.ini',self.base_directory),
                         cdk700.CDK700('telescope_4.ini',self.base_directory)]
                         
                         self.cameras = [
                         imager.imager('imager_t1.ini',self.base_directory),
-                        imager.imager('imager_t2.ini',self.base_directory),
+#                        imager.imager('imager_t2.ini',self.base_directory),
                         imager.imager('imager_t3.ini',self.base_directory),
                         imager.imager('imager_t4.ini',self.base_directory)]
                         
@@ -2130,9 +2130,14 @@ class control:
 		self.prepNight(telescope_num)
 		self.scheduleIsValid(telescope_num)
 
+		self.telescopes[telescope_num-1].shutdown()
+		self.telescopes[telescope_num-1].killPWI()
+		self.telescopes[telescope_num-1].initialize(tracking=False)
+		self.telescopes[telescope_num-1].initialize_autofocus()
+
 		#S Initialize, home, and park telescope. 
 		#S Enable mount and connect to motors.
-		self.telescopes[telescope_num-1].initialize(tracking=False)
+#		self.telescopes[telescope_num-1].initialize(tracking=False)
 
 		'''
 		#S Send her home, make sure everything is running right. 
@@ -2145,9 +2150,9 @@ class control:
 		#S Do an initial connection to autofocus, this way we can use it later 
 		#S without issue. For some reason, we can't autofocus unless we have started
 		#S stopped it once.
-		self.telescopes[telescope_num-1].initialize_autofocus()
+#		self.telescopes[telescope_num-1].initialize_autofocus()
 		#S Let her run?
-		time.sleep(60)
+#		time.sleep(60)
 		
 
 		#S Finally (re)park the telescope. 
@@ -2473,13 +2478,14 @@ class control:
                 pass
                                 
 	"""
+	#S started outline for autofocus, pursuing different route.
 	###
 	#AUTOFOCUS
 	###
 	#S Small file will be needed for a few minor functions in the fitting process, etc
 	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
 	#S stuff we need to worry about
-	def autofocus(self,telescope_number,af_numsteps=10,af_defocusstep=10):
+	def autofocus(self,telescope_number,af_num_steps=10,af_defocus_step=10):
 	#	pass
 		#S zero index the telenumber
 		num = telescope_number - 1
@@ -2487,16 +2493,23 @@ class control:
 		af_exptime = 5
 		#S Filter is air I assume
 		af_filter = 'air'
+		#S Get the initial defocus to start at
+		af_defocus = -(af_num_steps/2*af_defocus_step)
 		#TODO Get last best focus, telescope getstatus?
+		#TODO Similar procedure already exists, see other autofocus function in cdk700(?)
 		#TODO any other relevant information we need
-		#TODO move to a nice patch of sky, take test image
-		#TODO Move telescope
+
+		#TODO move to a nice patch of sky, take test image. This isn't detailed in
+		#TODO other function, and I think deserves a bit of thought. 
 		#S begin_af is a really a flag to hold our position until we have all the details
 		#S of the sequence figured out, like exposure time and sky position
 		begin_af = False
 		while not begin_af:
 			aftest_file = self.takeImage(af_exptime,af_filter,af_name,telescope_num)
 			aftest = self.cameras[num].af_imagefit(aftest_file)
+			#S The check below seem like they could be consolidated, as it feels a bit redundant. Needs
+			#S more thought.
+
 			#S this is to check to see if the brightest star is greater by some amount than the background
 			#S This is a concern for fitting, as getstars can find 'stars' that we can't fit. Need 
 			#S to look into get stars more though...
@@ -2506,6 +2519,8 @@ class control:
 			#S I think this should be fittable stars more than anything. 
 			if aftest['num_stars'] < num_stars:
 				#S I think if we don't have enough stars after accounting for exptime, we should try and move
+				#S Also, this definition gets a bit hairy. Is it just if we have a pixel in the small frame, 
+				#S which is centered around the star centroid, above the median background of the image?
 				#TODO Telescope move
 				continue
 			#S So not that we have 
@@ -2517,17 +2532,22 @@ class control:
 			#S I'm not sure if this is how this works, or how we want to implemenet it.
 			#S Presumably the defocus arguement is how far you want ti off of the current focus, 
 			#S so this should be fine if we set it initially to the minimum of what we want to offset. 
-			af_defocus += af_defocusstep
+			af_defocus += af_defocus_step
 			filename = self.takeImage(af_exptime,af_filter,af_name,telescope_num,defocus=af_defocus)
 			#S Need a function in imager_server to perform fitting stuff, return dictionary with the goods
 			af_dict = self.cameras[num].af_imagefit(filename)
 			fwhm_list.append(af_dict['median_fwhm'])
 		#S Now we have a list of fwhm's, lets fit a quadratic to it. 
 		#S We're going to have all of these fitting functions in another file
-		new_best_focus = fit_autofocus(fwhm_list)
+		new_best_focus = autofocus.fit_autofocus(fwhm_list)
 		#S This will return a number or None(?)
+		#S I think returning None if there is not a good fit might be a good 
+		#S idea, but the only thing is what do we do if there isn't a good fit. 
+		#S I think we could also use this function as the check for monotonic 
+		#S increasing/decreasing. 
 		if new_best_focus <> None:
-	"""		
+		"""
+			
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
