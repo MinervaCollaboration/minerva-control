@@ -323,6 +323,9 @@ class CDK700:
 	def mountEnableMotors(self):
 		return self.pwiRequestAndParse(device="mount", cmd="enable")
 
+	def mountHome(self):
+		return self.pwiRequestAndParse(device="mount", cmd="findhome")
+
 	def mountDisableMotors(self):
 		return self.pwiRequestAndParse(device="mount", cmd="disable")
 
@@ -389,32 +392,19 @@ class CDK700:
 	def recover(self):
 
 		self.nfailed = self.nfailed + 1
-		if self.nfailed >= 3:  
-			body = "Dear benevolent humans,\n\n" + \
-			    "I'm broken. I power cycled myself, but I need your help to finish the recovery (and investigate):\n\n" + \
-			    "1) Make sure the telescope is connected, the drives are enabled, and the tracking is off.\n" + \
-			    "2) Home the telescope\n" + \
-			    "   * If this fails, you may need to power cycle the 'T# panel' and start over:\n" + \
-			    "   * T1 - 192.168.1.36\n" + \
-			    "   * T2 - 192.168.1.37\n" + \
-			    "   * T3 - 192.168.1.38\n" + \
-			    "   * T4 - 192.168.1.39\n" + \
-			    "3) Make sure the rotator is connected and the 'Alt Az Derotate' is off.\n" + \
-			    "4) Home the rotator\n" + \
-			    "5) Check the rotator zero points (PWI rotate tab)\n" + \
-			    "   * T1 - 56.42\n" + \
-			    "   * T2 - 182.70\n" + \
-			    "   * T3 - 198.75\n" + \
-			    "   * T4 - 224.18\n" + \
-			    "   If those aren't the same, don't change them, but note it, and don't be surprised if you get an email after the first science image that the rotator is screwed up.\n" + \
-			    "6) Start an autofocus sequence, wait 30 seconds, and cancel it (if you don't do this, the scripted autofocus will use the default values which don't span enough range).\n" + \
-			    "7) type 'c' in the command window to resume operations.\n\n" + \
-			    "Love,\n" + \
-			    "MINERVA"
-			
-			self.logger.error("Telescope has failed more than 3 times; something probably seriously wrong...")
-			mail.send(self.logger_name + " has failed " + str(self.nfailed) + " times",body,level='serious')
-
+		if self.nfailed == 1:
+                        # just try to reconnect
+                        try: self.shutdown()
+                        except: pass
+                        self.initialize()
+                elif self.nfailed == 2:
+                        # restart PWI and reconnect
+                        try: self.shutdown()
+                        except: pass
+                        self.restartPWI()
+                        self.initialize()
+                elif self.nfailed == 3:
+                        # power cycle and rehome the scope
  			try: self.shutdown()
 			except: pass
 			self.killPWI()
@@ -423,14 +413,16 @@ class CDK700:
 			self.mountConnect()
 			self.mountEnableMotors()
 			self.focuserConnect()
+			self.home()
+		if self.nfailed > 3:  
+			body = "Dear benevolent humans,\n\n" + \
+			    "I'm broken and have failed to recover automatially. Please help!\n\n" + \
+			    "Love,\n" + \
+			    "MINERVA"
 			
+			self.logger.error("Telescope has failed more than 3 times; something is probably seriously wrong...")
+			mail.send(self.logger_name + " has failed " + str(self.nfailed) + " times",body,level='serious')
 			ipdb.set_trace()
-
-		self.logger.info('Telescope in error state; attempting recovery')
-		try: self.shutdown()
-		except: pass
-		self.restartPWI()
-		self.initialize()
 
 	def inPosition(self):
 		# Wait for telescope to complete motion
@@ -444,7 +436,10 @@ class CDK700:
 			time.sleep(0.1)
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 			telescopeStatus = self.getStatus()
-			#? Has this conditoin ever be met? Why is this here?
+			#? Has this condition ever be met? Why is this here?
+			# JDE 2015-10-06: yes, windshake can fool the motor servo loop.
+			# Tuning of "MAX RMS Encoder Error for Goto" in "mount" tab is
+			# likely required if this message is seen
 			if telescopeStatus.mount.moving == 'False':
 				time.sleep(1)
 				telescopeStatus = self.getStatus()
@@ -719,13 +714,37 @@ class CDK700:
 		self.nps.cycle(self.nps_port,cycletime = 60)
 		time.sleep(30) # wait for the panel to initialize
 
-	def home(self):
+	def home(self, timeout=360.0):
+                
 		# turning on mount tracking
 		self.logger.info('Connecting to mount')
 		self.mountConnect()
 
 		self.logger.info('Enabling motors')
 		self.mountEnableMotors()
+
+                status = self.getStatus()
+                if self.mount.encoders_have_been_set == 'True':
+                        self.logger.info('Mount already homed')
+                        return True
+                else:
+                        self.mountHome()
+                        time.sleep(5.0)
+                        status = self.getStatus()
+                        t0 = datetime.datetime.utcnow()
+                        elapsedTime = 0
+                        while status.mount.is_finding_home == 'True' and elapsedTime < timeout:
+                                elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+                                self.logger.info('Homing Telescope (elapsed time = ' + str(elapsedTime) + ')')
+                                time.sleep(5.0)
+                                status = self.getStatus()
+                if self.mount.encoders_have_been_set == 'True':
+                        self.logger.error('Mount failed to home; beginning recovery')
+                        self.recover()
+                        return self.home()
+                else:
+                        return True
+
 		
 		self.logger.info('Homing the telscope')
 		if self.telcom.home():return True
