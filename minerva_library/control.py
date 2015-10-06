@@ -70,13 +70,13 @@ class control:
                         
                         self.telescopes = [
                         cdk700.CDK700('telescope_1.ini',self.base_directory),
-#                        cdk700.CDK700('telescope_2.ini',self.base_directory),
+                        cdk700.CDK700('telescope_2.ini',self.base_directory),
                         cdk700.CDK700('telescope_3.ini',self.base_directory),
                         cdk700.CDK700('telescope_4.ini',self.base_directory)]
                         
                         self.cameras = [
                         imager.imager('imager_t1.ini',self.base_directory),
-#                        imager.imager('imager_t2.ini',self.base_directory),
+                        imager.imager('imager_t2.ini',self.base_directory),
                         imager.imager('imager_t3.ini',self.base_directory),
                         imager.imager('imager_t4.ini',self.base_directory)]
                         

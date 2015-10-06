@@ -95,6 +95,9 @@ class CDK700:
 		self.logger.info('Enabling motors')
 		self.mountEnableMotors()
 		
+		self.logger.info('Homing telescope')
+		self.home()
+
 		# turning on mount tracking, rotator tracking
 		#S I'm defaulting this off, but including an arguement in case we do want it
 		#S This could be for initializing at 4PM start, or for testing. 
@@ -315,7 +318,12 @@ class CDK700:
 
 	### MOUNT ###
 	def mountConnect(self):
-		return self.pwiRequestAndParse(device="mount", cmd="connect")
+		status = self.pwiRequestAndParse(device="mount", cmd="connect")
+		if status.mount.connected == 'False':
+			self.logger.error('Failed to connect to mount; beginning recovery')
+			self.recover()
+			return self.mountConnect()
+		return True
 
 	def mountDisconnect(self):
 		return self.pwiRequestAndParse(device="mount", cmd="disconnect")
@@ -394,33 +402,32 @@ class CDK700:
 		self.nfailed = self.nfailed + 1
 		if self.nfailed == 1:
                         # just try to reconnect
+			self.logger.info("Failed 1 times; trying to reconnect")
                         try: self.shutdown()
                         except: pass
                         self.initialize()
                 elif self.nfailed == 2:
                         # restart PWI and reconnect
+			self.logger.info("Failed 2 times; trying to restarting PWI")
                         try: self.shutdown()
                         except: pass
                         self.restartPWI()
                         self.initialize()
                 elif self.nfailed == 3:
                         # power cycle and rehome the scope
+			self.logger.info("Failed 3 times; power cycling the mount")
  			try: self.shutdown()
 			except: pass
 			self.killPWI()
 			self.powercycle()
 			self.startPWI()
-			self.mountConnect()
-			self.mountEnableMotors()
-			self.focuserConnect()
-			self.home()
+			self.initialize()
 		if self.nfailed > 3:  
+			self.logger.error("Telescope has failed " + str(self.nfailed) + " times; something is probably seriously wrong...")
 			body = "Dear benevolent humans,\n\n" + \
 			    "I'm broken and have failed to recover automatially. Please help!\n\n" + \
 			    "Love,\n" + \
-			    "MINERVA"
-			
-			self.logger.error("Telescope has failed more than 3 times; something is probably seriously wrong...")
+			    "MINERVA"			
 			mail.send(self.logger_name + " has failed " + str(self.nfailed) + " times",body,level='serious')
 			ipdb.set_trace()
 
@@ -714,7 +721,7 @@ class CDK700:
 		self.nps.cycle(self.nps_port,cycletime = 60)
 		time.sleep(30) # wait for the panel to initialize
 
-	def home(self, timeout=360.0):
+	def home(self, timeout=420.0):
                 
 		# turning on mount tracking
 		self.logger.info('Connecting to mount')
@@ -724,7 +731,7 @@ class CDK700:
 		self.mountEnableMotors()
 
                 status = self.getStatus()
-                if self.mount.encoders_have_been_set == 'True':
+                if status.mount.encoders_have_been_set == 'True':
                         self.logger.info('Mount already homed')
                         return True
                 else:
@@ -738,7 +745,10 @@ class CDK700:
                                 self.logger.info('Homing Telescope (elapsed time = ' + str(elapsedTime) + ')')
                                 time.sleep(5.0)
                                 status = self.getStatus()
-                if self.mount.encoders_have_been_set == 'True':
+		
+		time.sleep(5.0)
+		status = self.getStatus()
+		if status.mount.encoders_have_been_set == 'True':
                         self.logger.error('Mount failed to home; beginning recovery')
                         self.recover()
                         return self.home()
@@ -781,7 +791,7 @@ class CDK700:
 		else: return False
 	def startPWI(self,email=True):
 		if self.telcom.startPWI():
-			return self.initialize_autofocus()
+#			return self.initialize_autofocus()
 #			mail.send("PWI restarted on " + self.logger_name,"Autofocus parameters will not be respected until manually run once") 
 			return True
 		else: return False
