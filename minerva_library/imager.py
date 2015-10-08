@@ -10,6 +10,7 @@ import telcom_client
 import mail
 import datetime
 from configobj import ConfigObj
+import ipdb
 sys.dont_write_bytecode = True
 
 class imager:
@@ -58,6 +59,7 @@ class imager:
 			self.file_name = 'test'
 			self.night = 'test'
 			self.nfailed = 0
+			self.nserver_failed = 0
 
                         #unique to imaging camera
                         if 'si_imager' <> config['Setup']['LOGNAME'].lower():
@@ -123,13 +125,15 @@ class imager:
 		except socket.error as e:
 			if e.errno == errno.ECONNREFUSED:
 				self.logger.exception(telescope_name + 'connection failed (socket.error)')
-			self.logger.exception(telescope_name + 'connection failed')
-			self.recover()
-			return self.connect_server()
+			else: self.logger.exception(telescope_name + 'connection failed')
+			if self.nserver_failed >= 3: return False
+			if self.recover_server(): return self.connect_server()
+			return False
 		except:
 			self.logger.exception(telescope_name + 'connection failed')
-			self.recover()
-			return self.connect_server()
+			if self.nserver_failed >= 3: return False
+			if self.recover_server(): return self.connect_server()
+			return False
 
 		return s
 	#send commands to camera server
@@ -141,27 +145,25 @@ class imager:
 			s.sendall(msg)
 		except:
 			self.logger.error(telescope_name + "connection lost")
-			self.recover()
-			return self.send(msg,timeout)
+			if self.recover_server(): return self.send(msg,timeout)
+			return 'fail'
 
-#			return 'fail'
 		try:
 			s.settimeout(timeout)
 			data = s.recv(1024)
 		except:
 			self.logger.error(telescope_name + "connection timed out")
-			self.recover()
-			return self.send(msg,timeout)
-#			return 'fail'
+			if self.recover_server(): return self.send(msg,timeout)
+			return 'fail'
+
 		try:
 			command = msg.split()[0]
 			data = repr(data).strip("'")
 			data_ret = data.split()[0]
 		except:
 			self.logger.error(telescope_name + "error processing server response")
-			self.recover()
-			return self.send(msg,timeout)
-#			return 'fail'
+			if self.recover_server(): return self.send(msg,timeout)
+			return 'fail'
 
 		if data_ret == 'fail': self.logger.error(telescope_name + "command failed("+command+')')
 		return data
@@ -179,8 +181,8 @@ class imager:
                 currentTemp = self.get_temperature()
                 if currentTemp == -999.0:
                         self.logger.warning(telescope_name + 'The camera failed to connect properly; beginning recovery')
-                        self.recover()
-                        return self.cool()
+                        if self.recover(): return self.cool()
+			return False
 
                 elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
                 lastTimeNotAtTemp = datetime.datetime.utcnow() - datetime.timedelta(seconds=oscillationTime)
@@ -226,9 +228,9 @@ class imager:
 			return True
 		else:
 			self.logger.error(telescope_name + 'failed to connected to camera, trying to recover')
-			self.recover()
-			return self.connect_camera()
-			
+			if self.recover(): return self.connect_camera()
+			return False
+
 	def disconnect_camera(self):
 		
 		telescope_name = 'T' + self.telnum + ': '
@@ -388,8 +390,8 @@ class imager:
 		ndx = self.get_index()
 		if ndx == -1:
 			self.logger.error(telescope_name + "Error getting the filename index")
-			self.recover()
-			return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname)
+			if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname)
+			return False
 
 		self.file_name = self.night + "." + self.telescope_name + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
 		self.logger.info(telescope_name + 'start taking image: ' + self.file_name)
@@ -414,9 +416,8 @@ class imager:
 			else: 
 				self.logger.error(telescope_name + 'failed to save image: ' + self.file_name)
 				self.file_name = ''
-				self.recover()
-				return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname) 
-			
+				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname)
+				return False
 		self.logger.error(telescope_name + 'taking image failed, image not saved: ' + self.file_name)
 		self.file_name = ''
 		return 'false'		
@@ -440,28 +441,84 @@ class imager:
 		if self.send('restart_maxim none',15) == 'success': return True
 		else: return False
 		
+	def recover_server(self):
+		# this requires winexe on linux and a registry key on each Windows 7 machine:
+		'''
+		- Click start 
+		- Type: regedit 
+		- Press enter 
+		- In the left, browse to the following folder: 
+		  HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\system\ 
+		- Right-click a blank area in the right pane 
+		- Click New 
+		- Click DWORD Value 
+		- Type: LocalAccountTokenFilterPolicy 
+		- Double-click the item you just created 
+		- Type 1 into the box 
+		- Click OK 
+		- Restart your computer 
+		'''
+		self.nserver_failed += 1
+		self.logger.error("The server has failed " + str(self.nserver_failed) + " times")
+		if self.nserver_failed >= 4: return False
+
+		f = open(self.base_directory + '/credentials/authentication.txt','r')
+		username = f.readline().strip()
+                password = f.readline().strip()
+		f.close()
+
+		killservercmd = 'winexe -U HOME/' + username + '%' + password + ' //' + self.ip + ' "taskkill /IM python.exe /f"'
+		self.logger.info('Executing the remote command: ' + killservercmd)
+		os.system(killservercmd)
+		time.sleep(1)
+
+		killmaximcmd = 'winexe -U HOME/' + username + '%' + password + ' //' + self.ip + ' "taskkill /IM MaxIm_DL.exe /f"'
+		self.logger.info('Executing the remote command: ' + killmaximcmd)
+		os.system(killmaximcmd)
+		time.sleep(1)
+
+
+		killpwicmd = 'winexe -U HOME/' + username + '%' + password + ' //' + self.ip + ' "taskkill /IM PWI.exe /f"'
+		self.logger.info('Executing the remote command: ' + killpwicmd)
+		os.system(killpwicmd)
+		time.sleep(1)
+
+		startservercmd = 'winexe -U HOME/' + username + '%' + password + ' //' + self.ip + " 'schtasks /Run /TN " + '"telcom server"' + "'"
+		self.logger.info('Executing the remote command: ' + startservercmd)
+		os.system(startservercmd)
+
+		return True		
+
 	def recover(self):
 		telescope_name = 'T' + self.telnum + ': '
 		self.nfailed = self.nfailed + 1
+		self.logger.warning(telescope_name + 'Camera failed ' + str(self.nfailed) + ' times') 
 
 		if self.nfailed == 1:
 			try: self.disconnect_camera()
-			except: self.logger.error(telecsope_name+' failed to disconnect camera, movig on to a restart of maxim')
+			except: self.logger.exception(telescope_name+' failed to disconnect camera, moving on to a restart of maxim')
 			# attempt to reconnect
 			self.logger.warning(telescope_name + 'Camera failed to connect; retrying') 
 			self.connect_camera()
+			return True
 		elif self.nfailed == 2:
 			# then restart maxim
 			self.logger.warning(telescope_name + 'Camera failed to connect; restarting maxim') 
 			self.restartmaxim()
+			self.connect_camera()
+			return True
 		elif self.nfailed == 3:
 			# then power cycle the camera
 			self.logger.warning(telescope_name + 'Camera failed to connect; powercycling the imager') 
 			self.powercycle()
-		elif self.nfailed == 4:
+			self.restartmaxim()
+			self.connect_camera()
+			return True
+		elif self.nfailed >= 4:
 			self.logger.error(telescope_name + 'Camera failed to connect!') 
-			mail.send("Camera " + self.logger_name + " failed to connect","please do something",level="serious")
-			thread.exit()
+			if self.nfailed == 4:
+				mail.send("Camera " + self.logger_name + " failed to connect","please do something",level="serious")
+			return False
 #			sys.exit()
 
 		

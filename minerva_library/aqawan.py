@@ -114,14 +114,14 @@ class aqawan:
 		if not message in self.messages:
 			self.logger.error(anum + 'Message not recognized: ' + message)
 			self.lock.release()
-			return 'error'
+			return False
 
 		try:
 			tn = telnetlib.Telnet(self.IP,self.PORT,1)
 		except:
 			self.logger.error(anum + 'Error attempting to connect to the aqawan')
 			self.lock.release()
-			return 'error'
+			return False
 
 		tn.write("vt100\r\n")
 
@@ -138,7 +138,7 @@ class aqawan:
 		return response
 		
 	def heartbeat(self):
-		self.send('HEARTBEAT')
+		return self.send('HEARTBEAT')
 		
 	# get aqawan status
 	def status(self):

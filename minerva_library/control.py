@@ -26,6 +26,7 @@ import aqawan
 import cdk700 
 import imager
 import spectrograph
+import powerswitch
 import mail
 import ephem
 from get_all_centroids import *
@@ -41,6 +42,9 @@ class control:
 		self.base_directory = base
 		#S Only sets logger name right now
 		self.load_config()
+
+		self.setup_logger()
+
 		#S See below, lots of new objects created here. 
 		self.create_class_objects()
 		
@@ -60,26 +64,25 @@ class control:
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
+		self.npss = []
                 if socket.gethostname() == 'Main':
 
                         self.site = env.site('site_mtHopkins.ini',self.base_directory)
-                        
-                        self.domes = [
-                        aqawan.aqawan('aqawan_1.ini',self.base_directory),
-                        aqawan.aqawan('aqawan_2.ini',self.base_directory)]
-                        
-                        self.telescopes = [
-                        cdk700.CDK700('telescope_1.ini',self.base_directory),
-                        cdk700.CDK700('telescope_2.ini',self.base_directory),
-                        cdk700.CDK700('telescope_3.ini',self.base_directory),
-                        cdk700.CDK700('telescope_4.ini',self.base_directory)]
-                        
-                        self.cameras = [
-                        imager.imager('imager_t1.ini',self.base_directory),
-                        imager.imager('imager_t2.ini',self.base_directory),
-                        imager.imager('imager_t3.ini',self.base_directory),
-                        imager.imager('imager_t4.ini',self.base_directory)]
-                        
+
+                        for i in range(2):
+				aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
+				if aqawanob.heartbeat(): self.domes.append(aqawanob)
+				else: self.logger.error("Failed to initialize Aqawan " + str(i+1))
+
+			# initialize the 4 telescopes
+			for i in range(4):
+				try: 
+					self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
+					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
+					self.npss.append(powerswitch.powerswitch('powerswitch_' + str(i+1) + '.ini',self.base_directory))
+				except: 
+					self.logger.exception("Failed to initialize the imager on T" + str(i+1))
+
 	def load_config(self):
 
 		try:
@@ -153,7 +156,6 @@ class control:
 	def setup_loggers(self):
 	
 		self.logger_lock.acquire()
-		self.setup_logger()
 		for a in self.domes:
 			a.setup_logger()
 		for t in self.telescopes:
@@ -2166,6 +2168,14 @@ class control:
 		# wait until it's darker to take biases/darks
 		readtime = 10.0
 
+		# turn off both monitors
+		self.logger.info('Turning off monitors')
+		try: self.npss[0].off(8)
+		except: self.logger.exception("Turning off monitor in aqawan 1 failed")
+		try: self.npss[2].off(8)
+		except: self.logger.exception("Turning off monitor in aqawan 2 failed")
+
+
 		bias_seconds = CalibInfo['nbias']*readtime+CalibInfo['ndark']*sum(CalibInfo['darkexptime']) + CalibInfo['ndark']*readtime*len(CalibInfo['darkexptime']) + 600.0
 		biastime = self.site.sunset() - datetime.timedelta(seconds=bias_seconds)
 		waittime = (biastime - datetime.datetime.utcnow()).total_seconds()
@@ -2491,8 +2501,6 @@ class control:
 		num = telescope_number - 1
 		#S Default exposure time for autofocus, seconds
 		af_exptime = 5
-		#S Filter is air I assume
-		af_filter = 'air'
 		#S Get the initial defocus to start at
 		af_defocus = -(af_num_steps/2*af_defocus_step)
 		#TODO Get last best focus, telescope getstatus?

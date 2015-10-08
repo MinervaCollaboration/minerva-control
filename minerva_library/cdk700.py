@@ -397,7 +397,10 @@ class CDK700:
 	def m3Stop(self):
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
+
 	def recover(self):
+		# TODO
+                # we never reset self.nfailed
 
 		self.nfailed = self.nfailed + 1
 		if self.nfailed == 1:
@@ -511,7 +514,6 @@ class CDK700:
                 pctoau = 3600.*180/math.pi #[] = AU
                 #S km/sec to AU/year
                 kmstoauy = year_sec*1000./AU
-                #? Initializ3ing?
                 self.initialize()
                 #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
                 #S dec comes in as degrees.
@@ -677,6 +679,7 @@ class CDK700:
 		t0 = datetime.datetime.utcnow()
 		self.startAutoFocus()
 		status = self.getStatus()
+		#TODO do we want to put this in a thread so we can run all four at the same time?
 		while status.focuser.auto_focus_busy == 'True':
 			time.sleep(1)
 			status = self.getStatus()
@@ -690,18 +693,16 @@ class CDK700:
 		self.focus = float(status.focuser.position)
 		alt = str(float(status.mount.alt_radian)*180.0/math.pi)
 
-		try:
-			tm1 = str(status.temperature.primary)
-			tm2 = str(status.temperature.secondary)
-			tm3 = str(status.temperature.m3)
-			tamb = str(status.temperature.ambient)
-			tback = str(status.temperature.backplate)
-		except:
-			tm1 = 'UNKNOWN'
-			tm2 = 'UNKNOWN'
-			tm3 = 'UNKNOWN'
-			tamb = 'UNKNOWN'
-			tback = 'UNKNOWN'
+		try:    tm1 = str(status.temperature.primary)
+		except:	tm1 = 'UNKNOWN'
+		try:	tm2 = str(status.temperature.secondary)
+		except:	tm2 = 'UNKNOWN'
+		try:	tm3 = str(status.temperature.m3)
+		except:	tm3 = 'UNKNOWN'
+	        try:	tamb = str(status.temperature.ambient)
+		except:	tamb = 'UNKNOWN'
+		try:	tback = str(status.temperature.backplate)
+		except: tback = 'UNKNOWN'
 		
 		self.logger.info('Updating best focus to ' + str(self.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
 		f = open('focus.' + self.logger_name + '.txt','w')
@@ -747,8 +748,10 @@ class CDK700:
                                 status = self.getStatus()
 		
 		time.sleep(5.0)
+		self.initialize()
 		status = self.getStatus()
-		if status.mount.encoders_have_been_set == 'True':
+		
+		if status.mount.encoders_have_been_set == 'False':
                         self.logger.error('Mount failed to home; beginning recovery')
                         self.recover()
                         return self.home()
