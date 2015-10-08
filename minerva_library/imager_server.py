@@ -4,6 +4,7 @@ from win32com.client import Dispatch
 from scipy import stats
 import numpy as np
 import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, pyfits, subprocess, collections
+import atexit, win32api
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
@@ -25,6 +26,10 @@ class server:
 		self.setup_logger()
 		self.set_data_path()
 		self.connect_camera()
+		#XXX These do not work
+		#S Setup shut down procedures
+		#win32api.SetConsoleCtrlHandler(self.safe_close,True)
+		#atexit.register(self.safe_close,'signal_arguement')
 		
 #==============utility functions=================#
 #these methods are not directly called by client
@@ -160,25 +165,13 @@ class server:
 			self.logger.info('Preventing maxim from closing upon exit')
 			maxim = Dispatch("MaxIm.Application")
 			maxim.LockApp = True
+			#S Turn on the cooler so we don't hit any issues with self.safe_close
+			self.cam.CoolerOn = True
 			return 'success'
 		except:
 			return 'fail'
 
-	def disconnect(self):
-		
-		try:
-			# Turn the cooler off 
-			self.logger.info('Turning cooler off')
-			self.cam.CoolerOn = False
 
-			time.sleep(1)
-
-			# Disconnect from the camera 
-			self.logger.info('Disconnecting from the camera') 
-			self.cam.LinkEnabled = False
-			return 'success'
-		except:
-			return 'fail'
 		
 	#set binning
 	def set_binning(self,param):
@@ -380,9 +373,10 @@ class server:
 			self.cam.CoolerOn = False
 			time.sleep(1)
 			self.logger.info('disconnecting camera')
-			self.cam.LinkEnabled = False 
+			self.cam.LinkEnabled = False
 			return 'success'
 		except:
+                        self.logger.exception('disconnect failed')
 			return 'fail'
 #==================server functions===================#
 #used to process communication between camera client and server==#
@@ -473,7 +467,21 @@ class server:
 			self.process_command(repr(data).strip("'"),conn)
 		s.close()
 		self.run_server()
-
+        """
+        def safe_close(self,signal):
+                return
+                #NOTE There is a time.sleep(1) in the disconnect functions
+                #print self.get_status('CoolerOn')
+                print threading._active
+                import pythoncom
+                pythoncom.CoInitialize()
+                print self.disconnect_camera()
+                #S Actually close down maxim
+                #subprocess.call(['Taskkill','/IM','MaxIm_DL.exe','/F'])
+                time.sleep(3)
+                print 'slept'
+                pass
+        """
 if __name__ == '__main__':
     if socket.gethostname() == 'Minervared2-PC':
         config_file = 'imager_server_red.ini'
