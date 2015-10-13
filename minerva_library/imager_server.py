@@ -165,10 +165,12 @@ class server:
 			self.logger.info('Preventing maxim from closing upon exit')
 			maxim = Dispatch("MaxIm.Application")
 			maxim.LockApp = True
+			
 			#S Turn on the cooler so we don't hit any issues with self.safe_close
 			self.cam.CoolerOn = True
 			return 'success'
 		except:
+                        self.logger.exception("Failed to connect to the camera")
 			return 'fail'
 
 
@@ -362,7 +364,7 @@ class server:
 			subprocess.call(['Taskkill','/IM','MaxIm_DL.exe','/F'])
 			time.sleep(5)
 			self.logger.info('Reconnecting')
-			self.connect()
+			self.connect_camera()
 			return 'success'
 		except:
 			return 'fail'
