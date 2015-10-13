@@ -179,6 +179,9 @@ class imager:
 
                 start = datetime.datetime.utcnow()
                 currentTemp = self.get_temperature()
+		if currentTemp == 'fail':
+			self.recover()
+			currentTemp = self.get_temperature()
                 if currentTemp == -999.0:
                         self.logger.warning(telescope_name + 'The camera failed to connect properly; beginning recovery')
                         if self.recover(): return self.cool()
@@ -204,9 +207,14 @@ class imager:
 			elapsedTimeAtTemp = (datetime.datetime.utcnow() - lastTimeNotAtTemp).total_seconds()
 
                         time.sleep(10)
+			#S update the temperature
                         currentTemp = self.get_temperature()
-                        elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+			#S check to see if we are actually getting temperatures. 
+			if currentTemp == 'fail':
+				self.recover()
+				self.currentTemp = self.get_temperature()
 
+                        elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
                 # Failed to reach setpoint 
                 if (abs(self.setTemp - currentTemp)) > self.maxdiff:
                         self.logger.error(telescope_name + 'The camera was unable to reach its setpoint (' +
@@ -344,12 +352,14 @@ class imager:
 				temp = result.split()
 				if len(temp) != 2:
 					self.logger.error(telescope_name + 'parameter error')
-					return False
+					return 'fail'
 				return float(temp[1])
-			else: return False
+			else: 
+				self.logger.error(telescope_name + ' failed at getting temperature')
+				return 'fail'
 		except: 
 			self.logger.exception(telescope_name + 'Unknown error getting temperature')
-			return False
+			return 'fail'
 
 	#start exposure
 	def expose(self, exptime=1, exptype=0, filterInd=1):

@@ -37,7 +37,7 @@ class site:
 		self.observing = True
 		self.weather = -1
 		self.rainChangeDate = datetime.datetime.utcnow() - datetime.timedelta(hours=1.0)
-		self.lastRain = 0.0
+		self.lastRain = 0.
 
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
@@ -281,7 +281,9 @@ class site:
 		if self.weather['wxt510Rain'] > self.lastRain:
 			self.lastRain = self.weather['wxt510Rain']
 			self.rainChangeDate = datetime.datetime.utcnow()
-
+		#S This is done to set the initial value of the rain at the beginning of the night to the current value of wxt510rain
+#		if self.weather['wxt510Rain'] < self.lastRain:
+#			self.lastRain = self.weather['wxt510Rain']
 		# if it has rained in the last hour, it's not ok to open
 		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 3600.0:
 			self.logger.info('Not OK to open: it last rained at ' + str(self.rainChangeDate) + ", which is less than 1 hour ago")

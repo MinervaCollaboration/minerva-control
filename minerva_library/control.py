@@ -70,9 +70,12 @@ class control:
                         self.site = env.site('site_mtHopkins.ini',self.base_directory)
 
                         for i in range(2):
-				aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
-				if aqawanob.heartbeat(): self.domes.append(aqawanob)
-				else: self.logger.error("Failed to initialize Aqawan " + str(i+1))
+				try:
+					aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
+					if aqawanob.heartbeat(): self.domes.append(aqawanob)
+					else: self.logger.error("Failed to initialize Aqawan " + str(i+1))
+				except:
+					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 
 			# initialize the 4 telescopes
 			for i in range(4):
@@ -82,6 +85,7 @@ class control:
 					self.npss.append(powerswitch.powerswitch('powerswitch_' + str(i+1) + '.ini',self.base_directory))
 				except: 
 					self.logger.exception("Failed to initialize the imager on T" + str(i+1))
+
 
 	def load_config(self):
 
@@ -1357,7 +1361,8 @@ class control:
 
 	#take one image based on parameter given, return name of the image, return 'error' if fail
 	#image is saved on remote computer's data directory set by imager.set_data_path()
-	def takeImage(self, exptime, filterInd, objname, camera_num=0, defocus=0.0):
+	#TODO camera_num is actually telescope_num
+	def takeImage(self, exptime, filterInd, objname, camera_num=0):
 
 		telescope_name = 'T' + str(camera_num) +': '
 		#check camera number is valid
@@ -1455,6 +1460,7 @@ class control:
 
 		# Focuser Specific
 		f['FOCPOS'] = (telescopeStatus.focuser.position,"Focus Position (microns)")
+		defocus = (float(telesecopeStatus.focuser.position) - telescope.focus)/1000.
 		f['DEFOCUS'] = (str(defocus),"Intentional defocus (mm)")
 
 		# Rotator Specific
@@ -1880,7 +1886,7 @@ class control:
 #		else: pa = None
 		pa = None
 
-		if target['name'] == 'autofocus':
+      		if target['name'] == 'autofocus':
                         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			except: pass
@@ -1924,7 +1930,7 @@ class control:
 						if datetime.datetime.utcnow() > target['endtime']: return
 						if i < target['num'][j]:
 							self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-							filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num, defocus=target['defocus'])
+							filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num)
 							if target['selfguide'] and filename <> 'error': reference = self.guide('/Data/t' + str(telescope_num) + '/' + self.site.night + '/' + filename,reference)
 					
 					
@@ -1946,7 +1952,7 @@ class control:
 							telescope.acquireTarget(target['ra'],target['dec'])
 						if datetime.datetime.utcnow() > target['endtime']: return
 						self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' + target['filter'][j] + ' band') 
-						filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num, defocus=target['defocus'])
+						filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num)
 						if target['selfguide'] and filename <> 'error': reference = self.guide('/Data/t' + str(telescope_num) + '/' + self.site.night + '/' + filename,reference)
 
 	#prepare logger and set imager data path
@@ -2135,7 +2141,8 @@ class control:
 		self.telescopes[telescope_num-1].shutdown()
 		self.telescopes[telescope_num-1].killPWI()
 		self.telescopes[telescope_num-1].initialize(tracking=False)
-		self.telescopes[telescope_num-1].initialize_autofocus()
+		self.telescopes[telescope_num-1].home()
+#		self.telescopes[telescope_num-1].initialize_autofocus()
 
 		#S Initialize, home, and park telescope. 
 		#S Enable mount and connect to motors.
@@ -2278,7 +2285,8 @@ class control:
 						
 		# Take Morning Sky flats
 		# Check if we want to wait for these
-		if CalibInfo['WaitForMorning']:
+		#S got rid of this check because domes were closing while other telescopes were observing.
+		if True:   #CalibInfo['WaitForMorning']:
 			sleeptime = (self.site.NautTwilBegin() - datetime.datetime.utcnow()).total_seconds()
 			if sleeptime > 0:
 				self.logger.info(telescope_name + 'Waiting for morning flats (' + str(sleeptime) + ' seconds)')
@@ -2287,6 +2295,8 @@ class control:
 
 		# Want to close the aqawan before darks and biases
 		# closeAqawan in endNight just a double check
+		#S I think we need a way to check if both telescopes are done observing, even if one has
+		#S ['waitformorning']==false
 		self.telescope_park(telescope_num)
 		self.observing = False
 
@@ -2315,6 +2325,7 @@ class control:
 			self.doDark(CalibEndInfo['ndarkEnd'], CalibInfo['darkexptime'],telescope_num)
 		
 		self.endNight(telescope_num)
+
 		
 	def observingScript_catch(self,telescope_num):
 		telescope_name = 'T' + str(telescope_num) +': '
@@ -2487,7 +2498,7 @@ class control:
         def take_rv_spec(self,target):
                 pass
                                 
-	"""
+
 	#S started outline for autofocus, pursuing different route.
 	###
 	#AUTOFOCUS
@@ -2495,15 +2506,16 @@ class control:
 	#S Small file will be needed for a few minor functions in the fitting process, etc
 	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
 	#S stuff we need to worry about
-	def autofocus(self,telescope_number,af_num_steps=10,af_defocus_step=10):
+	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.25,af_exptime=5):
 	#	pass
 		#S zero index the telenumber
-		num = telescope_number - 1
-		#S Default exposure time for autofocus, seconds
-		af_exptime = 5
-		#S Get the initial defocus to start at
-		af_defocus = -(af_num_steps/2*af_defocus_step)
+		telescope = self.telescopes[ telescope_number-1]
+		#S our data path
+		dataPath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
+		#S make array of af_defocus_steps
+		defsteps = np.linspace(-defocus_step*(num_steps)/2,defocus_step*(num_steps)/2,num_steps)
 		#TODO Get last best focus, telescope getstatus?
+		last_best_focus = get_last_best_focus
 		#TODO Similar procedure already exists, see other autofocus function in cdk700(?)
 		#TODO any other relevant information we need
 
@@ -2517,7 +2529,7 @@ class control:
 			aftest = self.cameras[num].af_imagefit(aftest_file)
 			#S The check below seem like they could be consolidated, as it feels a bit redundant. Needs
 			#S more thought.
-
+			
 			#S this is to check to see if the brightest star is greater by some amount than the background
 			#S This is a concern for fitting, as getstars can find 'stars' that we can't fit. Need 
 			#S to look into get stars more though...
@@ -2534,27 +2546,33 @@ class control:
 			#S So not that we have 
 		#TODO Determine if exptime, sky patch are good
 		#TODO begin autofocus sequence
-		for imnum in range(number_of_images):
+		for step in desteps:
+			newfocus = telescope.focus + step*1000.0
+			status = telescope.getStatus()
+			if newfocus <> status.focuser.position:
+				self.logger.info(telescope_name + "Defocusing Telescope by " + str(step) + ' mm, to ' + str(newfocus))
+				telescope.focuserMove(newfocus)
 			#S This takes the image for the autofocus, 
-			af_name = 'afoc'+str(imnum)
+			af_name = 'autofocus'
 			#S I'm not sure if this is how this works, or how we want to implemenet it.
 			#S Presumably the defocus arguement is how far you want ti off of the current focus, 
 			#S so this should be fine if we set it initially to the minimum of what we want to offset. 
-			af_defocus += af_defocus_step
-			filename = self.takeImage(af_exptime,af_filter,af_name,telescope_num,defocus=af_defocus)
+			imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_number)
 			#S Need a function in imager_server to perform fitting stuff, return dictionary with the goods
-			af_dict = self.cameras[num].af_imagefit(filename)
+			af_dict = newauto.sextract(datapath,imagename)
 			fwhm_list.append(af_dict['median_fwhm'])
 		#S Now we have a list of fwhm's, lets fit a quadratic to it. 
 		#S We're going to have all of these fitting functions in another file
-		new_best_focus = autofocus.fit_autofocus(fwhm_list)
+		poslist = desteps + telesecope.focus
+		new_best_focus = newauto.fitquadgetmin(poslist,fwhm_list)
 		#S This will return a number or None(?)
 		#S I think returning None if there is not a good fit might be a good 
 		#S idea, but the only thing is what do we do if there isn't a good fit. 
 		#S I think we could also use this function as the check for monotonic 
 		#S increasing/decreasing. 
 		if new_best_focus <> None:
-		"""
+			pass
+
 			
 if __name__ == '__main__':
 

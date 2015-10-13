@@ -658,6 +658,8 @@ class CDK700:
 		timeout = 360.0
 
 		self.initialize()
+		#S need tracking on for autofocus, not sure what will happen if we turn on while already on
+		self.mountTrackingOn()
 
 		self.logger.info('Connecting to the focuser')
 		self.focuserConnect()
