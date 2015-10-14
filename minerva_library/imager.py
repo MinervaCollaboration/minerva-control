@@ -11,6 +11,7 @@ import mail
 import datetime
 from configobj import ConfigObj
 import ipdb
+import subprocess
 sys.dont_write_bytecode = True
 
 class imager:
@@ -126,13 +127,9 @@ class imager:
 			if e.errno == errno.ECONNREFUSED:
 				self.logger.exception(telescope_name + 'connection failed (socket.error)')
 			else: self.logger.exception(telescope_name + 'connection failed')
-			if self.nserver_failed >= 3: return False
-			if self.recover_server(): return self.connect_server()
 			return False
 		except:
 			self.logger.exception(telescope_name + 'connection failed')
-			if self.nserver_failed >= 3: return False
-			if self.recover_server(): return self.connect_server()
 			return False
 
 		return s
@@ -440,10 +437,11 @@ class imager:
 		if self.send('compress_data none',30) == 'success': return True
 		else: return False
 
-	def powercycle(self):
-		self.nps.cycle(self.nps_port)
+	def powercycle(self,downtime=30):
+                self.nps.off(self.nps_port)
+                time.sleep(downtime)
+                self.nps.on(self.nps_port)
 		time.sleep(30)
-		self.connect_camera()
 
 	def restartmaxim(self):
 		telescope_name = 'T' + self.telnum + ': '
@@ -452,7 +450,9 @@ class imager:
 		else: return False
 		
 	def recover_server(self):
-		# this requires winexe on linux and a registry key on each Windows 7 machine:
+                telescope_name = 'T' + self.telnum + ': '
+
+		# this requires winexe on linux and a registry key on each Windows (7?) machine:
 		'''
 		- Click start 
 		- Type: regedit 
@@ -468,75 +468,154 @@ class imager:
 		- Click OK 
 		- Restart your computer 
 		'''
-		self.nserver_failed += 1
-		self.logger.error("The server has failed " + str(self.nserver_failed) + " times")
-		if self.nserver_failed >= 4: return False
+		
+		self.logger.warning(telescope_name + 'Server failed, beginning recovery') 
 
+                # try to re-connect
+                if self.connect_server():
+                        self.logger.info(telescope_name + 'recovered by reconnecting') 
+                        self.nserver_failed = 0
+                        return True
+
+                self.logger.warning(telescope_name + 'Server failed to reconnect; restarting server') 
+                if not self.kill_server():
+                        ipdb.set_trace()
+                if not self.kill_maxim():
+                        ipdb.set_trace()
+                if not self.kill_PWI():
+                        ipdb.set_trace()
+                if not self.start_server():
+                        ipdb.set_trace()
+
+                # try to re-connect again
+                if self.connect_server():
+                        self.logger.info(telescope_name + 'recovered by restarting the server') 
+                        self.nserver_failed = 0
+                        return True
+
+                self.ipdb.set_trace()
+                return False
+
+        def kill_remote_task(self,taskname):
+                return self.send_to_computer("taskkill /IM " + taskname + " /f")
+        def kill_server(self):
+                return self.kill_remote_task("python.exe")
+        def kill_maxim(self):
+                return self.kill_remote_task("MaxIm_DL.exe")
+        def killPWI(self):
+                return self.kill_remote_task("PWI.exe")
+        def start_server(self):
+                return self.send_to_computer('schtasks /Run /TN "telcom server"')
+
+        def send_to_computer(self, cmd):
 		f = open(self.base_directory + '/credentials/authentication.txt','r')
 		username = f.readline().strip()
                 password = f.readline().strip()
 		f.close()
 
-		killservercmd = 'winexe -U HOME/' + username + '%' + password + ' //' + self.ip + ' "taskkill /IM python.exe /f"'
-		self.logger.info('Executing the remote command: ' + killservercmd)
-		os.system(killservercmd)
-		time.sleep(1)
+                process = subprocess.Popen(["winexe","-U","HOME/" + username + "%" + password,"//" + self.ip, cmd],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                out,err = process.communicate()
+                self.logger.info('T' + self.telnum + ': cmd=' + cmd + ', out=' + out + ', err=' + err)
 
-		killmaximcmd = 'winexe -U HOME/' + username + '%' + password + ' //' + self.ip + ' "taskkill /IM MaxIm_DL.exe /f"'
-		self.logger.info('Executing the remote command: ' + killmaximcmd)
-		os.system(killmaximcmd)
-		time.sleep(1)
-
-
-		killpwicmd = 'winexe -U HOME/' + username + '%' + password + ' //' + self.ip + ' "taskkill /IM PWI.exe /f"'
-		self.logger.info('Executing the remote command: ' + killpwicmd)
-		os.system(killpwicmd)
-		time.sleep(1)
-
-		startservercmd = 'winexe -U HOME/' + username + '%' + password + ' //' + self.ip + " 'schtasks /Run /TN " + '"telcom server"' + "'"
-		self.logger.info('Executing the remote command: ' + startservercmd)
-		os.system(startservercmd)
-
-		return True		
+                if 'NT_STATUS_HOST_UNREACHABLE' in out:
+                        self.logger.error('T' + self.telnum + ': the host is not reachable')
+                        mail.send("T" + self.telnum + 'is unreachable',
+                                  "Dear Benevolent Humans,\n\n"+
+                                  "I cannot reach T" + self.telnum + ". Can you please check the power and internet connection?\n\n" +
+                                  "Love,\nMINERVA",level="serious")
+                        return False
+                elif 'NT_STATUS_LOGON_FAILURE' in out:
+                        self.logger.error('T' + self.telnum + ': invalid credentials')
+                        mail.send("Invalid credentials for T" + self.telnum,
+                                  "Dear Benevolent Humans,\n\n"+
+                                  "The credentials in " + self.base_directory +
+                                  '/credentials/authentication.txt (username=' + username +
+                                  ', password=' + password + ') appear to be outdated. Please fix it.\n\n' +
+                                  'Love,\nMINERVA',level="serious")
+                        return False
+                elif 'ERROR: The process' in err:
+                        self.logger.info('T' + self.telnum + ': task already dead')
+                        return True
+                return True	
 
 	def recover(self):
-		telescope_name = 'T' + self.telnum + ': '
-		self.nfailed = self.nfailed + 1
-		self.logger.warning(telescope_name + 'Camera failed ' + str(self.nfailed) + ' times') 
+		self.logger.warning('T' + self.telnum + ': Camera failed, beginning recovery') 
 
-		if self.nfailed == 1:
-			try: self.disconnect_camera()
-			except: self.logger.exception(telescope_name+' failed to disconnect camera, moving on to a restart of maxim')
-			# attempt to reconnect
-			self.logger.warning(telescope_name + 'Camera failed to connect; retrying') 
-			self.connect_camera()
-			return True
-		elif self.nfailed == 2:
-			# then restart maxim
-			self.logger.warning(telescope_name + 'Camera failed to connect; restarting maxim') 
-			self.restartmaxim()
-			self.connect_camera()
-			return True
-		elif self.nfailed == 3:
-			# then power cycle the camera
-			self.logger.warning(telescope_name + 'Camera failed to connect; powercycling the imager') 
-			self.powercycle()
-			self.restartmaxim()
-			self.connect_camera()
-			return True
-		elif self.nfailed >= 4:
-			self.logger.error(telescope_name + 'Camera failed to connect!') 
-			if self.nfailed == 4:
-				mail.send("Camera " + self.logger_name + " failed to connect","please do something",level="serious")
-			return False
-#			sys.exit()
+                
+                self.disconnect_camera()
+                if self.connect_camera():
+                        self.logger.info('T' + self.telnum + ': Camera recovered by reconnecting') 
+                        return True
 
+                self.logger.warning(telescope_name + 'Camera failed to connect; restarting maxim') 
+                self.disconnect_camera()
+                self.kill_maxim()
+                self.kill_PWI()
+                self.kill_server()
+                self.start_server()
+                if self.connect_camera():
+                        self.logger.info('T' + self.telnum + ': Camera recovered by restarting maxim') 
+                        return True
+
+                self.logger.warning(telescope_name + 'Camera failed to recover after restarting maxim; power cycling the camera') 
+                self.disconnect_camera()
+                self.kill_maxim()
+                self.kill_PWI()
+                self.kill_server()
+                self.powercycle()
+                self.start_server()
+                if self.connect_camera():
+                        self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it') 
+                        return True
+
+                self.logger.warning(telescope_name + 'Camera failed to recover after power cycling the camera; trying a longer down time') 
+                self.disconnect_camera()
+                self.kill_maxim()
+                self.kill_PWI()
+                self.kill_server()
+                self.powercycle(downtime=300)
+                self.start_server()
+                if self.connect_camera():
+                        self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it with a longer downtime') 
+                        return True
+
+                self.logger.warning(telescope_name + 'Camera failed to recover after power cycling the camera; rebooting the machine') 
+                self.disconnect_camera()
+                self.kill_maxim()
+                self.kill_PWI()
+                self.kill_server()
+                self.nps.off(self.nps_port)
+                self.send_to_computer("shutdown -s")
+                time.sleep(60) # wait for it to shut down
+                self.nps.off(1) # turn off the computer
+                self.nps.off(2) # turn off the telescope panel (which powers the filter wheel)
+                time.sleep(300) # wait for it to discharge its capacitors
+                self.nps.on(1) # turn on the computer
+                time.sleep(60) # wait for it to reboot
+                self.nps.on(self.nps_port) # turn on the camera
+                self.nps.on(2) # turn on the telescope panel
+                time.sleep(30) # wait for the camera to initialize
+                if self.connect_camera():
+                        self.logger.info('T' + self.telnum + ': Camera recovered by rebooting the machine') 
+                        return True
+
+                mail.send("Camera on T" + self.telnum + " failed to connect (EOM)","",level="serious")
+                ipdb.set_trace()
+                return False
+                
 		
 #test program, edit camera name to test desired camera
 if __name__ == '__main__':
-	
-	base_directory = '/home/minerva/minerva-control'
-	test_imager = imager('imager_t1.ini',base_directory)
+
+	if socket.gethostname() == 'Main':
+        	base_directory = '/home/minerva/minerva-control'
+        	config_file = 'imager_t1.ini'
+        else:
+                base_directory = 'C:/minerva-control/'
+                config_file = 'imager_t' + socket.gethostname()[1] + '.ini'
+                
+	test_imager = imager(config_file,base_directory)
+	ipdb.set_trace()
 	while True:
 		print 'camera_control test program'
 		print ' a. take_image'
@@ -555,6 +634,7 @@ if __name__ == '__main__':
 		print ' n. disconnect_camera'
 		print ' o. powercycle'
 		print ' p. restart_maxim'
+		print ' q. recover'
 		print '----------------------------'
 		choice = raw_input('choice:')
 
@@ -590,6 +670,8 @@ if __name__ == '__main__':
 			test_imager.powercycle()
 		elif choice == 'p':
 			test_imager.restartmaxim()
+		elif choice == 'q':
+			test_imager.recover()
 		else:
 			print 'invalid choice'
 			
