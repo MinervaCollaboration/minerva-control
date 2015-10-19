@@ -2563,6 +2563,7 @@ class control:
 		#S Just need an empty list for the fwhm/hfr. made FOCUSMEASure_LIST because we don't necessarily know which 
 		#S value we want yet.
 		focusmeas_list = []
+		stddev_list = []
 
 		for step in defsteps:
 			newfocus = telescope.focus + step*1000.0
@@ -2588,14 +2589,20 @@ class control:
 				catalog = newauto.sextract(datapath,imagename)
 				self.logger.debug('T' + str(telescope_number) + ': Sextractor success')
 			except: self.logger.exception('T' + str(telescope_number) + ': Sextractor failed for T'+str(telescope_number))
-			#S get focus measure value
-			try: focusmeas_list.append(newauto.get_hfr_med(datapath+catalog))
+			#S get focus measure value, as well as standard deviation of the mean
+			try: 
+				median, stddev = newauto.get_hfr_med(datapath+catalog)
+				focusmeas_list.append(median)
+				stddev_list.append(stddev)
+
 			except: self.logger.exception('T' + str(telescope_number) + ': Failed to get hfr value from '+datapath+catalog)
 		
 		#S Now we have a list of fwhm's, lets fit a quadratic to it. 
 		#S We're going to have all of these fitting functions in another file
 		poslist = defsteps + telescope.focus
-		new_best_focus = newauto.fitquadfindmin(poslist,focusmeas_list)
+		if len(stddev_list) == 0:
+			stddev_list = None
+		new_best_focus = newauto.fitquadfindmin(poslist,focusmeas_list,weight_list=stddev_list)
 
 		#S just want to record some values.
 		try:
