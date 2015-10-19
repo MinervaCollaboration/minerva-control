@@ -14,6 +14,7 @@ import powerswitch
 import telcom_client
 import threading
 import numpy as np
+import socket
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -84,29 +85,50 @@ class CDK700:
 			# if no recent best focus exists, initialize to 25000. (old: current value)
 			status = self.getStatus()
 			self.focus = 25000.0  #status.focuser.position
+
+		self.num = self.logger_name[-1]
 			
 	#additional higher level routines
-	def initialize(self,tracking=False):
+	def isInitialized(self,tracking=False):
+		# check to see if it's properly initialized
+		telescopeStatus = self.getStatus()
+		if telescopeStatus.mount.encoders_have_been_set <> 'True': return False
+		if telescopeStatus.mount.alt_enabled <> 'True': return False
+		if telescopeStatus.mount.alt_motor_error_message <> 'No error': return False
+		if telescopeStatus.mount.azm_enabled <> 'True': return False
+		if telescopeStatus.mount.azm_motor_error_message <> 'No error': return False
+		if telescopeStatus.mount.connected <> 'True': return False
+		if telescopeStatus.rotator.connected <> 'True': return False
+		if telescopeStatus.focuser.connected <> 'True': return False
+
+		if tracking:
+			if telescopeStatus.mount.tracking <> 'True': return False
+			if telescopeStatus.rotator.altaz_derotate <> 'True': return False
+		
+		return True
+
+	def initialize(self,tracking=True):
 
 		# turning on mount tracking
-		self.logger.info('Connecting to mount')
+		self.logger.info('T' + self.num + ': Connecting to mount')
 		self.mountConnect()
                 #S Start yer engines
-		self.logger.info('Enabling motors')
+		self.logger.info('T' + self.num + ': Enabling motors')
 		self.mountEnableMotors()
 		
-		self.logger.info('Homing telescope')
+		self.logger.info('T' + self.num + ': Homing telescope')
 		self.home()
 
 		# turning on mount tracking, rotator tracking
-		#S I'm defaulting this off, but including an arguement in case we do want it
+		#S I'm defaulting this off, but including an argument in case we do want it
 		#S This could be for initializing at 4PM start, or for testing. 
 		if tracking:
-			self.logger.info('Turning mount tracking on')
+			self.logger.info('T' + self.num + ': Turning mount tracking on')
 			self.mountTrackingOn()
-			self.logger.info('Turning rotator tracking on')
+			self.logger.info('T' + self.num + ': Turning rotator tracking on')
 			self.rotatorStartDerotating()
 
+		return self.isInitialized(tracking=tracking)
 		
 	def load_config(self):
 		
@@ -190,7 +212,7 @@ class CDK700:
 		"""
 		url = self.makeUrl(**kwargs)
 		try: ret = urllib.urlopen(url).read()
-		except: 
+		except:
 			self.restartPWI()
 			ret = urllib.urlopen(url).read()
 		return ret
@@ -209,8 +231,10 @@ class CDK700:
 		Works like pwiRequest(), except returns a parsed XML object rather
 		than XML text
 		"""
-
-		return self.parseXml(self.pwiRequest(**kwargs))
+		try: return self.parseXml(self.pwiRequest(**kwargs))
+		except:
+			self.restartPWI()
+			return self.parseXml(self.pwiRequest(**kwargs))
 
 	### Status wrappers #####################################
 	def getStatusXml(self):
@@ -320,9 +344,8 @@ class CDK700:
 	def mountConnect(self):
 		status = self.pwiRequestAndParse(device="mount", cmd="connect")
 		if status.mount.connected == 'False':
-			self.logger.error('Failed to connect to mount; beginning recovery')
-			self.recover()
-			return self.mountConnect()
+			self.logger.error('Failed to connect to mount')
+			return False
 		return True
 
 	def mountDisconnect(self):
@@ -399,26 +422,66 @@ class CDK700:
 
 
 	def recover(self):
+		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
+		try: self.shutdown()
+		except: pass
+		if self.initialize():
+			self.logger.info('T' + self.num + ': recovered after reconnecting')
+			return True
+
+		self.logger.warning('T' + self.num + ': reconnecting failed; restarting PWI')
+		try: self.shutdown()
+		except: pass
+		self.restartPWI()
+		if self.initialize():
+			self.logger.info('T' + self.num + ': recovered after restarting PWI')
+			return True
+
+		# power cycle and rehome the scope
+		self.logger.info('T' + self.num + ': restarting PWI failed, power cycling the mount')
+		try: self.shutdown()
+		except: pass
+		self.killPWI()
+		self.powercycle()
+		self.startPWI()
+		if self.initialize():
+			self.logger.info('T' + self.num + ': recovered after power cycling the mount')
+			return True
+
+		filename = "telescope_" + self.num + '.error'
+		body = "Dear benevolent humans,\n\n" + \
+		    "I have failed to recover automatially. Please recover me, then delete " + filename + " to restart operations.\n\n" + \
+		    "Love,\n" + \
+		    "MINERVA"			
+		while not self.initialize():
+			self.logger.error('T' + self.num + ': Telescope has failed to automatically recover; intervention required')
+			mail.send('T' + self.num + " has failed",body,level='serious')
+			fh = open(filename,'w')
+			fh.close()
+			while os.path.isfile(filename):
+				time.sleep(1)
+
+		return self.initialize()
+
 		# TODO
                 # we never reset self.nfailed
-
 		self.nfailed = self.nfailed + 1
 		if self.nfailed == 1:
                         # just try to reconnect
-			self.logger.info("Failed 1 times; trying to reconnect")
+			self.logger.info('T' + self.num + ': Failed 1 times; trying to reconnect')
                         try: self.shutdown()
                         except: pass
                         self.initialize()
                 elif self.nfailed == 2:
                         # restart PWI and reconnect
-			self.logger.info("Failed 2 times; trying to restarting PWI")
+			self.logger.info('T' + self.num + ': Failed 2 times; trying to restarting PWI')
                         try: self.shutdown()
                         except: pass
                         self.restartPWI()
                         self.initialize()
                 elif self.nfailed == 3:
                         # power cycle and rehome the scope
-			self.logger.info("Failed 3 times; power cycling the mount")
+			self.logger.info('T' + self.num + ': Failed 3 times; power cycling the mount')
  			try: self.shutdown()
 			except: pass
 			self.killPWI()
@@ -426,12 +489,12 @@ class CDK700:
 			self.startPWI()
 			self.initialize()
 		if self.nfailed > 3:  
-			self.logger.error("Telescope has failed " + str(self.nfailed) + " times; something is probably seriously wrong...")
+			self.logger.error('T' + self.num + ': Telescope has failed ' + str(self.nfailed) + ' times; something is probably seriously wrong...')
 			body = "Dear benevolent humans,\n\n" + \
 			    "I'm broken and have failed to recover automatially. Please help!\n\n" + \
 			    "Love,\n" + \
 			    "MINERVA"			
-			mail.send(self.logger_name + " has failed " + str(self.nfailed) + " times",body,level='serious')
+			mail.send('T' + self.num + " has failed " + str(self.nfailed) + " times",body,level='serious')
 			ipdb.set_trace()
 
 	def inPosition(self):
@@ -441,7 +504,7 @@ class CDK700:
 		elapsedTime = 0
 		time.sleep(0.25) # needs time to start moving
 		telescopeStatus = self.getStatus()
-		self.logger.info('Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving)
+		self.logger.info('T' + self.num + ': Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving)
 		while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout:
 			time.sleep(0.1)
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
@@ -454,25 +517,25 @@ class CDK700:
 				time.sleep(1)
 				telescopeStatus = self.getStatus()
 				if telescopeStatus.mount.moving == 'True':
-					self.logger.error("Telescope moving after it said it was done")
+					self.logger.error('T' + self.num + ': Telescope moving after it said it was done')
 
 			if telescopeStatus.mount.alt_motor_error_code <> '0':
-				self.logger.error('Error with altitude drive: ' + telescopeStatus.mount.alt_motor_error_message)
-				self.recover()
+				self.logger.error('T' + self.num + ': Error with altitude drive: ' + telescopeStatus.mount.alt_motor_error_message)
+				return False
 
 			if telescopeStatus.mount.azm_motor_error_code <> '0':
-				self.logger.info('Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
-				self.recover()
-				
+				self.logger.info('T' + self.num + ': Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
+				return False
+
 			if telescopeStatus.mount.alt_motor_error_code <> '0':
-				self.logger.error('Error with altitude drive: ' + telescopeStatus.mount.alt_motor_error_message)
-				self.recover()
+				self.logger.error('T' + self.num + ': Error with altitude drive: ' + telescopeStatus.mount.alt_motor_error_message)
+				return False
 
 			if telescopeStatus.mount.azm_motor_error_code <> '0':
-				self.logger.info('Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
-				self.recover()
+				self.logger.info('T' + self.num + ': Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
+				return False
 
-		self.logger.info('Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
+		self.logger.info('T' + self.num + ': Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
 		while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
 			time.sleep(0.1)
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
@@ -481,17 +544,14 @@ class CDK700:
 				time.sleep(1)
 				telescopeStatus = self.getStatus()
 				if telescopeStatus.rotator.goto_complete == 'False':
-					self.logger.error("Rotator moving after it said it was done")               		
+					self.logger.error('T' + self.num + ': Rotator moving after it said it was done')
 
 		if telescopeStatus.mount.on_target:
-			self.logger.info('Telescope finished slew')
+			self.logger.info('T' + self.num + ': Telescope finished slew')
 			return True
 		else:
-			self.logger.error('Telescope failed to slew')
-			self.recover()
-			#S Hmmmmmmmm........
-			self.acquireTarget(ra,dec,pa=pa)
-			return
+			self.logger.error('T' + self.num + ': Telescope failed to slew')
+			return False
 
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
@@ -514,7 +574,7 @@ class CDK700:
                 pctoau = 3600.*180/math.pi #[] = AU
                 #S km/sec to AU/year
                 kmstoauy = year_sec*1000./AU
-                self.initialize()
+                self.initialize(tracking=True)
                 #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
                 #S dec comes in as degrees.
                 ra = np.radians(target['ra']*15.)
@@ -577,36 +637,36 @@ class CDK700:
                 else:
                         ra_corrected = np.degrees(ra_intermed)/15.
                 	
-		self.logger.info("Starting slew to J2000 " + str(ra_corrected) + ',' + str(dec_corrected))
+		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
 		if pa <> None:
-			self.logger.info("Slewing rotator to PA=" + str(pa) + ' deg')
+			self.logger.info('T' + self.num + ': Slewing rotator to PA=' + str(pa) + ' deg')
 			self.rotatorMove(pa)
 
 		if self.inPosition():
-			self.logger.info("Finished slew to J2000 " + str(ra_corrected) + ',' + str(dec_corrected))
+			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
-			self.logger.error("Slew failed to J2000 " + str(ra_corrected) + ',' + str(dec_corrected))
+			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 			self.recover()
 			#XXX Something bad is going to happen here.
 			self.acquireTarget(target,pa=pa)
 			return
 
 	def acquireTarget(self,ra,dec,pa=None):
-		self.initialize()
+		self.initialize(tracking=True)
 	
-		self.logger.info("Starting slew to J2000 " + str(ra) + ',' + str(dec))
+		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra) + ',' + str(dec))
 		self.mountGotoRaDecJ2000(ra,dec)
 
 		if pa <> None:
-			self.logger.info("Slewing rotator to PA=" + str(pa) + ' deg')
+			self.logger.info('T' + self.num + ': Slewing rotator to PA=' + str(pa) + ' deg')
 			self.rotatorMove(pa)
 
 		if self.inPosition():
-			self.logger.info("Finished slew to J2000 " + str(ra) + ',' + str(dec))
+			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra) + ',' + str(dec))
 		else:
-			self.logger.error("Slew failed to J2000 " + str(ra) + ',' + str(dec))
+			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra) + ',' + str(dec))
 			self.recover()
 			self.acquireTarget(ra,dec,pa=pa)
 			return
@@ -616,20 +676,20 @@ class CDK700:
 		parkAlt = 45.0
 		parkAz = 0.0 
 
-		self.logger.info('Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
+		self.logger.info('T' + self.num + ': Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
 		self.mountGotoAltAz(parkAlt, parkAz)
 		self.inPosition()
 
-		self.logger.info('Turning mount tracking off')
+		self.logger.info('T' + self.num + ': Turning mount tracking off')
 		self.mountTrackingOff()
 	
-		self.logger.info('Turning rotator tracking off')
+		self.logger.info('T' + self.num + ': Turning rotator tracking off')
 		self.rotatorStopDerotating()
 
 	def recoverFocuser(self):
 		timeout = 60.0
 
-		self.logger.info('Beginning focuser recovery')
+		self.logger.info('T' + self.num + ': Beginning focuser recovery')
 
 		self.focuserStop()
 		self.rotatorStopDerotating()
@@ -644,14 +704,14 @@ class CDK700:
 
 		status = self.getStatus()
 		while status.focuser.moving == 'True':
-			self.logger.info('Focuser moving (' + str(status.focuser.position) + ')')
+			self.logger.info('T' + self.num + ': Focuser moving (' + str(status.focuser.position) + ')')
 			time.sleep(0.3)
 			status = self.getStatus()
 			if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
-				self.logger.error('Focus timed out')
-				mail.send("Focuser timed out on " + str(self.logger_name),"Try powercycling?",level='serious')
+				self.logger.error('T' + self.num + ': Focus timed out')
+				mail.send('T' + self.num + ': Focuser timed out on ' + str(self.logger_name),"Try powercycling?",level='serious')
 				return
-		self.logger.info("Focuser recovered")
+		self.logger.info('T' + self.num + ': Focuser recovered')
 		
 	def autoFocus(self):
 
@@ -661,23 +721,23 @@ class CDK700:
 		#S need tracking on for autofocus, not sure what will happen if we turn on while already on
 		self.mountTrackingOn()
 
-		self.logger.info('Connecting to the focuser')
+		self.logger.info('T' + self.num + ': Connecting to the focuser')
 		self.focuserConnect()
 
 		nominalFocus = self.focus
-		self.logger.info('Moving to nominal focus (' + str(nominalFocus) + ')')
+		self.logger.info('T' + self.num + ': Moving to nominal focus (' + str(nominalFocus) + ')')
 		self.focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
 		time.sleep(5.0)
 		status = self.getStatus()
 		while status.focuser.moving == 'True':
-			self.logger.info('Focuser moving (' + str(status.focuser.position) + ')')
+			self.logger.info('T' + self.num + ': Focuser moving (' + str(status.focuser.position) + ')')
 			time.sleep(0.3)
 			status = self.getStatus()
 			
-		self.logger.info('Finished move to focus (' + str(status.focuser.position) + ')')
+		self.logger.info('T' + self.num + ': Finished move to focus (' + str(status.focuser.position) + ')')
 
 
-		self.logger.info('Starting Autofocus')
+		self.logger.info('T' + self.num + ': Starting Autofocus')
 		t0 = datetime.datetime.utcnow()
 		self.startAutoFocus()
 		status = self.getStatus()
@@ -706,12 +766,12 @@ class CDK700:
 		try:	tback = str(status.temperature.backplate)
 		except: tback = 'UNKNOWN'
 		
-		self.logger.info('Updating best focus to ' + str(self.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
+		self.logger.info('T' + self.num + ': Updating best focus to ' + str(self.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
 		f = open('focus.' + self.logger_name + '.txt','w')
 		f.write(str(self.focus))
 		f.close()
 		
-		self.logger.info('Finished autofocus')
+		self.logger.info('T' + self.num + ': Finished autofocus')
 
 	def shutdown(self):
 		self.rotatorStopDerotating()
@@ -727,15 +787,15 @@ class CDK700:
 	def home(self, timeout=420.0):
                 
 		# turning on mount tracking
-		self.logger.info('Connecting to mount')
+		self.logger.info('T' + self.num + ': Connecting to mount')
 		self.mountConnect()
 
-		self.logger.info('Enabling motors')
+		self.logger.info('T' + self.num + ': Enabling motors')
 		self.mountEnableMotors()
 
                 status = self.getStatus()
                 if status.mount.encoders_have_been_set == 'True':
-                        self.logger.info('Mount already homed')
+                        self.logger.info('T' + self.num + ': Mount already homed')
                         return True
                 else:
                         self.mountHome()
@@ -745,7 +805,7 @@ class CDK700:
                         elapsedTime = 0
                         while status.mount.is_finding_home == 'True' and elapsedTime < timeout:
                                 elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-                                self.logger.info('Homing Telescope (elapsed time = ' + str(elapsedTime) + ')')
+                                self.logger.info('T' + self.num + ': Homing Telescope (elapsed time = ' + str(elapsedTime) + ')')
                                 time.sleep(5.0)
                                 status = self.getStatus()
 		
@@ -754,14 +814,14 @@ class CDK700:
 		status = self.getStatus()
 		
 		if status.mount.encoders_have_been_set == 'False':
-                        self.logger.error('Mount failed to home; beginning recovery')
+                        self.logger.error('T' + self.num + ': Mount failed to home; beginning recovery')
                         self.recover()
                         return self.home()
                 else:
                         return True
 
 		
-		self.logger.info('Homing the telscope')
+		self.logger.info('T' + self.num + ': Homing the telscope')
 		if self.telcom.home():return True
 		else: 
 			body = 'Dear humans,\n\n'\
@@ -773,17 +833,17 @@ class CDK700:
 			    '3) I could have had an interruption in other software, causing a potential fail(?)\n\n'\
 			    'Love,\n'\
 			    '-MINERVA'
-			mail.send(self.logger_name+' failed to home correctly',body,level='serious')
+			mail.send('T' + self.num + ' failed to home correctly',body,level='serious')
 			return False
 		
 	def home_rotator(self):
-		self.logger.info('Connecting to rotator')
+		self.logger.info('T' + self.num + ': Connecting to rotator')
 		self.focuserConnect()
 
-		self.logger.info('Turning rotator tracking off')
+		self.logger.info('T' + self.num + ': Turning rotator tracking off')
 		self.rotatorStopDerotating()
 
-		self.logger.info('Homing rotator')
+		self.logger.info('T' + self.num + ': Homing rotator')
 		if self.telcom.home_rotator():return True
 		else: return False
 		
@@ -808,9 +868,14 @@ class CDK700:
 #test program
 if __name__ == "__main__":
 
-	#base_directory = '/home/minerva/minerva-control'
-        base_directory = 'C:/minerva-control/'
-	telescope = CDK700('telescope_3.ini', base_directory)
+	if socket.gethostname() == 'Main':
+		base_directory = '/home/minerva/minerva-control'
+		config_file = 'telescope_1.ini'
+        else: 
+		base_directory = 'C:/minerva-control/'
+		config_file = 'telescope_' + socket.gethostname()[-1] + '.ini'
+
+	telescope = CDK700(config_file, base_directory)
 	ipdb.set_trace()
 	while True:
 		print telescope.logger_name + ' test program'

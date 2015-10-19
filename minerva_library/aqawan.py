@@ -52,6 +52,7 @@ class aqawan:
 			self.logger_name = config['Setup']['LOGNAME']
 			self.num = config['Setup']['NUM']
 			self.mailsent = False
+			self.estopmailsent = False
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit() 
@@ -259,55 +260,6 @@ class aqawan:
 		if response == -1: return -1
 		self.logger.debug(anum + 'Shutter 2 open')
 
-	def close_shutter(self,shutter):
-		anum = "A" + str(self.num) + ': '
-
-		# make sure this is an allowed shutter
-		if shutter not in [1,2]:
-			self.logger.error(anum + 'Invalid shutter specified (' + str(shutter) + ')')
-			return -1
-
-		status = self.status()
-		timeout = 180.0
-		elapsedTime = 0.0
-
-		# if it's already open, return
-		if status['Shutter' + str(shutter)] == 'CLOSED':
-			logging.info('Shutter ' + str(shutter) + ' already open')
-			return
-
-		# open the shutter
-		start = datetime.datetime.utcnow()
-		response = self.send('OPEN_SHUTTER_' + str(shutter))                
-		self.logger.info(anum + response)
-		if not 'Success=TRUE' in response:
-			# did the command fail?
-			self.logger.info(anum + 'Failed to open shutter ' + str(shutter) + ': ' + response)
-			if "Estop active" in response:
-				if not self.mailsent:
-					mail.send("Aqawan " + str(self.num) + " Estop has been pressed!",self.estopmail,level='serious')
-					self.mailsent = True
-			else: ipdb.set_trace()
-			# need to reset the PAC? ("Enclosure not in AUTO"?)
-		
-		# Wait for it to open
-		status = self.status()
-		while status['Shutter' + str(shutter)] == 'OPENING' and elapsedTime < timeout:
-			status = self.status()
-			elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
-
-		# Did it fail to open?
-		if status['Shutter' + str(shutter)] <> 'OPEN':
-			self.logger.error(anum + 'Error opening Shutter ' + str(shutter) )
-			if "Estop active" in response:
-				if not self.mailsent:
-					mail.send("Aqawan " + str(self.num) + " Estop has been pressed!",self.estopmail,level='serious')
-					self.mailsent = True
-			return -1
-
-		self.logger.info(anum + 'Shutter ' + str(shutter) + ' open')
-			
-
 	#close both shutter
 	def close_both(self):
 		anum = "A" + str(self.num) + ': '
@@ -328,12 +280,19 @@ class aqawan:
 		else:
 			response = self.send('CLOSE_SEQUENTIAL')
 			if not 'Success=TRUE' in response:
-				self.logger.error(anum + 'Aqawan failed to close!')
-				if not self.mailsent:
-					mail.send("Aqawan " + str(self.num) + " failed to close!","Love,\nMINERVA",level="critical")
-					self.mailsent = True
-				self.logger.info(anum + 'Trying to close again!')
-				self.close_both() # keep trying!
+				if "Estop active" in response:
+					self.logger.error(anum + 'Estop has been pressed!')					
+					if not self.estopmailsent:
+						mail.send("Aqawan " + str(self.num) + " Estop has been pressed, the aqawan is open, and it should be closed!",self.estopmail,level='critical')
+						self.estopmailsent = True
+				else:
+					self.logger.error(anum + 'Aqawan failed to close!')
+					if not self.mailsent:
+						mail.send("Aqawan " + str(self.num) + " failed to close!","Love,\nMINERVA",level="critical")
+						self.mailsent = True
+					self.logger.info(anum + 'Trying to close again!')
+					self.close_both() # keep trying!
+				return -1
 			else:
 				self.logger.info(anum + response)    
 				start = datetime.datetime.utcnow()
@@ -348,7 +307,7 @@ class aqawan:
 					self.close_both() # keep trying!
 				else:
 					self.logger.info(anum + 'Closed both shutters')
-					if self.mailsent:
+					if self.mailsent or self.estopmailsent:
 						mail.send("Aqawan " + str(self.num) + " closed; crisis averted!","Love,\nMINERVA",level="critical")
 						self.mailsent = False
 			

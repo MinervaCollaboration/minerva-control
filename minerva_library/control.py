@@ -31,6 +31,8 @@ import mail
 import ephem
 from get_all_centroids import *
 import segments
+import newauto 
+
 
 class control:
 	
@@ -1460,7 +1462,7 @@ class control:
 
 		# Focuser Specific
 		f['FOCPOS'] = (telescopeStatus.focuser.position,"Focus Position (microns)")
-		defocus = (float(telesecopeStatus.focuser.position) - telescope.focus)/1000.
+		defocus = (float(telescopeStatus.focuser.position) - telescope.focus)/1000.
 		f['DEFOCUS'] = (str(defocus),"Intentional defocus (mm)")
 
 		# Rotator Specific
@@ -1556,7 +1558,7 @@ class control:
 		if imager.write_header(header):
 			self.logger.info(telescope_name + 'finish writing image header')
 
-			if objname <> "Bias" and objname <> "Dark" and objname <> "SkyFlat": 
+			if objname <> "Bias" and objname <> "Dark" and objname <> "SkyFlat" and objname.lower() <> "autofocus": 
 				# run astrometry asynchronously
 				self.logger.info(telescope_name + "Running astrometry to find PA on " + imager.image_name())
 				dataPath = '/Data/t' + str(camera_num) + '/' + self.site.night + '/'
@@ -1654,7 +1656,7 @@ class control:
 		self.logger.info(telescope_name + 'Beginning twilight flats')
 
 		# make sure the telescope/dome is ready for obs
-		telescope.initialize()
+		telescope.initialize(tracking=True)
 		
 		# start off with the extreme exposure times
 		if morning: exptime = maxExpTime
@@ -1893,7 +1895,18 @@ class control:
 			telescope.inPosition()
 			telescope.autoFocus()
 			return
-
+		
+		if target['name'] == 'newauto':
+                        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
+			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+			except: pass
+			telescope.inPosition()
+			try:
+				self.autofocus(telescope_num)
+			except:
+				self.logger.error('T'+str(telescope_num)+' failed autofocus')
+			return
+		
                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 		# slew to the target
 		telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
@@ -1902,12 +1915,12 @@ class control:
 		newfocus = telescope.focus + target['defocus']*1000.0
 		status = telescope.getStatus()
 		if newfocus <> status.focuser.position:
-			self.logger.info(telescope_name + "Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
+			self.logger.info(telescope_name + " Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
 			telescope.focuserMove(newfocus)
 
 		status = telescope.getStatus()
 		while status.focuser.moving == 'True':
-			self.logger.info(telescope_name + 'Focuser moving (' + str(status.focuser.position) + ')')
+			self.logger.info(telescope_name + ' Focuser moving (' + str(status.focuser.position) + ')')
 			time.sleep(0.3)
 			status = telescope.getStatus()
 
@@ -2139,7 +2152,7 @@ class control:
 		self.scheduleIsValid(telescope_num)
 
 		self.telescopes[telescope_num-1].shutdown()
-		self.telescopes[telescope_num-1].killPWI()
+#		self.telescopes[telescope_num-1].killPWI()
 		self.telescopes[telescope_num-1].initialize(tracking=False)
 		self.telescopes[telescope_num-1].home()
 #		self.telescopes[telescope_num-1].initialize_autofocus()
@@ -2508,24 +2521,24 @@ class control:
 	#S stuff we need to worry about
 	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.25,af_exptime=5):
 	#	pass
+		af_filter="V"
 		#S zero index the telenumber
-		telescope = self.telescopes[ telescope_number-1]
+		telescope = self.telescopes[telescope_number-1]
 		#S our data path
-		dataPath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
+		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
 		#S make array of af_defocus_steps
 		defsteps = np.linspace(-defocus_step*(num_steps)/2,defocus_step*(num_steps)/2,num_steps)
-		#TODO Get last best focus, telescope getstatus?
-		last_best_focus = get_last_best_focus
-		#TODO Similar procedure already exists, see other autofocus function in cdk700(?)
-		#TODO any other relevant information we need
+		
+		self.telescopes[telescope_number-1].initialize(tracking=True)
 
 		#TODO move to a nice patch of sky, take test image. This isn't detailed in
 		#TODO other function, and I think deserves a bit of thought. 
 		#S begin_af is a really a flag to hold our position until we have all the details
 		#S of the sequence figured out, like exposure time and sky position
-		begin_af = False
+		begin_af = True
 		while not begin_af:
-			aftest_file = self.takeImage(af_exptime,af_filter,af_name,telescope_num)
+
+			aftest_file = self.takeImage(af_exptime,af_filter,af_name,camera_num=telescope_num)
 			aftest = self.cameras[num].af_imagefit(aftest_file)
 			#S The check below seem like they could be consolidated, as it feels a bit redundant. Needs
 			#S more thought.
@@ -2546,34 +2559,97 @@ class control:
 			#S So not that we have 
 		#TODO Determine if exptime, sky patch are good
 		#TODO begin autofocus sequence
-		for step in desteps:
+
+		#S Just need an empty list for the fwhm/hfr. made FOCUSMEASure_LIST because we don't necessarily know which 
+		#S value we want yet.
+		focusmeas_list = []
+
+		for step in defsteps:
 			newfocus = telescope.focus + step*1000.0
 			status = telescope.getStatus()
 			if newfocus <> status.focuser.position:
-				self.logger.info(telescope_name + "Defocusing Telescope by " + str(step) + ' mm, to ' + str(newfocus))
+				self.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " + str(step) + ' mm, to ' + str(newfocus))
 				telescope.focuserMove(newfocus)
+
+			# wait for focuser to finish moving
+			status = telescope.getStatus()
+			while status.focuser.moving == 'True':
+				self.logger.info('T' + str(telescope_number) + ': Focuser moving (' + str(status.focuser.position) + ')')
+				time.sleep(0.3)
+				status = telescope.getStatus()
+
 			#S This takes the image for the autofocus, 
 			af_name = 'autofocus'
-			#S I'm not sure if this is how this works, or how we want to implemenet it.
-			#S Presumably the defocus arguement is how far you want ti off of the current focus, 
-			#S so this should be fine if we set it initially to the minimum of what we want to offset. 
-			imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_number)
-			#S Need a function in imager_server to perform fitting stuff, return dictionary with the goods
-			af_dict = newauto.sextract(datapath,imagename)
-			fwhm_list.append(af_dict['median_fwhm'])
+			#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
+			imagename = self.takeImage(af_exptime,af_filter,af_name,camera_num=telescope_number)
+
+			#S Sextract this guy, put in a try just in case. Don't want to crash anything while testing.
+			try: 
+				catalog = newauto.sextract(datapath,imagename)
+				self.logger.debug('T' + str(telescope_number) + ': Sextractor success')
+			except: self.logger.exception('T' + str(telescope_number) + ': Sextractor failed for T'+str(telescope_number))
+			#S get focus measure value
+			try: focusmeas_list.append(newauto.get_hfr_med(datapath+catalog))
+			except: self.logger.exception('T' + str(telescope_number) + ': Failed to get hfr value from '+datapath+catalog)
+		
 		#S Now we have a list of fwhm's, lets fit a quadratic to it. 
 		#S We're going to have all of these fitting functions in another file
-		poslist = desteps + telesecope.focus
-		new_best_focus = newauto.fitquadgetmin(poslist,fwhm_list)
-		#S This will return a number or None(?)
-		#S I think returning None if there is not a good fit might be a good 
-		#S idea, but the only thing is what do we do if there isn't a good fit. 
-		#S I think we could also use this function as the check for monotonic 
-		#S increasing/decreasing. 
-		if new_best_focus <> None:
-			pass
+		poslist = defsteps + telescope.focus
+		new_best_focus = newauto.fitquadfindmin(poslist,focusmeas_list)
 
-			
+		#S just want to record some values.
+		try:
+			with open('/home/minerva/minerva-control/minerva_library/sam_testing/autofocus/newautoresults.txt','a') as results:
+				results.write('Autofucus results from T'+str(telescope_number)+' with last sequence image ' + imagename +'\n')
+				for i in range(len(focusmeas_list)):
+					results.write(str(poslist[i])+'\t'+str(focusmeas_list[i])+'\n')
+				results.write('new best focus at : ' +str(new_best_focus)+ ' versus '+str(telescope.focus)+'\n')
+		except:
+			self.logger.exception('T' + str(telescope_number) + ': Something went wrong with recording stuff from autofocus')
+
+		self.logger.info('T' + str(telescope_number) + ': New best focus: ' + str(new_best_focus))
+
+		# if no sensible focus value measured, use the old value
+		if new_best_focus == None: new_best_focus = telescope.focus
+
+		# update the telescope focus
+		telescope.focus = new_best_focus
+		
+		# move to the best focus
+		status = telescope.getStatus()
+		if telescope.focus <> status.focuser.position:
+			self.logger.info('T'+str(telescope_number) + ": Moving focus to " + str(telescope.focus))
+			telescope.focuserMove(telescope.focus)
+
+			# wait for focuser to finish moving
+			status = telescope.getStatus()
+			while status.focuser.moving == 'True':
+				self.logger.info('T' + str(telescope_number) + ': Focuser moving (' + str(status.focuser.position) + ')')
+				time.sleep(0.3)
+				status = telescope.getStatus()
+
+		# record values in the header
+		alt = str(float(status.mount.alt_radian)*180.0/math.pi)
+                try:    tm1 = str(status.temperature.primary)
+		except: tm1 = 'UNKNOWN'
+                try:    tm2 = str(status.temperature.secondary)
+                except: tm2 = 'UNKNOWN'
+                try:    tm3 = str(status.temperature.m3)
+		except: tm3 = 'UNKNOWN'
+		try:    tamb = str(status.temperature.ambient)
+		except: tamb = 'UNKNOWN'
+		try:    tback = str(status.temperature.backplate)
+                except: tback = 'UNKNOWN'
+
+		self.logger.info('T' + str(telescope_number) + ': Updating best focus to ' + str(telescope.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ',\
+ Tback=' + tback + ', alt=' + alt + ')' )
+                f = open('focus.' + telescope.logger_name + '.txt','w')
+		f.write(str(telescope.focus))
+		f.close()
+
+                self.logger.info('T' + str(telescope_number) + ': Finished autofocus')
+
+
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'

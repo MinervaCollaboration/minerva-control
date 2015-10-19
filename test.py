@@ -12,7 +12,7 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
-	minerva.endNight(num=2,email=True)
+#	minerva.endNight(num=2,email=True)
 	ipdb.set_trace()
 
         time.sleep(5)

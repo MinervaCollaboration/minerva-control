@@ -8,7 +8,6 @@ if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	minerva = control.control('control.ini',base_directory)
-	
 	#run observing script on all telescopes with their own schedule file
 	minerva.observingScript_all()
 	sys.exit()
