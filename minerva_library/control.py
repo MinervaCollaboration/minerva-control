@@ -86,7 +86,7 @@ class control:
 					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
 					self.npss.append(powerswitch.powerswitch('powerswitch_' + str(i+1) + '.ini',self.base_directory))
 				except: 
-					self.logger.exception("Failed to initialize the imager on T" + str(i+1))
+					self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
 
 
 	def load_config(self):
@@ -2233,7 +2233,8 @@ class control:
 			self.logger.info(telescope_name + 'Beginning autofocus')
 #			self.telescope_intiailize(telescope_num)
 #			telescope.inPosition()
-			self.telescope_autoFocus(telescope_num)
+#			self.telescope_autoFocus(telescope_num)
+			self.autofocus(telescope_num)
 
 		# read the target list
 		with open(self.base_directory + '/schedule/' + self.site.night + '.T' + str(telescope_num) + '.txt', 'r') as targetfile:

@@ -344,7 +344,7 @@ class CDK700:
 	def mountConnect(self):
 		status = self.pwiRequestAndParse(device="mount", cmd="connect")
 		if status.mount.connected == 'False':
-			self.logger.error('Failed to connect to mount')
+			self.logger.error('T' + self.num + ': Failed to connect to mount')
 			return False
 		return True
 
@@ -746,7 +746,7 @@ class CDK700:
 			time.sleep(1)
 			status = self.getStatus()
 			if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
-				self.logger.error('autofocus timed out')
+				self.logger.error('T' + self.num + ': autofocus timed out')
 				self.recoverFocuser()
 				self.autoFocus()
 				return
