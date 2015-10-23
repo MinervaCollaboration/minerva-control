@@ -21,7 +21,7 @@ body = "Dear benevolent humans,\n\n" + \
        "   * T3 - 198.75\n" + \
        "   * T4 - 224.18\n" + \
        "   If those aren't the same, don't change them, but note it, and don't be surprised if you get an email after the first science image that the rotator is screwed up.\n" + \
-       "6) Start an autofocus sequence, wait 30 seconds, and cancel it (if you don't do this, the scripted autofocus will use the default values which don't span enough range).\n\n" + \
+       "6) Home the focuser\n" + \
        "Love,\n" + \
        "MINERVA"
 

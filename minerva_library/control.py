@@ -1296,8 +1296,8 @@ class control:
 
                 # Weather station
                 f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
-                f['RAIN'] = (self.site.weather['wxt510Rain'],"Current Rain (mm?)")
-                f['TOTRAIN'] = (self.site.weather['totalRain'],"Total rain since ?? (mm?)")
+                f['RAIN'] = (self.site.weather['wxt510Rain'],"Current Rain since UT 00:00 (mm)")
+                f['TOTRAIN'] = (self.site.weather['totalRain'],"Total yearly rain (mm)")
                 f['OUTTEMP'] = (self.site.weather['outsideTemp'], "Outside Temperature (C)")
                 f['MCLOUD'] = (str(self.site.weather['MearthCloud']),"Mearth Cloud Sensor (C)")
                 f['HCLOUD'] = (str(self.site.weather['HATCloud']),"HAT Cloud Sensor (C)")
@@ -1306,7 +1306,7 @@ class control:
                 f['WINDSPD'] = (self.site.weather['windSpeed'],"Wind Speed (mph)")
                 f['WINDGUST'] = (self.site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
                 f['WINDIR'] = (self.site.weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
-                f['PRESSURE'] = (self.site.weather['barometer'],"Outside Pressure (mmHg?)")
+                f['PRESSURE'] = (self.site.weather['barometer'],"Outside Pressure (mbar)")
                 f['SUNALT'] = (self.site.weather['sunAltitude'],"Sun Altitude (deg)")
 
                 '''
@@ -1535,8 +1535,8 @@ class control:
 		if self.site.weather != -1:
 			# Weather station
 			f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
-			f['RAIN'] = (str(self.site.weather['wxt510Rain']),"Current Rain (mm?)")
-			f['TOTRAIN'] = (str(self.site.weather['totalRain']),"Total rain since ?? (mm?)")
+			f['RAIN'] = (str(self.site.weather['wxt510Rain']),"Current Rain since UT 00:00 (mm)")
+			f['TOTRAIN'] = (str(self.site.weather['totalRain']),"Total yearly rain (mm)")
 			f['OUTTEMP'] = (str(self.site.weather['outsideTemp']),"Outside Temperature (C)")
 			f['MCLOUD'] = (str(self.site.weather['MearthCloud']),"Mearth Cloud Sensor (C)")
 			f['HCLOUD'] = (str(self.site.weather['HATCloud']),"HAT Cloud Sensor (C)")
@@ -1545,7 +1545,7 @@ class control:
 			f['WINDSPD'] = (str(self.site.weather['windSpeed']),"Wind Speed (mph)")
 			f['WINDGUST'] = (str(self.site.weather['windGustSpeed']),"Wind Gust Speed (mph)")
 			f['WINDIR'] = (str(self.site.weather['windDirectionDegrees']),"Wind Direction (Deg E of N)")
-			f['PRESSURE'] = (str(self.site.weather['barometer']),"Outside Pressure (mmHg?)")
+			f['PRESSURE'] = (str(self.site.weather['barometer']),"Outside Pressure (mbar)")
 			f['SUNALT'] = (str(self.site.weather['sunAltitude']),"Sun Altitude (deg)")
 		
 		header = json.dumps(f)
@@ -1904,7 +1904,7 @@ class control:
 			try:
 				self.autofocus(telescope_num)
 			except:
-				self.logger.error('T'+str(telescope_num)+' failed autofocus')
+				self.logger.error('T'+str(telescope_num)+': failed autofocus')
 			return
 		
                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
@@ -1915,12 +1915,13 @@ class control:
 		newfocus = telescope.focus + target['defocus']*1000.0
 		status = telescope.getStatus()
 		if newfocus <> status.focuser.position:
-			self.logger.info(telescope_name + " Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
+			self.logger.info(telescope_name + "Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
 			telescope.focuserMove(newfocus)
+			time.sleep(0.3) # wait for move to register
 
 		status = telescope.getStatus()
 		while status.focuser.moving == 'True':
-			self.logger.info(telescope_name + ' Focuser moving (' + str(status.focuser.position) + ')')
+			self.logger.info(telescope_name + 'Focuser moving (' + str(status.focuser.position) + ')')
 			time.sleep(0.3)
 			status = telescope.getStatus()
 
@@ -2529,8 +2530,23 @@ class control:
 		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
 		#S make array of af_defocus_steps
 		defsteps = np.linspace(-defocus_step*(num_steps)/2,defocus_step*(num_steps)/2,num_steps)
+
+		# wait for dome to be open
+		if telescope_num > 2:
+			dome = self.domes[1]
+		else:
+			dome = self.domes[0]
+
+		t0 = datetime.datetime.utcnow()
+		while dome.isOpen == False:
+			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
+			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
+			if timeelapsed > 600: 
+				self.logger.info('T' + str(telescope_number) + ': Enclosure still closed after 10 minutes; skipping autofocus')
+				return
+			time.sleep(30)
 		
-		self.telescopes[telescope_number-1].initialize(tracking=True)
+		telescope.initialize(tracking=True)
 
 		#TODO move to a nice patch of sky, take test image. This isn't detailed in
 		#TODO other function, and I think deserves a bit of thought. 
@@ -2572,6 +2588,7 @@ class control:
 			if newfocus <> status.focuser.position:
 				self.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " + str(step) + ' mm, to ' + str(newfocus))
 				telescope.focuserMove(newfocus)
+				time.sleep(0.3)
 
 			# wait for focuser to finish moving
 			status = telescope.getStatus()
@@ -2649,8 +2666,7 @@ class control:
 		try:    tback = str(status.temperature.backplate)
                 except: tback = 'UNKNOWN'
 
-		self.logger.info('T' + str(telescope_number) + ': Updating best focus to ' + str(telescope.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ',\
- Tback=' + tback + ', alt=' + alt + ')' )
+		self.logger.info('T' + str(telescope_number) + ': Updating best focus to ' + str(telescope.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
                 f = open('focus.' + telescope.logger_name + '.txt','w')
 		f.write(str(telescope.focus))
 		f.close()
