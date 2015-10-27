@@ -2537,7 +2537,7 @@ class control:
 			dome = self.domes[0]
 
 		t0 = datetime.datetime.utcnow()
-		"""
+
 		while dome.isOpen == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
@@ -2545,7 +2545,6 @@ class control:
 				self.logger.info('T' + str(telescope_number) + ': Enclosure still closed after 10 minutes; skipping autofocus')
 				return
 			time.sleep(30)
-		"""
 		#S Initialize telescope, we want tracking ON
 		telescope.initialize(tracking=False)#True)
 		
@@ -2620,18 +2619,17 @@ class control:
 		except:
 			#S if something went wrong, log and send email. May even want to send a text?
 			self.logger.error('T'+str(telescope_number)+' failed in finding new focus, and could probably use some help')
-			"""
 			body = "Hey humans,\n\nI'm having trouble with autofocus, and need your assitance. You have a few options:\n"\
 			    +"-Try and figure what is going on with the newautofocus\n"\
 			    +"-Revert to PWI autofocus\n"\
 			    +"This may be tricky because a lot of this is worked into the observingScript, and you may be fighting with that for control of the telescope."\
 			    +" I would recommend stopping main.py, but it could be situational.\n\n"\
+			    +"I AM CONTINUING WITH NORMAL OPERATIONS USING OLD ''BEST'' FOCUS.\n\n"\
 			    +"Love,\nMINERVA\n\n"\
 			    +"P.S. Tips and tricks (please add to this list):\n"\
 			    +"-You could be too far off the nominal best focus, and the routine can't find a clean fit.\n"\
 			    +"-The aqawan could somehow be closed, and you're taking pictures that it can't find stars in.\n"
 			mail.send("Autofocus failed on T"+str(telescope_number),body,level='serious')
-			"""
 			return 
 
 		#S Log the best focus.
