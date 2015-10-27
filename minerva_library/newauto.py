@@ -1,8 +1,9 @@
-import numpy as np
+import numpy as np 
 import subprocess
 import scipy
 import scipy.optimize
 import ipdb
+import warnings
 
 def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=None,catfile=None):
 
@@ -39,6 +40,11 @@ def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=
 
 
 def get_hfr_med(catfile):
+    #S This is a powerful statement, and doesn't belong here. I think it 
+    #S changes how warnings are handled in even scopes above, and I think I
+    #S should be using much more caution. Not sure how many errors we run into
+    #S now or we will in the future.
+#    warnings.filterwarnings('error')
     #S need to find which column has the hfr, but it'll start as None
     hfr_col = None
     catalog = open(catfile, 'r')
@@ -54,18 +60,24 @@ def get_hfr_med(catfile):
             break
     if hfr_col == None:
         print 'we didnt find an hfr column, somthing wrong with catalog'
-        return False, False
+        raise Exception()
     #S we could explicitly write out arguemnets, but this will do for now.
-    cat_array = np.genfromtxt(catfile)
-    #S This is silly, we can do much better with flag checks, sizes, etc.
-    #S really simple right now.
-    hfr_med = np.median(cat_array[:,hfr_col-1])
-    #S Get the Median Absolute Deviation, and we'll convert to stddev then stddev of the mean
-    hfr_mad = np.median(np.absolute(cat_array[:,hfr_col-1]-np.median(cat_array[:,hfr_col-1])))
-    #S We assume that our distribution is normal, and convert to stddev. May need to think more 
-    #S about this, as it isn't probably normal. 
-    #S Recall stddev of the mean = stddev/sqrt(N)
-    hfr_std = (hfr_mad*1.4862)/np.sqrt(len(cat_array[:,hfr_col-1]))
+    try:
+        #S Get this from the catalog file.
+        #S It will put up a warning if the file is empty is all, meaning no stars sextracted.
+        cat_array = np.genfromtxt(catfile)
+        #S This is silly, we can do much better with flag checks, sizes, etc.
+        #S really simple right now.
+        hfr_med = np.median(cat_array[:,hfr_col-1])
+        #S Get the Median Absolute Deviation, and we'll convert to stddev then stddev of the mean
+        hfr_mad = np.median(np.absolute(cat_array[:,hfr_col-1]-np.median(cat_array[:,hfr_col-1])))
+        #S We assume that our distribution is normal, and convert to stddev. May need to think more 
+        #S about this, as it isn't probably normal. 
+        #S Recall stddev of the mean = stddev/sqrt(N)
+        hfr_std = (hfr_mad*1.4862)/np.sqrt(len(cat_array[:,hfr_col-1]))
+    except:
+        raise Exception()
+        
     return hfr_med, hfr_std
 
 
@@ -80,13 +92,16 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None):
     #S here is just an initializiation of an array for the old coeffs
     oldcoeffs = np.array([0.,0.,0.])
     #S actually fit a quadratic, using the entire set of data
-    coeffs = np.polyfit(poslist,fwhmlist,2,w=weight_list)
+    coeffs = np.polyfit(poslist,fwhmlist,2)#,w=weight_list)
     #S evaulate the fit at the given focuser positions
     quad = coeffs[0]*poslist**2 + coeffs[1]*poslist + coeffs[2]
     #S find the standard deviation of the residuals
     std = np.std(fwhmlist-quad)
     #S create a set of indices where the residuals are greater than 3sigma
-    inds = np.where(np.absolute(fwhmlist-quad) < 3.*std)
+ 
+    fwhmnp = np.asarray(fwhmlist)
+    quadnp = np.asarray(quad)
+    inds = np.where(np.absolute(fwhmnp-quadnp) < 3.*std)[0]
     #S initialize the iteration couter
     iters = 0
     #S see if the old coefficients are the same and if iters is below the max
@@ -96,33 +111,36 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None):
         #S set the old to the new
         oldcoeffs = coeffs
         #S get the new
-        coeffs = np.polyfit(poslist[inds],fwhmlist[inds],2,w=weight_list[inds])
+        coeffs = np.polyfit(poslist[inds],fwhmnp[inds],2)#,w=weight_list[inds])
         #S evaluate quad with new coeffs
         quad = coeffs[0]*poslist**2 + coeffs[1]*poslist + coeffs[2]
         #S find the std of the residuals
-        std = np.std(fwhmlist[inds]-quad[inds])
+        std = np.std(fwhmnp[inds]-quadnp[inds])
         #S redefine the indices where the residuals are greater than 3sigma. this should 
         #S catch all points that were previously excluded. 
-        inds = np.where((fwhmlist-quad) < 3.*std)
+        fwhmnp = np.asarray(fwhmlist)
+        quadnp = np.asarray (quad)
+        inds = np.where(np.absolute(fwhmnp-quadnp) < 3.*std)[0]
         #S increase the iterations
         iters += 1
 
     # if the best fit was a downward facing parabola, it was bad
-    if coeffs[0] < 0.0: return None
+    if coeffs[0] < 0.0: raise Exception()#return None
 
     # solve for minimum (derivative = 0)
     best_focus = -coeffs[1]/(2.0*coeffs[0])
  
     # don't allow it to go beyond the limits
     if best_focus < min(poslist):
-        #S temp putting it to return none, we don't require it to have domes open,
-        #S actual picture sbeing taken, so it could be trowing us off 
-        return None
+        #S we return exceptions now so it can be caught in calling routine
+        raise Exception()
+        #return None
         best_focus = min(poslist)
 
     if best_focus > max(poslist):
         #S Same as above
-        return None
+        raise Exception()
+        # return None
         best_focus = max(poslist)
 
     return best_focus

@@ -92,18 +92,38 @@ class CDK700:
 	def isInitialized(self,tracking=False):
 		# check to see if it's properly initialized
 		telescopeStatus = self.getStatus()
-		if telescopeStatus.mount.encoders_have_been_set <> 'True': return False
-		if telescopeStatus.mount.alt_enabled <> 'True': return False
-		if telescopeStatus.mount.alt_motor_error_message <> 'No error': return False
-		if telescopeStatus.mount.azm_enabled <> 'True': return False
-		if telescopeStatus.mount.azm_motor_error_message <> 'No error': return False
-		if telescopeStatus.mount.connected <> 'True': return False
-		if telescopeStatus.rotator.connected <> 'True': return False
-		if telescopeStatus.focuser.connected <> 'True': return False
+		if telescopeStatus.mount.encoders_have_been_set <> 'True':
+			self.logger.warning('T' + self.num + ': encoders not set (' + telescopeStatus.mount.encoders_have_been_set + '), telescope not initialized')
+			return False
+		if telescopeStatus.mount.alt_enabled <> 'True':
+			self.logger.warning('T' + self.num + ': altitude motor not enabled (' + telescopeStatus.mount.alt_enabled + '), telescope not initialized')
+			return False
+		if telescopeStatus.mount.alt_motor_error_message <> 'No error': 
+			self.logger.warning('T' + self.num + ': altitude motor error present (' + telescopeStatus.mount.alt_motor_error_message + '), telescope not initialized')
+			return False
+		if telescopeStatus.mount.azm_enabled <> 'True':
+			self.logger.warning('T' + self.num + ': azimuth motor not enabled (' + telescopeStatus.mount.azm_enabled + '), telescope not initialized')
+			return False
+		if telescopeStatus.mount.azm_motor_error_message <> 'No error': 
+			self.logger.warning('T' + self.num + ': azimuth motor error present (' + telescopeStatus.mount.azm_motor_error_message + '), telescope not initialized')
+			return False
+		if telescopeStatus.mount.connected <> 'True': 
+			self.logger.warning('T' + self.num + ': mount not connected (' + telescopeStatus.mount.connected + '), telescope not initialized')
+			return False
+		if telescopeStatus.rotator.connected <> 'True': 
+			self.logger.warning('T' + self.num + ': rotator not connected (' + telescopeStatus.rotator.connected + '), telescope not initialized')
+			return False
+		if telescopeStatus.focuser.connected <> 'True': 
+			self.logger.warning('T' + self.num + ': focuser not connected (' + telescopeStatus.focuser.connected + '), telescope not initialized')
+			return False
 
 		if tracking:
-			if telescopeStatus.mount.tracking <> 'True': return False
-			if telescopeStatus.rotator.altaz_derotate <> 'True': return False
+			if telescopeStatus.mount.tracking <> 'True': 
+				self.logger.warning('T' + self.num + ': mount not tracking (' + telescopeStatus.mount.tracking + '), telescope not initialized')
+				return False
+			if telescopeStatus.rotator.altaz_derotate <> 'True': 
+				self.logger.warning('T' + self.num + ': rotator not tracking (' + telescopeStatus.altaz_derotate + '), telescope not initialized')
+				return False
 		
 		return True
 
@@ -115,6 +135,9 @@ class CDK700:
                 #S Start yer engines
 		self.logger.info('T' + self.num + ': Enabling motors')
 		self.mountEnableMotors()
+
+		self.logger.info('T' + self.num + ': Connecting to focuser')
+		self.focuserConnect()
 		
 		self.logger.info('T' + self.num + ': Homing telescope')
 		self.home()

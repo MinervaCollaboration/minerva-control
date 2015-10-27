@@ -2234,8 +2234,8 @@ class control:
 			self.logger.info(telescope_name + 'Beginning autofocus')
 #			self.telescope_intiailize(telescope_num)
 #			telescope.inPosition()
-#			self.telescope_autoFocus(telescope_num)
-			self.autofocus(telescope_num)
+			self.telescope_autoFocus(telescope_num)
+#			self.autofocus(telescope_num)
 
 		# read the target list
 		with open(self.base_directory + '/schedule/' + self.site.night + '.T' + str(telescope_num) + '.txt', 'r') as targetfile:
@@ -2522,22 +2522,22 @@ class control:
 	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
 	#S stuff we need to worry about
 	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.25,af_exptime=5):
-	#	pass
-		af_filter="V"
-		#S zero index the telenumber
+		#S This is dumb to have hard coded here, but let's go with it for now
+		af_filter = "V"
+		#S get the telescope we plan on working with
 		telescope = self.telescopes[telescope_number-1]
 		#S our data path
 		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
 		#S make array of af_defocus_steps
 		defsteps = np.linspace(-defocus_step*(num_steps)/2,defocus_step*(num_steps)/2,num_steps)
-
 		# wait for dome to be open
-		if telescope_num > 2:
+		if telescope_number > 2:
 			dome = self.domes[1]
 		else:
 			dome = self.domes[0]
 
 		t0 = datetime.datetime.utcnow()
+		"""
 		while dome.isOpen == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
@@ -2545,44 +2545,18 @@ class control:
 				self.logger.info('T' + str(telescope_number) + ': Enclosure still closed after 10 minutes; skipping autofocus')
 				return
 			time.sleep(30)
+		"""
+		#S Initialize telescope, we want tracking ON
+		telescope.initialize(tracking=False)#True)
 		
-		telescope.initialize(tracking=True)
-
-		#TODO move to a nice patch of sky, take test image. This isn't detailed in
-		#TODO other function, and I think deserves a bit of thought. 
-		#S begin_af is a really a flag to hold our position until we have all the details
-		#S of the sequence figured out, like exposure time and sky position
-		begin_af = True
-		while not begin_af:
-
-			aftest_file = self.takeImage(af_exptime,af_filter,af_name,camera_num=telescope_num)
-			aftest = self.cameras[num].af_imagefit(aftest_file)
-			#S The check below seem like they could be consolidated, as it feels a bit redundant. Needs
-			#S more thought.
-			
-			#S this is to check to see if the brightest star is greater by some amount than the background
-			#S This is a concern for fitting, as getstars can find 'stars' that we can't fit. Need 
-			#S to look into get stars more though...
-			if aftest['max_diff'] < max_diff:
-				af_exptime += 5
-				continue
-			#S I think this should be fittable stars more than anything. 
-			if aftest['num_stars'] < num_stars:
-				#S I think if we don't have enough stars after accounting for exptime, we should try and move
-				#S Also, this definition gets a bit hairy. Is it just if we have a pixel in the small frame, 
-				#S which is centered around the star centroid, above the median background of the image?
-				#TODO Telescope move
-				continue
-			#S So not that we have 
-		#TODO Determine if exptime, sky patch are good
-		#TODO begin autofocus sequence
-
-		#S Just need an empty list for the fwhm/hfr. made FOCUSMEASure_LIST because we don't necessarily know which 
+		#S Just need an empty list for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST because we don't necessarily know which 
 		#S value we want yet.
 		focusmeas_list = []
 		stddev_list = []
-
+		
+		#S Actual autofocus sequence
 		for step in defsteps:
+			#S set the new focus, and move there if necessary
 			newfocus = telescope.focus + step*1000.0
 			status = telescope.getStatus()
 			if newfocus <> status.focuser.position:
@@ -2597,41 +2571,70 @@ class control:
 				time.sleep(0.3)
 				status = telescope.getStatus()
 
-			#S This takes the image for the autofocus, 
+			#S Set the name for the autofocus image
 			af_name = 'autofocus'
 			#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
 			imagename = self.takeImage(af_exptime,af_filter,af_name,camera_num=telescope_number)
 
-			#S Sextract this guy, put in a try just in case. Don't want to crash anything while testing.
+			#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 			try: 
 				catalog = newauto.sextract(datapath,imagename)
 				self.logger.debug('T' + str(telescope_number) + ': Sextractor success')
-			except: self.logger.exception('T' + str(telescope_number) + ': Sextractor failed for T'+str(telescope_number))
+			except: 
+				self.logger.exception('T' + str(telescope_number) + ': Sextractor failed')
+
 			#S get focus measure value, as well as standard deviation of the mean
-			try: 
+			try:
 				median, stddev = newauto.get_hfr_med(datapath+catalog)
 				focusmeas_list.append(median)
 				stddev_list.append(stddev)
-
-			except: self.logger.exception('T' + str(telescope_number) + ': Failed to get hfr value from '+datapath+catalog)
+			#S if the above fails, we set these obviously wrong numbers, and move on. We'll identify these points later.
+			except:
+				self.logger.exception('T' + str(telescope_number) + ': Failed to get hfr value from '+datapath+catalog)
+				#S This sets the default 'bad' value to 999. we want to maintain the size/shape of arrays for later use,
+				#S and will thus track these bad points for exclusion later.
+				median = -999
+				stddev = 999
+				focusmeas_list.append(median)				
+				stddev_list.append(stddev)
 		
-		#S Now we have a list of fwhm's, lets fit a quadratic to it. 
-		#S We're going to have all of these fitting functions in another file
-		poslist = defsteps + telescope.focus
-		if len(stddev_list) == 0:
-			stddev_list = None
-		new_best_focus = newauto.fitquadfindmin(poslist,focusmeas_list,weight_list=stddev_list)
+		#S define poslist from steps and the old best focus. this is an nparray
+		poslist = defsteps*1000 + telescope.focus
+		#S Convert to array for ease of mind
+		focusmeas_list = np.array(focusmeas_list)
+		#S find the indices where we didnt hit the an error getting a measure
+		goodind = np.where(focusmeas_list <> -999)[0]
+		#TODO I don't think we need to worry about std_list, as it will be the same shape as focusmeas_list no matter what.
+		#TODO we could go through the hassle of identifying these points, but we already have them
 
-		#S just want to record some values.
+		#S This try is here to catch any errors/exceptions raised out of fitquad. I think we should include exceptions if 
+		#S we are too far out of focus, etc to make this catch whenever we didn't find a best focus.
 		try:
-			with open('/home/minerva/minerva-control/minerva_library/sam_testing/autofocus/newautoresults.txt','a') as results:
-				results.write('Autofucus results from T'+str(telescope_number)+' with last sequence image ' + imagename +'\n')
-				for i in range(len(focusmeas_list)):
-					results.write(str(poslist[i])+'\t'+str(focusmeas_list[i])+'\n')
-				results.write('new best focus at : ' +str(new_best_focus)+ ' versus '+str(telescope.focus)+'\n')
+			#S this is in place to catch us if all the images fail to get sextracted or something else goes on.
+			#S probably a better way to do this, but we'll figure that out later.
+			if len(goodind) == 0:
+				self.logger.exception('T'+str(telescope_number)+' failed autofocus due to no useable medians')
+				raise Exception()
+			#S find the best focus
+			new_best_focus = newauto.fitquadfindmin(poslist[goodind],focusmeas_list[goodind],weight_list=stddev_list[goodind])
 		except:
-			self.logger.exception('T' + str(telescope_number) + ': Something went wrong with recording stuff from autofocus')
+			#S if something went wrong, log and send email. May even want to send a text?
+			self.logger.error('T'+str(telescope_number)+' failed in finding new focus, and could probably use some help')
+			"""
+			body = "Hey humans,\n\nI'm having trouble with autofocus, and need your assitance. You have a few options:\n"\
+			    +"-Try and figure what is going on with the newautofocus\n"\
+			    +"-Revert to PWI autofocus\n"\
+			    +"This may be tricky because a lot of this is worked into the observingScript, and you may be fighting with that for control of the telescope."\
+			    +" I would recommend stopping main.py, but it could be situational.\n\n"\
+			    +"Love,\nMINERVA\n\n"\
+			    +"P.S. Tips and tricks (please add to this list):\n"\
+			    +"-You could be too far off the nominal best focus, and the routine can't find a clean fit.\n"\
+			    +"-The aqawan could somehow be closed, and you're taking pictures that it can't find stars in.\n"
+			mail.send("Autofocus failed on T"+str(telescope_number),body,level='serious')
+			"""
+			return 
 
+		#S Log the best focus.
 		self.logger.info('T' + str(telescope_number) + ': New best focus: ' + str(new_best_focus))
 
 		# if no sensible focus value measured, use the old value
