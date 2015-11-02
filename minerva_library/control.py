@@ -26,7 +26,7 @@ import aqawan
 import cdk700 
 import imager
 import spectrograph
-import powerswitch
+import pdu
 import mail
 import ephem
 from get_all_centroids import *
@@ -66,7 +66,7 @@ class control:
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
-		self.npss = []
+		self.pdus = []
                 if socket.gethostname() == 'Main':
 
                         self.site = env.site('site_mtHopkins.ini',self.base_directory)
@@ -84,7 +84,7 @@ class control:
 				try: 
 					self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
 					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
-					self.npss.append(powerswitch.powerswitch('powerswitch_' + str(i+1) + '.ini',self.base_directory))
+					self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
 				except: 
 					self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
 
@@ -2191,11 +2191,10 @@ class control:
 
 		# turn off both monitors
 		self.logger.info('Turning off monitors')
-		try: self.npss[0].off(8)
+		try: self.pdus[0].monitor.off()
 		except: self.logger.exception("Turning off monitor in aqawan 1 failed")
-		try: self.npss[2].off(8)
+		try: self.pdus[2].monitor.off()
 		except: self.logger.exception("Turning off monitor in aqawan 2 failed")
-
 
 		bias_seconds = CalibInfo['nbias']*readtime+CalibInfo['ndark']*sum(CalibInfo['darkexptime']) + CalibInfo['ndark']*readtime*len(CalibInfo['darkexptime']) + 600.0
 		biastime = self.site.sunset() - datetime.timedelta(seconds=bias_seconds)
@@ -2233,9 +2232,10 @@ class control:
 		if datetime.datetime.utcnow() < self.site.NautTwilBegin():
 			self.logger.info(telescope_name + 'Beginning autofocus')
 #			self.telescope_intiailize(telescope_num)
-#			telescope.inPosition()
-			self.telescope_autoFocus(telescope_num)
-#			self.autofocus(telescope_num)
+			#S this is here just to make sure we aren't moving
+			self.telescopes[telescope_num-1].inPosition()
+#			self.telescope_autoFocus(telescope_num)
+			self.autofocus(telescope_num)
 
 		# read the target list
 		with open(self.base_directory + '/schedule/' + self.site.night + '.T' + str(telescope_num) + '.txt', 'r') as targetfile:
@@ -2537,7 +2537,7 @@ class control:
 			dome = self.domes[0]
 
 		t0 = datetime.datetime.utcnow()
-
+		"""
 		while dome.isOpen == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
@@ -2546,7 +2546,8 @@ class control:
 				return
 			time.sleep(30)
 		#S Initialize telescope, we want tracking ON
-		telescope.initialize(tracking=False)#True)
+		"""
+		telescope.initialize(tracking=True)
 		
 		#S Just need an empty list for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST because we don't necessarily know which 
 		#S value we want yet.
@@ -2585,6 +2586,7 @@ class control:
 			#S get focus measure value, as well as standard deviation of the mean
 			try:
 				median, stddev = newauto.get_hfr_med(datapath+catalog)
+				self.logger.info('T'+str(telescope_number)+': Got hfr value from '+datapath+catalog)
 				focusmeas_list.append(median)
 				stddev_list.append(stddev)
 			#S if the above fails, we set these obviously wrong numbers, and move on. We'll identify these points later.
@@ -2601,13 +2603,18 @@ class control:
 		poslist = defsteps*1000 + telescope.focus
 		#S Convert to array for ease of mind
 		focusmeas_list = np.array(focusmeas_list)
+		stddev_list=np.array(stddev_list)
 		#S find the indices where we didnt hit the an error getting a measure
+		
 		goodind = np.where(focusmeas_list <> -999)[0]
+
 		#TODO I don't think we need to worry about std_list, as it will be the same shape as focusmeas_list no matter what.
 		#TODO we could go through the hassle of identifying these points, but we already have them
 
 		#S This try is here to catch any errors/exceptions raised out of fitquad. I think we should include exceptions if 
 		#S we are too far out of focus, etc to make this catch whenever we didn't find a best focus.
+#		new_best_focus = newauto.fitquadfindmin(poslist[goodind],focusmeas_list[goodind],weight_list=stddev_list[goodind],\
+#								logger=self.logger,telescope_num=telescope_number)
 		try:
 			#S this is in place to catch us if all the images fail to get sextracted or something else goes on.
 			#S probably a better way to do this, but we'll figure that out later.
@@ -2615,10 +2622,14 @@ class control:
 				self.logger.exception('T'+str(telescope_number)+' failed autofocus due to no useable medians')
 				raise Exception()
 			#S find the best focus
-			new_best_focus = newauto.fitquadfindmin(poslist[goodind],focusmeas_list[goodind],weight_list=stddev_list[goodind])
+			self.logger.debug('T'+str(telescope_number) +': fitting a quadratic to '+str(len(goodind))+' points.')
+			new_best_focus = newauto.fitquadfindmin(poslist[goodind],focusmeas_list[goodind],weight_list=stddev_list[goodind],\
+									logger=self.logger,telescope_num=telescope_number)
+
+			self.logger.debug('T'+str(telescope_number)+': found a good fit.')
 		except:
 			#S if something went wrong, log and send email. May even want to send a text?
-			self.logger.error('T'+str(telescope_number)+' failed in finding new focus, and could probably use some help')
+			self.logger.exception('T'+str(telescope_number)+' failed in finding new focus, and could probably use some help')
 			body = "Hey humans,\n\nI'm having trouble with autofocus, and need your assitance. You have a few options:\n"\
 			    +"-Try and figure what is going on with the newautofocus\n"\
 			    +"-Revert to PWI autofocus\n"\
@@ -2673,7 +2684,7 @@ class control:
 		f.close()
 
                 self.logger.info('T' + str(telescope_number) + ': Finished autofocus')
-
+		#S I want to write all this info to its own file, but not sure if I want to write a functin in newauto to do so.
 
 if __name__ == '__main__':
 

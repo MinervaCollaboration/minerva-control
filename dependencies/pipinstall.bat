@@ -11,6 +11,7 @@ pip install requests
 pip install pyserial
 pip install SendKeys
 pip install selenium
+pip install pysnmp
 cd pywinauto-0.4.2
 python setup.py install
 cd ..

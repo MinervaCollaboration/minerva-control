@@ -5,7 +5,7 @@ import errno
 import logging
 import time
 import threading
-import powerswitch
+import pdu
 import telcom_client
 import mail
 import datetime
@@ -23,7 +23,7 @@ class imager:
 		self.base_directory = base
 		self.load_config()
 		self.setup_logger()
-		self.nps = powerswitch.powerswitch(self.nps_config,base)
+		self.pdu = pdu.pdu(self.pdu_config,base)
 		self.initialize()
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
@@ -65,9 +65,8 @@ class imager:
 
                         #unique to imaging camera
                         if 'si_imager' <> config['Setup']['LOGNAME'].lower():
-                                self.nps_config = config['Setup']['POWERSWITCH']
-                                self.nps_port = config['Setup']['PSPORT']
-                                self.telcom_client_config = config['Setup']['TELCOM']
+                                self.pdu_config = config['Setup']['PDU']
+				self.telcom_client_config = config['Setup']['TELCOM']
                                 self.platescale = float(config['Setup']['PLATESCALE'])
                                 self.filters = config['FILTERS']
                                 self.pointingModel = config['Setup']['POINTINGMODEL']
@@ -441,9 +440,9 @@ class imager:
 		else: return False
 
 	def powercycle(self,downtime=30):
-                self.nps.off(self.nps_port)
+                self.pdu.inst.off()
                 time.sleep(downtime)
-                self.nps.on(self.nps_port)
+                self.pdu.inst.on()
 		time.sleep(30)
 
 	def restartmaxim(self):
@@ -597,16 +596,16 @@ class imager:
                 self.kill_maxim()
                 self.kill_PWI()
                 self.kill_server()
-                self.nps.off(self.nps_port)
+                self.pdu.inst.off()
                 self.send_to_computer("shutdown -s")
                 time.sleep(60) # wait for it to shut down
-                self.nps.off(1) # turn off the computer
-                self.nps.off(2) # turn off the telescope panel (which powers the filter wheel)
+                self.pdu.telcom.off() # turn off the computer
+                self.pdu.panel.off() # turn off the telescope panel (which powers the filter wheel)
                 time.sleep(300) # wait for it to discharge its capacitors
-                self.nps.on(1) # turn on the computer
+                self.pdu.telcom.on() # turn on the computer
                 time.sleep(60) # wait for it to reboot
-                self.nps.on(self.nps_port) # turn on the camera
-                self.nps.on(2) # turn on the telescope panel
+                self.pdu.inst.on() # turn on the camera
+                self.pdu.panel.on() # turn on the telescope panel
                 time.sleep(30) # wait for the camera to initialize
 
                 if self.connect_camera():

@@ -10,7 +10,7 @@ import ipdb
 import mail
 import math
 import numpy
-import powerswitch
+import pdu
 import telcom_client
 import threading
 import numpy as np
@@ -68,7 +68,7 @@ class CDK700:
 		#S Set up logger
 		self.setup_logger()
 		#TODO Not really sure what powerswitch is really for yet.
-		self.nps = powerswitch.powerswitch(self.nps_config,base)
+		self.pdu = pdu.pdu(self.pdu_config,base)
 		#TODO Get reading telcom as well
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		#TODO I think I understand threading to some degre, but need to do some
@@ -163,8 +163,7 @@ class CDK700:
 			self.guider = config['Setup']['GUIDER']
 			self.fau = config['Setup']['FAU']
 			self.logger_name = config['Setup']['LOGNAME']
-			self.nps_config = config['Setup']['POWERSWITCH']
-			self.nps_port = config['Setup']['PSPORT']
+			self.pdu_config = config['Setup']['PDU']
 			self.telcom_client_config = config['Setup']['TELCOM']
 			self.nfailed = 0
 		except:
@@ -804,7 +803,9 @@ class CDK700:
 		self.mountDisableMotors()
 		
 	def powercycle(self):
-		self.nps.cycle(self.nps_port,cycletime = 60)
+		self.pdu.panel.off()
+		time.sleep(60)
+		self.pdu.panel.on()
 		time.sleep(30) # wait for the panel to initialize
 
 	def home(self, timeout=420.0):
@@ -833,9 +834,17 @@ class CDK700:
                                 status = self.getStatus()
 		
 		time.sleep(5.0)
+		#S Initialize here iterates home again, but it should catch and see
+		#S that mount encoders are set. 
 		self.initialize()
 		status = self.getStatus()
-		
+		#S Let's force close PWI here (after a disconnect). What is happening I think is that 
+		#S PWI freezes, and it can't home. While it's stuck in this loop of rehoming
+		#S with no hope of exiting. All it does is continually hit time out. 
+		#TODO Not entirely sure how to restart PWI, but will prioritize it.
+		#S actual going to put an iteration limit of 2 on it for now, that way we'll get emails 
+		#S and it won't keep spiralling downward.
+		#TODO Need to think of a good way to setup iteration check... be right back to it
 		if status.mount.encoders_have_been_set == 'False':
                         self.logger.error('T' + self.num + ': Mount failed to home; beginning recovery')
                         self.recover()

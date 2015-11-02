@@ -66,22 +66,24 @@ def get_hfr_med(catfile):
         #S Get this from the catalog file.
         #S It will put up a warning if the file is empty is all, meaning no stars sextracted.
         cat_array = np.genfromtxt(catfile)
-        #S This is silly, we can do much better with flag checks, sizes, etc.
-        #S really simple right now.
+    except: raise Exception()
+    try:
         hfr_med = np.median(cat_array[:,hfr_col-1])
+    except: raise Exception()
+    try:
         #S Get the Median Absolute Deviation, and we'll convert to stddev then stddev of the mean
         hfr_mad = np.median(np.absolute(cat_array[:,hfr_col-1]-np.median(cat_array[:,hfr_col-1])))
         #S We assume that our distribution is normal, and convert to stddev. May need to think more 
         #S about this, as it isn't probably normal. 
         #S Recall stddev of the mean = stddev/sqrt(N)
         hfr_std = (hfr_mad*1.4862)/np.sqrt(len(cat_array[:,hfr_col-1]))
-    except:
-        raise Exception()
-        
+    except: raise Exception()
+
     return hfr_med, hfr_std
 
 
-def fitquadfindmin(poslist, fwhmlist, weight_list=None):
+def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,telescope_num=99):
+
     
     #S if given a list of stadard deviations, we need to do the inverse of that for the wieght in np.polyfit
     #S per the documentation it minimizes sum(w**2(y-y_mod)**2), where w is the weight provided.
@@ -96,17 +98,21 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None):
     #S evaulate the fit at the given focuser positions
     quad = coeffs[0]*poslist**2 + coeffs[1]*poslist + coeffs[2]
     #S find the standard deviation of the residuals
+
     std = np.std(fwhmlist-quad)
     #S create a set of indices where the residuals are greater than 3sigma
- 
     fwhmnp = np.asarray(fwhmlist)
     quadnp = np.asarray(quad)
     inds = np.where(np.absolute(fwhmnp-quadnp) < 3.*std)[0]
     #S initialize the iteration couter
+
     iters = 0
+    if type(logger)!=type(None):
+        logger.debug('T'+str(telescope_num)+': Starting sigma clipping for autofocus fit.')
     #S see if the old coefficients are the same and if iters is below the max
     #S we enter this loop at least once, but probably don't need to refit.
     #TODO think of better ways to do this? not that important right now.
+    print 'here'
     while not (oldcoeffs == coeffs).all() and iters<10:
         #S set the old to the new
         oldcoeffs = coeffs
@@ -123,21 +129,29 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None):
         inds = np.where(np.absolute(fwhmnp-quadnp) < 3.*std)[0]
         #S increase the iterations
         iters += 1
-
     # if the best fit was a downward facing parabola, it was bad
-    if coeffs[0] < 0.0: raise Exception()#return None
+    if coeffs[0] < 0.0: 
+        #S Check if our fit was upside down
+        if type(logger)!=type(None):
+            logger.error('T'+str(telescope_num)+': Autofocus fit upside down quadratic, something funky.')
+        raise Exception()#return None
 
-    # solve for minimum (derivative = 0)
-    best_focus = -coeffs[1]/(2.0*coeffs[0])
+    # solve for minimum (derivative = 0), and convert to an integer
+    best_focus = int(-coeffs[1]/(2.0*coeffs[0]))
  
     # don't allow it to go beyond the limits
     if best_focus < min(poslist):
+        #S log that we were out of range
+        if type(logger)!=type(None):
+            logger.error('T'+str(telescope_num)+': New best focus was below lower limit.')
         #S we return exceptions now so it can be caught in calling routine
         raise Exception()
         #return None
         best_focus = min(poslist)
-
     if best_focus > max(poslist):
+        #S log that we were out of range
+        if type(logger)!=type(None):
+            logger.error('T'+str(telescope_num)+': New best focus was above upper limit.')
         #S Same as above
         raise Exception()
         # return None
