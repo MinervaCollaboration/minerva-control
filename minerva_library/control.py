@@ -2537,7 +2537,7 @@ class control:
 			dome = self.domes[0]
 
 		t0 = datetime.datetime.utcnow()
-		"""
+
 		while dome.isOpen == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
@@ -2545,12 +2545,13 @@ class control:
 				self.logger.info('T' + str(telescope_number) + ': Enclosure still closed after 10 minutes; skipping autofocus')
 				return
 			time.sleep(30)
+
 		#S Initialize telescope, we want tracking ON
-		"""
 		telescope.initialize(tracking=True)
 		
 		#S Just need an empty list for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST because we don't necessarily know which 
 		#S value we want yet.
+		imagenum_list = []
 		focusmeas_list = []
 		stddev_list = []
 		
@@ -2575,13 +2576,13 @@ class control:
 			af_name = 'autofocus'
 			#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
 			imagename = self.takeImage(af_exptime,af_filter,af_name,camera_num=telescope_number)
-
+			imagenum_list.append(imagename.split('.')[4])
 			#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 			try: 
 				catalog = newauto.sextract(datapath,imagename)
-				self.logger.debug('T' + str(telescope_number) + ': Sextractor success')
+				self.logger.debug('T' + str(telescope_number) + ': Sextractor success on '+datapath+catalog)
 			except: 
-				self.logger.exception('T' + str(telescope_number) + ': Sextractor failed')
+				self.logger.exception('T' + str(telescope_number) + ': Sextractor failed on '+datapath+catalog)
 
 			#S get focus measure value, as well as standard deviation of the mean
 			try:
@@ -2613,22 +2614,21 @@ class control:
 
 		#S This try is here to catch any errors/exceptions raised out of fitquad. I think we should include exceptions if 
 		#S we are too far out of focus, etc to make this catch whenever we didn't find a best focus.
-#		new_best_focus = newauto.fitquadfindmin(poslist[goodind],focusmeas_list[goodind],weight_list=stddev_list[goodind],\
-#								logger=self.logger,telescope_num=telescope_number)
 		try:
 			#S this is in place to catch us if all the images fail to get sextracted or something else goes on.
 			#S probably a better way to do this, but we'll figure that out later.
 			if len(goodind) == 0:
-				self.logger.exception('T'+str(telescope_number)+' failed autofocus due to no useable medians')
+				self.logger.exception('T'+str(telescope_number)+' failed autofocus due to no medians')
 				raise Exception()
 			#S find the best focus
-			self.logger.debug('T'+str(telescope_number) +': fitting a quadratic to '+str(len(goodind))+' points.')
-			new_best_focus = newauto.fitquadfindmin(poslist[goodind],focusmeas_list[goodind],weight_list=stddev_list[goodind],\
-									logger=self.logger,telescope_num=telescope_number)
-
+			self.logger.debug('T'+str(telescope_number) +': fitting to '+str(len(goodind))+' points.')
+			new_best_focus,fitcoeffs = newauto.fitquadfindmin(poslist[goodind],focusmeas_list[goodind],\
+										  weight_list=stddev_list[goodind],\
+										  logger=self.logger,telescope_num=telescope_number)
 			self.logger.debug('T'+str(telescope_number)+': found a good fit.')
 		except:
 			#S if something went wrong, log and send email. May even want to send a text?
+			new_best_focus = None
 			self.logger.exception('T'+str(telescope_number)+' failed in finding new focus, and could probably use some help')
 			body = "Hey humans,\n\nI'm having trouble with autofocus, and need your assitance. You have a few options:\n"\
 			    +"-Try and figure what is going on with the newautofocus\n"\
@@ -2639,16 +2639,19 @@ class control:
 			    +"Love,\nMINERVA\n\n"\
 			    +"P.S. Tips and tricks (please add to this list):\n"\
 			    +"-You could be too far off the nominal best focus, and the routine can't find a clean fit.\n"\
-			    +"-The aqawan could somehow be closed, and you're taking pictures that it can't find stars in.\n"
+			    +"-The aqawan could somehow be closed, and you're taking pictures that it can't find stars in.\n"\
+			    +"-You can now plot the results of any autofocus run, look into newauto.recordplot(). Just "\
+			    +"'python newauto.py' and enter the recordplot(path+record_name).\n"
 			mail.send("Autofocus failed on T"+str(telescope_number),body,level='serious')
-			return 
 
 		#S Log the best focus.
 		self.logger.info('T' + str(telescope_number) + ': New best focus: ' + str(new_best_focus))
 
 		# if no sensible focus value measured, use the old value
 		if new_best_focus == None: new_best_focus = telescope.focus
-
+		
+		#S want to record old best focus
+		old_best_focus = telescope.focus
 		# update the telescope focus
 		telescope.focus = new_best_focus
 		
@@ -2684,7 +2687,32 @@ class control:
 		f.close()
 
                 self.logger.info('T' + str(telescope_number) + ': Finished autofocus')
-		#S I want to write all this info to its own file, but not sure if I want to write a functin in newauto to do so.
+		#S Record all the data to it's own run unique file for potential use later. Just 
+		#S don't want to be scraping through logs for it later.
+		#S Do we still want the logger line above?
+		try:
+			#S Check to make sure all the arrays are the same length
+			if len(imagenum_list)==len(poslist)==len(focusmeas_list)==len(stddev_list):
+				#S Stack them all together, then transpose so we can write them in columns 
+				autodata = np.vstack([imagenum_list,poslist,focusmeas_list,stddev_list]).transpose()
+				#S Name the data file as 'nYYYYMMDD.T#.autoresult.filter.AAAA.BBBB.txt', where AAAA is the image number on the 
+				#S first image of the autofocus sequence, and BBBB the last image number.
+				datafile = self.site.night+'.T'+str(telescope_number)+'.autorecord.'+af_filter+'.'+imagenum_list[0]+'.'+imagenum_list[-1]+'.txt'
+				with open(datapath+datafile,'a') as fd:
+					#S Write all the environment temps, etc. also record old and new best focii
+					fd.write('Old\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\n')
+					fd.write(str(old_best_focus)+'\t'+str(new_best_focus)+'\t'+tm1+'\t'+tm2+'\t'+tm3+'\t'+tamb+'\t'+tback+'\t'+alt+'\n')
+					#S Write a header with info on following columns
+					header = 'Column 1\tImage number\n'+\
+					    'Column 2\tFocuser position\n'+\
+					    'Column 3\tMedian focus measure\n'+\
+					    'Column 4\tSDOM'
+					#S save the array of good stuff
+					np.savetxt(fd,autodata,fmt='%s',header=header)
+			else:
+				self.logger.error('T'+str(telescope_number)+': Could not record autodata due to mismatch length in arrays')
+		except:
+			self.logger.exception('T'+str(telescope_number)+': unhandled error stopped record of autofocus results.')
 
 if __name__ == '__main__':
 

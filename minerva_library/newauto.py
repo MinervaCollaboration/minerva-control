@@ -1,10 +1,42 @@
-import numpy as np 
+import numpy as np
+import matplotlib.pyplot as plt
 import subprocess
 import scipy
 import scipy.optimize
 import ipdb
 import warnings
 
+#S Simple function for plotting results in a record file
+#S also does a fit, etc..
+#S Sort of carbon copy of fitquadfindmin, just beacuse we want all coeffs and don't
+#S want to force that out of 
+def recordplot(recordfile):
+    raw_data = np.genfromtxt(recordfile,skip_header=2)
+    poslist = raw_data[:,1].astype(float)
+    hfrlist = raw_data[:,2].astype(float)
+    stdlist = raw_data[:,3].astype(float)
+    goodind = np.where(hfrlist<>-999)[0]
+    if len(goodind) == 0:
+        print 'Nothing good in that record, try something better!'
+        return
+    focus,coeffs = fitquadfindmin(poslist[goodind],hfrlist[goodind],stdlist[goodind])
+    xplot = np.linspace(poslist.min(),poslist.max(),100)
+    print 'Only plotting points with found hfradii'
+    print 'Coeffs:' 
+    print coeffs
+    print 'Focus:'
+    print focus
+    plt.plot(poslist[goodind],hfrlist[goodind],'b.')
+    plt.errorbar(poslist[goodind],hfrlist[goodind],stdlist[goodind],linestyle='None')
+    plt.plot(xplot,quad(xplot,coeffs),'g')
+    plt.show()
+    ipdb.set_trace()
+    print 'leaving recordplot()'
+
+
+def quad(x,c):
+    return c[0]*x**2+c[1]*x+c[2]
+    
 def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=None,catfile=None):
 
     #S Path on MinervaMAIN where all the .sex, .param, etc. files will be 
@@ -112,7 +144,6 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,telescope_num
     #S see if the old coefficients are the same and if iters is below the max
     #S we enter this loop at least once, but probably don't need to refit.
     #TODO think of better ways to do this? not that important right now.
-    print 'here'
     while not (oldcoeffs == coeffs).all() and iters<10:
         #S set the old to the new
         oldcoeffs = coeffs
@@ -130,11 +161,15 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,telescope_num
         #S increase the iterations
         iters += 1
     # if the best fit was a downward facing parabola, it was bad
+    #S For most of these I return None, None if there was no input logger, which is a way of saying 
+    #S exceptions need to handled by any other call except for those from control.autofocus
     if coeffs[0] < 0.0: 
         #S Check if our fit was upside down
         if type(logger)!=type(None):
             logger.error('T'+str(telescope_num)+': Autofocus fit upside down quadratic, something funky.')
-        raise Exception()#return None
+            raise Exception()
+        else:
+            return None, None
 
     # solve for minimum (derivative = 0), and convert to an integer
     best_focus = int(-coeffs[1]/(2.0*coeffs[0]))
@@ -144,20 +179,22 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,telescope_num
         #S log that we were out of range
         if type(logger)!=type(None):
             logger.error('T'+str(telescope_num)+': New best focus was below lower limit.')
-        #S we return exceptions now so it can be caught in calling routine
-        raise Exception()
+            #S we return exceptions now so it can be caught in calling routine
+            raise Exception()
+        else:
+            return None, None
         #return None
         best_focus = min(poslist)
     if best_focus > max(poslist):
         #S log that we were out of range
         if type(logger)!=type(None):
             logger.error('T'+str(telescope_num)+': New best focus was above upper limit.')
-        #S Same as above
-        raise Exception()
-        # return None
-        best_focus = max(poslist)
-
-    return best_focus
+            #S Same as above
+            raise Exception()
+        else:
+            return None, None
+    #S Return coeffs for extra output to any other function besides control
+    return best_focus, coeffs
     
 
 if __name__ == '__main__':
