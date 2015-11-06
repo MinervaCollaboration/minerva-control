@@ -1374,6 +1374,11 @@ class control:
 			dome = self.domes[1]
 		elif telescope_num > 0:
 			dome = self.domes[0]
+
+
+		###TELESCOPE DEPENDENT STUFF###
+		#S Prep for shit if you don't have a telescope.
+
 		#S A check to make sure we are on the correct port. Is there a reason we would maybe want 
 		#S to set what port is imaging in the .ini file? Seems a little overcomplicated, but might
 		#S might be a good idea. right now just define it here, and leave it general. 
@@ -1390,13 +1395,18 @@ class control:
 		#NOTE status.m3.port returns '0' when not moving. Also note that it returns a string, so the imagingport 
 		#NOTE is a string, as defined above. I converted to string again, as i think we'll need to be careful 
 		#NOTE about this in the future and it could get type changed.
+
 		while (telescopeStatus.m3.port != str(imagingport)) and (time.time()-start)<timeout:
-			#S log that we are indeed moving
-			self.logger.info('T%i: switching to imaging port(elapsed time=%f)'%(telescope_num,time.time()-start))
+			#S log that we are indeed moving, should this be control logger?
+			telescope.logger.info('T%i: switching to imaging port(elapsed time=%.3f)'%(telescope_num,time.time()-start))
 			#S this returns the status xml guy
+			#TODO do we just want to get status here? doesn't seem to be an issue if we keep sending this command.
+			#TODO if we do switch we need to send intial switch command.
 			telescopeStatus = telescope.m3SelectPort(port = imagingport)
+#			telescopeStatus = telescope.getStatus()
 			#S just so we aren't flooding it
 			time.sleep(1)
+
 		#S assign the camera.
 		imager = self.cameras[telescope_num-1]
 		self.logger.info(telescope_name + 'starting imaging thread')
@@ -2583,24 +2593,15 @@ class control:
 			#S set the new focus, and move there if necessary
 			newfocus = telescope.focus + step*1000.0
 			status = telescope.getStatus()
+			
 			if newfocus <> status.focuser.position:
 				self.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " + str(step) + ' mm, to ' + str(newfocus))
 				telescope.focuserMove(newfocus)
 				#S Needed a bit longer to recognize focuser movement, changed from 0.3
-				time.sleep(1.)
-
-			# wait for focuser to finish moving
-			status = telescope.getStatus()
-			#S I changed the the 'while condition to make more sense. There is a lag between requested movement
-			#S from focuser, actual movement, and the status.focuser.moving change. This way we'll ensure we are 
-			#S at the targeted focus before moving on. We could also lower it from 10um as well.
-			#TODO ADD A TIMEOUT FOR THIS, POTENTIAL TO GET STUCK, maybe recover too. Not sure.
-#			while status.focuser.moving == 'True':
-			while np.absolute(int(status.focuser.position)-newfocus)>10:
-				self.logger.info('T' + str(telescope_number) + ': Focuser moving (' + str(status.focuser.position) + ')')
-				time.sleep(0.3)
-				status = telescope.getStatus()
-
+				time.sleep(.5)
+			#S Make sure everythin is in position, namely that focuser has stopped moving
+			telescope.inPosition()
+			
 			#S Set the name for the autofocus image
 			af_name = 'autofocus'
 			#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
@@ -2719,7 +2720,7 @@ class control:
 			#S Check to make sure all the arrays are the same length and not zero.
 			if len(imagenum_list)==len(poslist)==len(focusmeas_list)==len(stddev_list)==len(numstar_list):
 				#S Stack them all together, then transpose so we can write them in columns 
-				autodata = np.vstack([imagenum_list,poslist,focusmeas_list,stddev_list]).transpose()
+				autodata = np.vstack([imagenum_list,poslist,focusmeas_list,stddev_list,numstar_list]).transpose()
 				#S Name the data file as 'nYYYYMMDD.T#.autorecord.filter.AAAA.BBBB.txt', where AAAA is the image number on the 
 				#S first image of the autofocus sequence, and BBBB the last image number.
 				datafile = self.site.night+'.T'+str(telescope_number)+'.autorecord.'+af_filter+'.'+imagenum_list[0]+'.'+imagenum_list[-1]+'.txt'

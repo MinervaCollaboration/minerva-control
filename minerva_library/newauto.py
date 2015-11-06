@@ -15,12 +15,13 @@ def recordplot(recordfile):
     poslist = raw_data[1:,1].astype(float)
     hfrlist = raw_data[1:,2].astype(float)
     stdlist = raw_data[1:,3].astype(float)
+    numlist = raw_data[1:,4].astype(float)
     goodind = np.where(hfrlist<>-999)[0]
     print 'fitting initial ' + str(len(goodind))
     if len(goodind) == 0:
         print 'Nothing good in that record, try something better!'
         return
-    focus,coeffs = fitquadfindmin(poslist[goodind],hfrlist[goodind],stdlist[goodind])
+    focus,coeffs = fitquadfindmin(poslist[goodind],hfrlist[goodind],stdlist[goodind]*np.sqrt(numlist[goodind]))
     xplot = np.linspace(poslist.min(),poslist.max(),100)
     print 'Only plotting points with found hfradii'
     print 'Coeffs:' 

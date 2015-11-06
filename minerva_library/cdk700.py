@@ -559,7 +559,8 @@ class CDK700:
 
 		self.logger.info('T' + self.num + ': Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
 		while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
-			time.sleep(0.1)
+			time.sleep(0.5)
+			self.logger.debug('T%s: rotator moving (%s degrees)'%(self.num,telescopeStatus.rotator.position))
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 			telescopeStatus = self.getStatus()
 			if telescopeStatus.rotator.goto_complete == 'True':
@@ -568,6 +569,17 @@ class CDK700:
 				if telescopeStatus.rotator.goto_complete == 'False':
 					self.logger.error('T' + self.num + ': Rotator moving after it said it was done')
 
+		self.logger.info('T' + self.num + ': Waiting for Focuser to finish slew; goto_complete = ' + telescopeStatus.focuser.goto_complete)
+		while telescopeStatus.focuser.goto_complete == 'False' and elapsedTime < timeout:
+			time.sleep(0.5)
+			self.logger.debug('T%s: Focuser moving (%sum)'%(self.num,telescopeStatus.focuser.position))
+			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+			telescopeStatus = self.getStatus()
+			if telescopeStatus.focuser.goto_complete == 'True':
+				time.sleep(1)
+				telescopeStatus = self.getStatus()
+				if telescopeStatus.focuser.goto_complete == 'False':
+					self.logger.error('T%s: Focuser moving after is said it was done'%(self.num))
 		if telescopeStatus.mount.on_target:
 			self.logger.info('T' + self.num + ': Telescope finished slew')
 			return True

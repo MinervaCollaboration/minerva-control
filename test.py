@@ -14,7 +14,14 @@ if __name__ == '__main__':
 	minerva = control.control('control.ini',base_directory)
 #	minerva.endNight(num=2,email=True)
 	ipdb.set_trace()
-
+	print minerva.telescopes[0].getStatus()
+	minerva.telescope_initialize(1,tracking=True)
+	minerva.telescope_mountGotoAltAz(25,0,tele_list=1)
+	status = minerva.telescopes[0].getStatus()
+	while minerva.telescopes[0].getStatus().rotator.goto_complete == 'False':
+		print minerva.telescopes[0].getStatus().rotator.position
+		time.sleep(.5)
+	ipdb.set_trace()
         time.sleep(5)
         
 #        minerva.spectrograph.get_vacuum_pressure()
