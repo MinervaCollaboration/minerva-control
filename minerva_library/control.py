@@ -539,7 +539,7 @@ class control:
 		
 	def domeControlThread(self):
 		self.observing = True
-		threading.Thread(target = self.domeControl).start()
+		threading.Thread(target = self.domeControl_catch).start()
 
 	def ten(self,string):
 		array = string.split()
@@ -1704,7 +1704,9 @@ class control:
 
 				i = 0
 				NotFirstImage = 0
-				while i < num:
+				#S While the number of flats in the filter is less than required AND the dome is still open
+				#TODO needs testing, watch out for this.
+				while i < num and dome.isOpen:
 
 					# Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
 					Alt = 75.0 # degrees (somewhat site dependent)
@@ -1774,10 +1776,10 @@ class control:
 						if exptime == maxExpTime and not morning:
 							self.logger.info(telescope_name + "Exposure time at maximum, not enough counts, and getting darker; skipping remaining exposures in filter " + filterInd)
 							break
-					elif morning and self.site.sunalt() > maxSunAlt:
+					if morning and self.site.sunalt() > maxSunAlt:
 						self.logger.info(telescope_name + "Sun rising and greater than maxsunalt; skipping")
 						break
-					elif not morning and self.site.sunalt() < minSunAlt:
+					if not morning and self.site.sunalt() < minSunAlt:
 						self.logger.info(telescope_name + "Sun setting and less than minsunalt; skipping")
 						break                    
 	              # else:
@@ -2234,7 +2236,6 @@ class control:
 		if waittime > 0:
 			# Take biases and darks (skip if we don't have time before twilight)
 			self.logger.info(telescope_name + 'Waiting until darker before biases/darks (' + str(waittime) + ' seconds)')
-
 			time.sleep(waittime)
 			#S Re-initialize, and turn tracking on. 
 			self.doBias(CalibInfo['nbias'],telescope_num)
@@ -2388,7 +2389,21 @@ class control:
 			    "MINERVA"
 			mail.send("T" + str(telescope_num) + " thread died",body,level='serious')
 			sys.exit()
-			
+	
+	def domeControl_catch(self):
+		try:
+			self.domeControl()
+		except Exception as e:
+			self.logger.exception('DomeControl thread died: ' + str(e.message) )
+			body = "Dear benevolent humans,\n\n" + \
+			    'I have encountered an unhandled exception which has killed the dome control thread. The error message is:\n\n' + \
+			    str(e.message) + "\n\n" + \
+			    "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart 'main.py'. The heartbeat will close the domes, but please restart.\n\n" + \
+			    "Love,\n" + \
+			    "MINERVA"
+			mail.send("DomeControl thread died",body,level='serious')
+			sys.exit()
+
 	def observingScript_all(self):
 		self.domeControlThread()
 		
@@ -2553,6 +2568,10 @@ class control:
 	#S Small file will be needed for a few minor functions in the fitting process, etc
 	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
 	#S stuff we need to worry about
+	def autofocus_step(self,newfocus,af_exptime,af_filter="V",telescope_num):
+		telescope = minerva.telescopes[telescope_num-1]
+		status = telescope.getStatus()
+		
 	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5):
 		#S This is dumb to have hard coded here, but let's go with it for now
 		af_filter = "V"

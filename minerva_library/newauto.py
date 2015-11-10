@@ -80,7 +80,10 @@ def get_hfr_med(catfile):
     #S now or we will in the future.
 #    warnings.filterwarnings('error')
     #S need to find which column has the hfr, but it'll start as None
+    #S Same for ae_col and be_col, the 'lengths' of the the semi-major and semi-minor axis, see sextractor for the deets
     hfr_col = None
+    ae_col = None
+    be_col = None
     catalog = open(catfile, 'r')
     for line in catalog.readlines():
         #S Find the column that contains the hfr
@@ -89,9 +92,16 @@ def get_hfr_med(catfile):
         #S Checking for a line that would indicate the fwhm
         if '#' in line and 'FWHM_IMAGE' in line:
             fwhm_col = int(line[4])
+        #S For some reason A_IMAGE is not reliable
+        #NOTE THIS CAN BE OVERWRITTEN IF THESE WORDS APEEAR IN LATER LINES
+        if '#' in line and 'major' in line:
+            ae_col = int(line[4])
+        if '#' in line and 'minor' in line:
+            be_col = int(line[4])
         #S If we get past the header of the catalog, let's stop reading lines
         if (not ('#' in line)):
             break
+    #S We didn't get an hfr value, so stop.
     if hfr_col == None:
         print 'we didnt find an hfr column, somthing wrong with catalog'
         raise Exception()
@@ -101,13 +111,29 @@ def get_hfr_med(catfile):
         #S It will put up a warning if the file is empty is all, meaning no stars sextracted.
         cat_array = np.genfromtxt(catfile)
     except: raise Exception()
+    #S If we were not able to both a semi-major and -minor axis columns, then we will just use
+    #S all the values from the hfr_column
+    if ae_col == None or be_col == None:
+        hfr_array = cat_array[:,hfr_col-1]
+    #S if we found both, we can filter by the 'eccentricity', or minor-axis/major-axis
+    #S 0.8 here is an empirical value, probably could be stricter, but testing in progress.
+    else:
+        circ_ind = np.where(cat_array[:,be_col-1]/cat_array[:,ae_col-1] > 0.8)[0]
+        #S If we found some indices where we weren't too elliptical
+        if len(circ_ind) != 0:
+            hfr_array = cat_array[circ_ind,hfr_col-1]
+        #S else we will consider no real hfr values were found.
+        else:
+            raise Exception()
+    #S Try and find the median. This will hopefully catch if we have too few values, etc.
     try:
-        hfr_med = np.median(cat_array[:,hfr_col-1])
+        hfr_med = np.median(hfr_array)
     except: raise Exception()
+    #S try and find std, not sure if we want SDOM or just std
     try:
-        numstars = len(cat_array[:,hfr_col-1])
+        numstars = len(hfr_array)
         #S Get the Median Absolute Deviation, and we'll convert to stddev then stddev of the mean
-        hfr_mad = np.median(np.absolute(cat_array[:,hfr_col-1]-np.median(cat_array[:,hfr_col-1])))
+        hfr_mad = np.median(np.absolute(hfr_array-np.median(hfr_array)))
         #S We assume that our distribution is normal, and convert to stddev. May need to think more 
         #S about this, as it isn't probably normal. 
         #S Recall stddev of the mean = stddev/sqrt(N)

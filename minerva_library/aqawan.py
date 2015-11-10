@@ -315,6 +315,7 @@ if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	dome = aqawan('aqawan_1.ini',base_directory)
+	ipdb.set_trace()
 	# while True:
 		# print dome.logger_name + ' test program'
 		# print ' a. open shutter 1'
