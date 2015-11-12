@@ -127,7 +127,7 @@ class CDK700:
 		
 		return True
 
-	def initialize(self,tracking=True):
+	def initialize(self,tracking=False):
 
 		# turning on mount tracking
 		self.logger.info('T' + self.num + ': Connecting to mount')
@@ -519,7 +519,7 @@ class CDK700:
 			mail.send('T' + self.num + " has failed " + str(self.nfailed) + " times",body,level='serious')
 			ipdb.set_trace()
 
-	def inPosition(self):
+	def inPosition(self,m3port=None):
 		# Wait for telescope to complete motion
 		timeout = 360.0
 		start = datetime.datetime.utcnow()
@@ -557,6 +557,28 @@ class CDK700:
 				self.logger.info('T' + self.num + ': Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
 				return False
 
+			#S Actually make sure tracking is on for both mount.
+			if telescopeStatus.mount.tracking == 'False':
+				#S or something like that.
+				self.mountTrackingOn()
+				self.logger.info('T%s: Tracking was off, turned tracking on.'%(self.num))
+#				self.logger.info('T%s: Moving, but because tracking is OFF. Assuming in position'%(self.num))
+
+		#S want to make sure we are at the right port before focuser, rotator check.
+		#S If an allowable port is specified
+		if (str(m3port)=='1') or (str(m3port)=='2'):
+			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
+			while telescopeStatus.m3.port != str(m3port) and elapsedTime < timeout:
+				time.sleep(0.5)
+				#S This returns a status xml, so sending it on repeat shouldnt matter
+				telescopeStatus = self.m3SelectPort(port=m3port)
+		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
+		else:
+			self.logger.info('T%s: No M3 port specified or bad, using current port(%s)'%(self.num,telescopeStatus.m3.port))
+
+		#S Make sure the derotating is on.
+		self.rotatorStartDerotating()
+		#S Let it finish derotating.
 		self.logger.info('T' + self.num + ': Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
 		while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
 			time.sleep(0.5)
@@ -580,6 +602,8 @@ class CDK700:
 				telescopeStatus = self.getStatus()
 				if telescopeStatus.focuser.goto_complete == 'False':
 					self.logger.error('T%s: Focuser moving after is said it was done'%(self.num))
+
+			
 		if telescopeStatus.mount.on_target:
 			self.logger.info('T' + self.num + ': Telescope finished slew')
 			return True
@@ -704,6 +728,20 @@ class CDK700:
 			self.recover()
 			self.acquireTarget(ra,dec,pa=pa)
 			return
+
+	def isReady(self,tracking=False,port=None,ra=None,dec=None,pa=None):
+		if not self.isInitialized():
+			#TODO
+			#S This is not smart, need to work in a recovery process some how
+			while not self.initialize(tracking=tracking):
+				pass
+		self.inPostion()
+		status = self.getStatus()
+		if port == None:
+			self.logger.info('T%s: No M3 port specified, using current port(%s)'%(self.num,status.m3.port))
+		if (ra == None) or (dec == None) :
+			self.logger.info('T%s: No target coordinates given, maintaining ra=%s,dec=%s'%(self.num,str(ra),str(dec)))
+		
 
 	def park(self):
 		# park the scope (no danger of pointing at the sun if opened during the day)

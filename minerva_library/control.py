@@ -1377,35 +1377,10 @@ class control:
 
 
 		###TELESCOPE DEPENDENT STUFF###
-		#S Prep for shit if you don't have a telescope.
-
-		#S A check to make sure we are on the correct port. Is there a reason we would maybe want 
-		#S to set what port is imaging in the .ini file? Seems a little overcomplicated, but might
-		#S might be a good idea. right now just define it here, and leave it general. 
+		#S Get the current status of the telescope.
 		imagingport = '1'
 		telescope = self.telescopes[telescope_num-1]
-		timeout = 20.
-#		if telescope.getStatus().mount.connected == 'False':
-#			telescope.initialize()
-		#S get status for initial evaluation of current m3 port
 		telescopeStatus = telescope.getStatus()
-		#S starting time to measure time out
-		start = time.time()
-		#S while we are not at the imaging port and less that time out.
-		#NOTE status.m3.port returns '0' when not moving. Also note that it returns a string, so the imagingport 
-		#NOTE is a string, as defined above. I converted to string again, as i think we'll need to be careful 
-		#NOTE about this in the future and it could get type changed.
-
-		while (telescopeStatus.m3.port != str(imagingport)) and (time.time()-start)<timeout:
-			#S log that we are indeed moving, should this be control logger?
-			telescope.logger.info('T%i: switching to imaging port(elapsed time=%.3f)'%(telescope_num,time.time()-start))
-			#S this returns the status xml guy
-			#TODO do we just want to get status here? doesn't seem to be an issue if we keep sending this command.
-			#TODO if we do switch we need to send intial switch command.
-			telescopeStatus = telescope.m3SelectPort(port = imagingport)
-#			telescopeStatus = telescope.getStatus()
-			#S just so we aren't flooding it
-			time.sleep(1)
 
 		#S assign the camera.
 		imager = self.cameras[telescope_num-1]
@@ -1723,7 +1698,7 @@ class control:
 						telescope.mountGotoAltAz(Alt,Az)
 
 						if NotFirstImage == 0:
-							if telescope.inPosition():
+							if telescope.inPosition(m3port='1'):
 								self.logger.info(telescope_name + "Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
 								NotFirstImage = 1
 							else:
@@ -1926,7 +1901,7 @@ class control:
                         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			except: pass
-			telescope.inPosition()
+			telescope.inPosition(m3port='1')
 			telescope.autoFocus()
 			return
 		
@@ -1934,7 +1909,7 @@ class control:
                         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			except: pass
-			telescope.inPosition()
+			telescope.inPosition(m3port='1')
 			try:
 				self.autofocus(telescope_num)
 			except:
@@ -2266,7 +2241,7 @@ class control:
 			self.logger.info(telescope_name + 'Beginning autofocus')
 #			self.telescope_intiailize(telescope_num)
 			#S this is here just to make sure we aren't moving
-			self.telescopes[telescope_num-1].inPosition()
+			self.telescopes[telescope_num-1].inPosition(m3port='1')
 #			self.telescope_autoFocus(telescope_num)
 			self.autofocus(telescope_num)
 
@@ -2285,7 +2260,7 @@ class control:
 						target['starttime'] = self.site.NautTwilEnd()
 
 					# compute the rise/set times of the target
-					self.site.obs.horizon = '20.0'
+					self.site.obs.horizon = '21.0'
 					body = ephem.FixedBody()
 					body._ra = str(target['ra'])
 					body._dec = str(target['dec'])
@@ -2568,27 +2543,54 @@ class control:
 	#S Small file will be needed for a few minor functions in the fitting process, etc
 	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
 	#S stuff we need to worry about
-	def autofocus_step(self,newfocus,af_exptime,af_filter="V",telescope_num):
+	def autofocus_step(self,telescope_num,newfocus,af_exptime,af_filter="V"):
 		telescope = minerva.telescopes[telescope_num-1]
 		status = telescope.getStatus()
-		
-	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5):
-		#S This is dumb to have hard coded here, but let's go with it for now
-		af_filter = "V"
+		if newfocus <> status.focuser.position:
+			telescope.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " \
+						      + str(step) + ' mm, to ' + str(newfocus))
+			telescope.focuserMove(newfocus)
+			#S Needed a bit longer to recognize focuser movement, changed from 0.3
+			time.sleep(.5)
+
+		#S Make sure everythin is in position, namely that focuser has stopped moving
+		telescope.inPosition(m3port='1')
+		#S Set the name for the autofocus image
+		af_name = 'autofocus'
+		#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
+		imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_num=telescope_number)
+		imagenum = (imagename.split('.')[4])
+		#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
+		try: 
+			catalog = newauto.sextract(datapath,imagename)
+			self.logger.debug('T' + str(telescope_number) + ': Sextractor success on '+catalog)
+		except: 
+			self.logger.exception('T' + str(telescope_number) + ': Sextractor failed on '+catalog)
+		try:
+			median, stddev, numstar = newauto.get_hfr_med(datapath+catalog)
+			self.logger.info('T'+str(telescope_number)+': Got hfr value from '+catalog)
+			return median, stddev, numstar, imagenum
+		except:
+			self.logger.exception('T' + str(telescope_number) + ': Failed to get hfr value from '+catalog)		
+			return -999, 999, 0, imagenum
+
+
+	def new_autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V"):
+
 		#S get the telescope we plan on working with
 		telescope = self.telescopes[telescope_number-1]
 		#S our data path
 		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
-		#S make array of af_defocus_steps
-		defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)
+
 		# wait for dome to be open
 		if telescope_number > 2:
 			dome = self.domes[1]
 		else:
 			dome = self.domes[0]
-
+		#S Get current time for measuring timeout
 		t0 = datetime.datetime.utcnow()
 #		"""
+		#S Loop to wait for dome to open, cancels afeter ten minutes
 		while dome.isOpen == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
@@ -2597,17 +2599,84 @@ class control:
 				return
 			time.sleep(30)
 #		"""
+
 		#S Initialize telescope, we want tracking ON
 #		telescope.initialize(tracking=False)
 		telescope.initialize(tracking=True)
-		
-		#S Just need an empty list for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST because we don't necessarily know which 
-		#S value we want yet.
+
+		#S make array of af_defocus_steps
+		defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)
+		#S Array of new positions for the focuser, using this rahter than step. 
+		poslist = defsteps*1000 + telescope.focus
+
+		#S Just need an empty list for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST 
+		#Sbecause we don't necessarily know which value we want yet.
 		imagenum_list = []
 		focusmeas_list = []
 		stddev_list = []
 		numstar_list = []
+
 		#S Actual autofocus sequence
+		for position in poslist:
+			med, std, numstars, imagenum = self.autofocus_step(telescope_num,position,af_exptime,af_filter)
+			focusmeas_list.append(med)
+			stddev_list.append(std)
+			numstar_list.append(numstars)
+			imagenum_list.append(imagenum)
+		
+		while True:
+			pass
+
+
+	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V"):
+
+		#S get the telescope we plan on working with
+		telescope = self.telescopes[telescope_number-1]
+		#S our data path
+		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
+
+		# wait for dome to be open
+		if telescope_number > 2:
+			dome = self.domes[1]
+		else:
+			dome = self.domes[0]
+		#S Get current time for measuring timeout
+		t0 = datetime.datetime.utcnow()
+#		"""
+		#S Loop to wait for dome to open, cancels afeter ten minutes
+		while dome.isOpen == False:
+			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
+			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
+			if timeelapsed > 600: 
+				self.logger.info('T' + str(telescope_number) + ': Enclosure still closed after 10 minutes; skipping autofocus')
+				return
+			time.sleep(30)
+#		"""
+
+		#S Initialize telescope, we want tracking ON
+#		telescope.initialize(tracking=False)
+		telescope.initialize(tracking=True)
+
+		#S make array of af_defocus_steps
+		defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)
+		#S Array of new positions for the focuser, using this rahter than step. 
+		poslist = defsteps*1000 + telescope.focus
+
+		#S Just need an empty list for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST 
+		#Sbecause we don't necessarily know which value we want yet.
+		imagenum_list = []
+		focusmeas_list = []
+		stddev_list = []
+		numstar_list = []
+		"""
+		#S Actual autofocus sequence
+		for position in poslist:
+			med, std, numstars, imagenum = self.autofocus_step(telescope_num,position,af_exptime,af_filter)
+			focusmeas_list.append(med)
+			stddev_list.append(std)
+			numstar_list.append(numstars)
+			imagenum_list.append(imagenum)
+		"""
 		for step in defsteps:
 			#S set the new focus, and move there if necessary
 			newfocus = telescope.focus + step*1000.0
@@ -2619,7 +2688,7 @@ class control:
 				#S Needed a bit longer to recognize focuser movement, changed from 0.3
 				time.sleep(.5)
 			#S Make sure everythin is in position, namely that focuser has stopped moving
-			telescope.inPosition()
+			telescope.inPosition(m3port='1')
 			
 			#S Set the name for the autofocus image
 			af_name = 'autofocus'
