@@ -431,12 +431,14 @@ class imager:
 		self.file_name = ''
 		return 'false'		
 
-	def compress_data(self):
+	def compress_data(self,night=None):
 		#S I think we've given this too short of a time to reasonably compress
 		#S the amount of data? On a few instances the thread died from connection being lost
 		#S due to timeout.
 		#TODO Increase tiimeout
-		if self.send('compress_data none',30) == 'success': return True
+		if night==None:
+			night = self.night
+		if self.send('compress_data '+night,30) == 'success': return True
 		else: return False
 
 	def powercycle(self,downtime=30):

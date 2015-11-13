@@ -115,14 +115,19 @@ class aqawan:
 		if not message in self.messages:
 			self.logger.error(anum + 'Message not recognized: ' + message)
 			self.lock.release()
-			return False
+			return 'error'
 
 		try:
 			tn = telnetlib.Telnet(self.IP,self.PORT,1)
 		except:
 			self.logger.error(anum + 'Error attempting to connect to the aqawan')
 			self.lock.release()
-			return False
+			#S Needed to change to return a string response, will this mess anything up?
+			#TODO THIS NEEDS TESTING
+			#S aqawan.hearbeat relies on this returning a boolean I believe. Also 
+			#S required in control.create_class_objects as bool. Can't find anywhere else. 
+#			return 'False'
+			return 'error'
 
 		tn.write("vt100\r\n")
 
@@ -247,7 +252,7 @@ class aqawan:
 
 		self.logger.debug(anum + 'Shutting off lights')
 		response = self.send('LIGHTS_OFF')
-		if response == -1:
+		if response == 'error':
 			self.logger.error(anum + 'Could not turn off lights')
 
 		self.logger.debug(anum + 'Opening shutter 1')

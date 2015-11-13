@@ -469,10 +469,14 @@ class control:
 			for t in range(len(self.cameras)):
 				threads[t].join()
 				
-	def imager_compressData(self,num=0):
-	
+	def imager_compressData(self,num=0,night=None):
+		#S need the night arguement to specify endNight operations on a past night
+		if night == None:
+			night = self.site.night
+		kwargs = {}
+		kwargs['night']=night
 		if num >= 1 and num <= len(self.cameras):
-			self.cameras[num-1].compress_data()
+			self.cameras[num-1].compress_data(night=night)
 		else:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
@@ -2021,9 +2025,17 @@ class control:
 			shutil.copyfile(f, backupPath + os.path.basename(f))
 
 
-	def endNight(self, num=0, email=True):
+	def endNight(self, num=0, email=True, night=None):
+		
+		#S This implementation should allow you to specify a night you want to 'clean-up',
+		#S or just run end night on the current night. I'm not sure how it will act
+		#S if you endnight on an already 'ended' night though.
+		#S IF YOU WANT TO ENTER A PAST NIGHT:
+		#S make night='nYYYYMMDD' for the specified date.
+		if night == None:
+			night = self.site.night
 
-		dataPath = '/Data/t' + str(num) + '/' + self.site.night + '/'
+		dataPath = '/Data/t' + str(num) + '/' + night + '/'
 
 		# park the scope
 		self.logger.info("Parking Telescope")
@@ -2032,22 +2044,22 @@ class control:
 
 		# Compress the data
 		self.logger.info("Compressing data")
-		self.imager_compressData(num)
+		self.imager_compressData(num,night=night)
 
 		# Turn off the camera cooler, disconnect
 #		self.logger.info("Disconnecting imager")
-#		self.imager_disconnect()
+# 		self.imager_disconnect()
 
                 #TODO: Back up the data
 		self.backup(num)
 
 		# copy schedule to data directory
-		self.logger.info("Copying schedule file from " + self.base_directory + "/schedule/" + self.site.night + ".T" + str(num) + ".txt to " + dataPath)
-		try: shutil.copyfile(self.base_directory + '/schedule/' + self.site.night + ".T" + str(num) + '.txt', dataPath)
-		except: pass
+		self.logger.info("Copying schedule file from " + self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt to " + dataPath)
+		try: shutil.copyfile(self.base_directory + '/schedule/' + night + ".T" + str(num) + '.txt', dataPath)
+		except: self.logger.error('Did not copy schedule file from %s/schedule/%s.T%i.txt to %s'%(self.base_directory,night,num,dataPath))
 
 		# copy logs to data directory
-		logs = glob.glob(self.base_directory + "/log/" + self.site.night + "/*.log")
+		logs = glob.glob(self.base_directory + "/log/" + night + "/*.log")
 		for log in logs:
 			self.logger.info("Copying log file " + log + " to " + dataPath)
 			try: shutil.copyfile(log, dataPath + os.path.basename(log))
@@ -2129,7 +2141,7 @@ class control:
 				    ', ave=' + str(sum(arr)/float(len(arr))) + '\n'
 
 		body += "\nPlease see the webpage for movies and another diagnostics:\n" + \
-		    "https://www.cfa.harvard.edu/minerva/site/" + self.site.night + "/movie.html\n\n" + \
+		    "https://www.cfa.harvard.edu/minerva/site/" + night + "/movie.html\n\n" + \
 		    "Love,\n" + \
 		    "MINERVA"
 
@@ -2575,7 +2587,7 @@ class control:
 			return -999, 999, 0, imagenum
 
 
-	def new_autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V"):
+	def new_autofocus(self,telescope_number,num_steps=5,defocus_step=0.4,af_exptime=5,af_filter="V"):
 
 		#S get the telescope we plan on working with
 		telescope = self.telescopes[telescope_number-1]
@@ -2607,26 +2619,31 @@ class control:
 		#S make array of af_defocus_steps
 		defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)
 		#S Array of new positions for the focuser, using this rahter than step. 
-		poslist = defsteps*1000 + telescope.focus
+		pos_arr = defsteps*1000 + telescope.focus
 
-		#S Just need an empty list for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST 
+		#S Just need empty np.arrays for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST 
 		#Sbecause we don't necessarily know which value we want yet.
-		imagenum_list = []
-		focusmeas_list = []
-		stddev_list = []
-		numstar_list = []
+		imagenum_arr = np.array(())
+		focusmeas_arr = np.array(())
+		stddev_arr = np.array(())
+		numstar_arr = np.array(())
 
 		#S Actual autofocus sequence
-		for position in poslist:
+		for position in pos_arr:
 			med, std, numstars, imagenum = self.autofocus_step(telescope_num,position,af_exptime,af_filter)
-			focusmeas_list.append(med)
-			stddev_list.append(std)
-			numstar_list.append(numstars)
-			imagenum_list.append(imagenum)
+			focusmeas_arr = np.append(focusmeas_arr,med)
+			stddev_arr = np.append(stddev_arr,std)
+			numstar_arr = np.append(numstar_arr,numstars)
+			imagenum_arr = np.append(imagenum_arr,imagenum)
 		
-		while True:
-			pass
-
+		old_best_focus = telescope.focus
+		while (len(pos_arr)<maxsteps) and (delta_focus>maxdelta):
+			goodind = np.where(focusmeas_list <> -999)[0]
+			new_best_focus,fitcoeffs = newauto.fitquadfindmin(pos_arr[goodind],focusmeas_arr[goodind],\
+										  weight_list=stddev_arr[goodind],\
+										  logger=self.logger,telescope_num=telescope_number)			
+			#S Find the change in the focus from the last fit
+			delta_focus = np.absolute(old_best_focus - new_best_focus)
 
 	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V"):
 
@@ -2668,6 +2685,8 @@ class control:
 		focusmeas_list = []
 		stddev_list = []
 		numstar_list = []
+
+
 		"""
 		#S Actual autofocus sequence
 		for position in poslist:
