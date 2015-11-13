@@ -280,7 +280,7 @@ class server:
 			os.makedirs(self.data_path)
 		return 'success'
 		
-	def compress_data(self,night=self.night):
+	def compress_data(self,night=None):
 		try:
 			#S This will throw if it doesn;t have data path, which
 			#S seems like the only place how compression won't work now. 
@@ -288,10 +288,10 @@ class server:
 			#S this function starts may still barf. I'm not sure if this should
 			#S be communicated back to Main, but am still thinking about it.
 			#TODO
-			if night != self.night:
-				data_path = self.data_path_base+'\\'+night
-			else:
+			if night == None:
 				data_path = self.data_path
+			else:
+				data_path = self.data_path_base+'\\'+night
 			files = glob.glob(data_path + "/*.fits")
 			compress_thread = threading.Thread(target = self.compress_thread,args = (files,))
 			compress_thread.start()
