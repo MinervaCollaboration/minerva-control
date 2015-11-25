@@ -2087,9 +2087,10 @@ class control:
 		self.backup(num,night=night)
 
 		# copy schedule to data directory
-		self.logger.info("Copying schedule file from " + self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt to " + dataPath)
-		try: shutil.copyfile(self.base_directory + '/schedule/' + night + ".T" + str(num) + '.txt', dataPath)
-		except: self.logger.error('Did not copy schedule file from %s/schedule/%s.T%i.txt to %s'%(self.base_directory,night,num,dataPath))
+		schedulename = self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt"
+		self.logger.info("Copying schedule file from " + schedulename + " to " + dataPath)
+		try: shutil.copyfile(schedulename, dataPath + night + ".T" + str(num) + ".txt")
+		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + dataPath)
 
 		# copy logs to data directory
 		logs = glob.glob(self.base_directory + "/log/" + night + "/*.log")

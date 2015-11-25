@@ -618,28 +618,37 @@ class CDK700:
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
-	def acquireTarget_new(self,target=None,pa=None):
+	def acquireTarget_new(self,target={},pa=None):
 		#S hardcoding in an example for testing. we may want to switch from dictionary for ease of integration until
 		#S we can overhaul everything
-		target['ra']=15.
+	
+		target['ra'] = 15.
+		target['dec'] = 45.
+		target['pmra'] = 1000.
+		target['pmdec'] = 1000.
+		target['px'] = 0.
+		target['rv'] = 0.#10.
                 ## Constants
                 #S Was using julian date of observation, but this was only to have a more general approach to
                 #S what coordinate system we were using. I assume we are using on J2000 coordinates, so I made it only take that for now.
                 #S It can be switched very easily though
                 #epoch = 2451545.0
-                now = datetime.datetime.utcnow()
+#                now = datetime.datetime.utcnow()
+		#S for testing, let's give it a year
+		now = datetime.datetime(2001,01,01,12)
                 j2000 = datetime.datetime(2000,01,01,12)
-                days_since_j2000 = (now-j200).days #[] = daya
+                days_since_j2000 = (now-j2000).days #[] = daya
                 #jd_obs = days_since_j200 + jd_of_j2000
                 #S One AU in meters
                 AU  = 149597870700. #[] = meters
+		days_in_year = 365.25
                 #S the seconds in a year
-                year_sec = 365.25*24*3600 #[] = seconds/year
-                #S Parsecs in a nAU
+                year_sec = days_in_year*24.*3600. #[] = seconds/year
+                #S Parsecs in an AU
                 pctoau = 3600.*180/math.pi #[] = AU
                 #S km/sec to AU/year
-                kmstoauy = year_sec*1000./AU
-                self.initialize(tracking=True)
+                kmstoauy = year_sec/AU
+#                self.initialize(tracking=True)
                 #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
                 #S dec comes in as degrees.
                 ra = np.radians(target['ra']*15.)
@@ -673,6 +682,7 @@ class CDK700:
                 #S Unit vector pointing north
                 north =  np.cross(r0hat,east)
                 #S Proper motion correction (Not 100% sure what is going on with this calculation)
+		#S this is in AU/year??
                 mu = (pmra*east+pmdec*north)/pctoau/1000.
 
                 #S This can be used if we want to make our code more general and to be able to switch between epochs. I'm
@@ -680,15 +690,15 @@ class CDK700:
                 ##epoch0 = 2000. + (epoch-2451545.0)/365.25
                 ##yearnow = 2000. + (jd_obs - 2451545.0)/365.25
                 #S Days since j2000
-                T = days_since_j2000
+                T = days_since_j2000/days_in_year
                 #S rv away from earth, with parallax
-                vpi = rv/1000.*kmstopauy*(px/1000./pctoau)
+                vpi = rv/1000.*kmstoauy*(px/1000./pctoau)
                 #S Total velocity of star on sky (proper motion plus rv away from earth)
                 vel = mu + vpi*r0hat
                 #S corrected vector from observer to object
                 r = vel*T + r0hat
                 #S Unit vector from observer to object
-                rhat = r/p.linalg.norm(r)
+                rhat = r/np.linalg.norm(r)
                 #S rhat = [cos(dec)cos(ra),cos(dec)sin(ra),sin(dec)] for our corrected ra,dec
                 #S all we need to do is arcsin for declination, returns between [-pi/2,pi/2], converted to degrees
                 dec_corrected = np.degrees(np.arcsin(rhat[2]))
@@ -970,6 +980,7 @@ if __name__ == "__main__":
 
 	telescope = CDK700(config_file, base_directory)
 	ipdb.set_trace()
+	telescope.acquireTarget_new()
 	while True:
 		print telescope.logger_name + ' test program'
 		print ' a. move to alt az'
