@@ -618,7 +618,7 @@ class CDK700:
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
-	def acquireTarget_new(self,target={},pa=None):
+	def acquireTarget(self,target,pa=None):
 
                 ## Constants
                 #S Was using julian date of observation, but this was only to have a more general approach to
@@ -638,9 +638,6 @@ class CDK700:
                 pctoau = 3600.*180/math.pi #[] = AU
                 #S km/sec to AU/year
                 kmstoauy = year_sec*1000./AU
-
-		#S Initialize the telescope
-                self.initialize(tracking=True)
 
                 #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
                 #S dec comes in as degrees.
@@ -701,6 +698,9 @@ class CDK700:
                         ra_corrected = np.degrees(ra_intermed)/15.
                 	
 
+		#S Initialize the telescope
+                self.initialize(tracking=True)
+
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
@@ -717,7 +717,7 @@ class CDK700:
 			self.acquireTarget(target,pa=pa)
 			return
 
-	def acquireTarget(self,ra,dec,pa=None):
+	def acquireTarget_old(self,ra,dec,pa=None):
 		self.initialize(tracking=True)
 	
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra) + ',' + str(dec))

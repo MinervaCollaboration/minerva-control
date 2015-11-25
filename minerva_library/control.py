@@ -1400,6 +1400,8 @@ class control:
 		imager = self.cameras[telescope_num-1]
 		self.logger.info(telescope_name + 'starting imaging thread')
 		#start imaging process in a different thread
+		#TODO for new takeimage
+#		imaging_thread = threading.Thread(target = imager.take_image, args = (target['exptime'], filterInd, target['name']))
 		imaging_thread = threading.Thread(target = imager.take_image, args = (exptime, filterInd, objname))
 		imaging_thread.start()
 		
@@ -1938,7 +1940,8 @@ class control:
 
       		if target['name'] == 'autofocus':
                         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
-			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+#			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+			try: telescope.acquireTarget(target,pa=pa)
 			except: pass
 			telescope.inPosition(m3port='1')
 			telescope.autoFocus()
@@ -1946,7 +1949,8 @@ class control:
 		
 		if target['name'] == 'newauto':
                         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
-			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+#			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+			try: telescope.acquireTarget(target,pa=pa)
 			except: pass
 			telescope.inPosition(m3port='1')
 			try:
@@ -1957,7 +1961,8 @@ class control:
 		
                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 		# slew to the target
-		telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+#		telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+		telescope.acquireTarget(target,pa=pa)
 		newfocus = telescope.focus + target['defocus']*1000.0
 		status = telescope.getStatus()
 		if newfocus <> status.focuser.position:
@@ -1986,13 +1991,15 @@ class control:
 								if datetime.datetime.utcnow() > target['endtime']: return
 							#TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 							#reacquire target after waiting for dome to open
-							telescope.acquireTarget(target['ra'],target['dec'])
+#							telescope.acquireTarget(target['ra'],target['dec'])
+							telescope.acquireTarget(target)
 						if datetime.datetime.utcnow() > target['endtime']: return
 						if i < target['num'][j]:
 							#S make sure the telescope is in position
 							if not telescope.inPosition(m3port='1'):
 								self.logger.debug('T'+str(telescope_num)+': not in position, reacquiring target')
-								telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+#								telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+								telescope.acquireTarget(target,pa=pa)
 							self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " \
 											 + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' \
 											 + target['filter'][j] + ' band') 
@@ -2017,13 +2024,15 @@ class control:
 
                                                         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 						        #reacquire target after waiting for dome to open
-							telescope.acquireTarget(target['ra'],target['dec'])
+#							telescope.acquireTarget(target['ra'],target['dec'])
+							telescope.acquireTarget(target)
 						if datetime.datetime.utcnow() > target['endtime']: return
 
 						#S want to make sure we are on target for the image
 						if not telescope.inPosition(m3port='1'):
 							self.logger.debug('T'+str(telescope_num)+': not in position, reacquiring target')
-							telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+#							telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+							telescope.acquireTarget(target,pa=pa)
 						self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " \
 									 + str(target['exptime'][j]) + ' second exposure of ' + target['name'] \
 									 + ' in the ' + target['filter'][j] + ' band') 
