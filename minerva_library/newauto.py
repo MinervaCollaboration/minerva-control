@@ -6,16 +6,24 @@ import scipy.optimize
 import ipdb
 import warnings
 
+#S A custom exception class, so we can catch the results of fits on a case by case basis.
+class afException(Exception):
+    def __init__(self,message,focus,coeffs):
+        self.message = message
+        self.focus = focus
+        self.coeffs = coeffs
+
+
 #S Simple function for plotting results in a record file
 #S also does a fit, etc..
 #S Sort of carbon copy of fitquadfindmin, just beacuse we want all coeffs and don't
 #S want to force that out of 
-def recordplot(recordfile):
+def recordplot(recordfile,step=1):
     raw_data = np.genfromtxt(recordfile,skip_header=2)
-    poslist = raw_data[1:,1].astype(float)
-    hfrlist = raw_data[1:,2].astype(float)
-    stdlist = raw_data[1:,3].astype(float)
-    numlist = raw_data[1:,4].astype(float)
+    poslist = raw_data[::step,1].astype(float)
+    hfrlist = raw_data[::step,2].astype(float)
+    stdlist = raw_data[::step,3].astype(float)
+    numlist = raw_data[::step,4].astype(float)
     goodind = np.where(hfrlist<>-999)[0]
     print 'fitting initial ' + str(len(goodind))
     if len(goodind) == 0:
@@ -125,10 +133,15 @@ def get_hfr_med(catfile):
         #S else we will consider no real hfr values were found.
         else:
             raise Exception()
-    #S Try and find the median. This will hopefully catch if we have too few values, etc.
-    try:
-        hfr_med = np.median(hfr_array)
-    except: raise Exception()
+
+    #S If there are less than 10 stars, then we don't want to use the image
+    if len(hfr_array) > 10:
+        #S Try and find the median. This will hopefully catch if we have too few values, etc.
+        try:
+            hfr_med = np.median(hfr_array)
+        except: raise Exception()
+    else:
+        raise Exception()
     #S try and find std, not sure if we want SDOM or just std
     try:
         numstars = len(hfr_array)
@@ -193,14 +206,19 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,telescope_num
         #S increase the iterations
         iters += 1
 
+    if iters > 9:
+        print "couldn't fit"
+        return None, coeffs
     # if the best fit was a downward facing parabola, it was bad
     #S For most of these I return None, None if there was no input logger, which is a way of saying 
     #S exceptions need to handled by any other call except for those from control.autofocus
-    if coeffs[0] < 0.0: 
+    if coeffs[0] <= 0.0: 
         #S Check if our fit was upside down
         if type(logger)!=type(None):
-            logger.error('T'+str(telescope_num)+': Autofocus fit upside down quadratic, something funky.')
-            raise Exception()
+            #S going to return where the maximum is, so that we can decide to add more points on the opposite side. 
+            logger.error('T'+str(telescope_num)+': Autofocus fit upside down quadratic (or a line), something funky.')
+#            maximum = int(-coeffs[1]/(2.0*coeffs[0]))
+            raise afException('NoMinimum_Exception',None,coeffs)
         else:
             return None, coeffs
 
@@ -208,22 +226,22 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,telescope_num
     best_focus = int(-coeffs[1]/(2.0*coeffs[0]))
  
     # don't allow it to go beyond the limits
-    if best_focus < min(poslist):
+    if best_focus <= min(poslist):
         #S log that we were out of range
         if type(logger)!=type(None):
             logger.error('T'+str(telescope_num)+': New best focus was below lower limit.')
             #S we return exceptions now so it can be caught in calling routine
-            raise Exception()
+            raise afException('LowerLimit_Exception',best_focus,coeffs)
         else:
             return best_focus, coeffs
         #return None
         best_focus = min(poslist)
-    if best_focus > max(poslist):
+    if best_focus >= max(poslist):
         #S log that we were out of range
         if type(logger)!=type(None):
             logger.error('T'+str(telescope_num)+': New best focus was above upper limit.')
             #S Same as above
-            raise Exception()
+            raise afException('UpperLimit_Exception',best_focus,coeffs)
         else:
             return best_focus, coeffs
     #S Return coeffs for extra output to any other function besides control

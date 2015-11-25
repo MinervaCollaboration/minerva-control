@@ -455,6 +455,7 @@ class CDK700:
 		try: self.shutdown()
 		except: pass
 		self.restartPWI()
+		
 		if self.initialize():
 			self.logger.info('T' + self.num + ': recovered after restarting PWI')
 			return True
@@ -466,6 +467,7 @@ class CDK700:
 		self.killPWI()
 		self.powercycle()
 		self.startPWI()
+
 		if self.initialize():
 			self.logger.info('T' + self.num + ': recovered after power cycling the mount')
 			return True
@@ -482,7 +484,6 @@ class CDK700:
 			fh.close()
 			while os.path.isfile(filename):
 				time.sleep(1)
-
 		return self.initialize()
 
 		# TODO
@@ -572,6 +573,9 @@ class CDK700:
 				time.sleep(0.5)
 				#S This returns a status xml, so sending it on repeat shouldnt matter
 				telescopeStatus = self.m3SelectPort(port=m3port)
+				#S Need to track elapsed time.
+				elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+				
 		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
 		else:
 			self.logger.info('T%s: No M3 port specified or bad, using current port(%s)'%(self.num,telescopeStatus.m3.port))
@@ -614,7 +618,10 @@ class CDK700:
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
-	def acquireTarget_new(self,target,pa=None):
+	def acquireTarget_new(self,target=None,pa=None):
+		#S hardcoding in an example for testing. we may want to switch from dictionary for ease of integration until
+		#S we can overhaul everything
+		target['ra']=15.
                 ## Constants
                 #S Was using julian date of observation, but this was only to have a more general approach to
                 #S what coordinate system we were using. I assume we are using on J2000 coordinates, so I made it only take that for now.
@@ -695,6 +702,10 @@ class CDK700:
                 else:
                         ra_corrected = np.degrees(ra_intermed)/15.
                 	
+		print 'Results of coordinate propagation\nra=%f[hours]\ndec=%f[degrees]\n'%(ra_corrected, dec_corrected)
+		print 'Used:\npmra = %f\npmdec = %f\npx = %f\nrv = %f'%(pmra,pmdec,px,rv)
+
+		"""
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
@@ -710,7 +721,7 @@ class CDK700:
 			#XXX Something bad is going to happen here.
 			self.acquireTarget(target,pa=pa)
 			return
-
+		"""
 	def acquireTarget(self,ra,dec,pa=None):
 		self.initialize(tracking=True)
 	
@@ -745,6 +756,7 @@ class CDK700:
 
 	def park(self):
 		# park the scope (no danger of pointing at the sun if opened during the day)
+		self.initialize(tracking=True)
 		parkAlt = 45.0
 		parkAz = 0.0 
 
@@ -938,13 +950,12 @@ class CDK700:
 		else: return False
 	def startPWI(self,email=True):
 		if self.telcom.startPWI():
-#			return self.initialize_autofocus()
-#			mail.send("PWI restarted on " + self.logger_name,"Autofocus parameters will not be respected until manually run once") 
+			time.sleep(5.0)
 			return True
 		else: return False
 	def restartPWI(self,email=True):
 		self.killPWI()
-		time.sleep(5)
+		time.sleep(5.0)
 		return self.startPWI(email=email)
 
 #test program
