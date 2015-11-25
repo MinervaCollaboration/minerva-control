@@ -619,23 +619,13 @@ class CDK700:
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
 	def acquireTarget_new(self,target={},pa=None):
-		#S hardcoding in an example for testing. we may want to switch from dictionary for ease of integration until
-		#S we can overhaul everything
-	
-		target['ra'] = 15.
-		target['dec'] = 45.
-		target['pmra'] = 1000.
-		target['pmdec'] = 1000.
-		target['px'] = 0.
-		target['rv'] = 0.#10.
+
                 ## Constants
                 #S Was using julian date of observation, but this was only to have a more general approach to
                 #S what coordinate system we were using. I assume we are using on J2000 coordinates, so I made it only take that for now.
                 #S It can be switched very easily though
                 #epoch = 2451545.0
-#                now = datetime.datetime.utcnow()
-		#S for testing, let's give it a year
-		now = datetime.datetime(2001,01,01,12)
+                now = datetime.datetime.utcnow()
                 j2000 = datetime.datetime(2000,01,01,12)
                 days_since_j2000 = (now-j2000).days #[] = daya
                 #jd_obs = days_since_j200 + jd_of_j2000
@@ -647,30 +637,26 @@ class CDK700:
                 #S Parsecs in an AU
                 pctoau = 3600.*180/math.pi #[] = AU
                 #S km/sec to AU/year
-                kmstoauy = year_sec/AU
-#                self.initialize(tracking=True)
+                kmstoauy = year_sec*1000./AU
+
+		#S Initialize the telescope
+                self.initialize(tracking=True)
+
                 #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
                 #S dec comes in as degrees.
                 ra = np.radians(target['ra']*15.)
                 dec = np.radians(target['dec'])
-                #S 
-                try:
-                        pmra = target['pmra']
-                except:
-                        pmra = 0.
-                try:
-                        pmdec = target['pmdec']
-                except:
-                        pmdec = 0.
-                try:
-                        px = target['px']
-                except:
-                        px = 0.
+                #S basically see what values we can make corrections for.
+                try: pmra = target['pmra']
+                except: pmra = 0.
+                try: pmdec = target['pmdec']
+                except: pmdec = 0.
+                try: px = target['px']
+                except: px = 0.                        
                 #S Need rv if available, in m/s
-                try:
-                        rv = target['rv']
-                except:
-                        rv = 0.
+                try: rv = target['rv']
+                except: rv = 0.
+                        
                 #S Unit vector pointing to star's epoch location
                 r0hat = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
                 #S Vector pointingup at celestial pole
@@ -692,13 +678,14 @@ class CDK700:
                 #S Days since j2000
                 T = days_since_j2000/days_in_year
                 #S rv away from earth, with parallax
-                vpi = rv/1000.*kmstoauy*(px/1000./pctoau)
+                vpi = (rv/1000.)*kmstoauy*(px/1000./pctoau)
                 #S Total velocity of star on sky (proper motion plus rv away from earth)
                 vel = mu + vpi*r0hat
                 #S corrected vector from observer to object
                 r = vel*T + r0hat
                 #S Unit vector from observer to object
                 rhat = r/np.linalg.norm(r)
+
                 #S rhat = [cos(dec)cos(ra),cos(dec)sin(ra),sin(dec)] for our corrected ra,dec
                 #S all we need to do is arcsin for declination, returns between [-pi/2,pi/2], converted to degrees
                 dec_corrected = np.degrees(np.arcsin(rhat[2]))
@@ -707,15 +694,13 @@ class CDK700:
                 ra_intermed  = np.arctan2(rhat[1],rhat[0])
                 #S Check to see if less than zero, add 2pi if so to make sure all angles are of ra on [0,2pi]
                 #S We do want to convert to decimal hours though
+
                 if ra_intermed < 0:
                         ra_corrected = np.degrees(ra_intermed + 2*np.pi)/15.
                 else:
                         ra_corrected = np.degrees(ra_intermed)/15.
                 	
-		print 'Results of coordinate propagation\nra=%f[hours]\ndec=%f[degrees]\n'%(ra_corrected, dec_corrected)
-		print 'Used:\npmra = %f\npmdec = %f\npx = %f\nrv = %f'%(pmra,pmdec,px,rv)
 
-		"""
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
@@ -731,7 +716,7 @@ class CDK700:
 			#XXX Something bad is going to happen here.
 			self.acquireTarget(target,pa=pa)
 			return
-		"""
+
 	def acquireTarget(self,ra,dec,pa=None):
 		self.initialize(tracking=True)
 	
@@ -980,7 +965,7 @@ if __name__ == "__main__":
 
 	telescope = CDK700(config_file, base_directory)
 	ipdb.set_trace()
-	telescope.acquireTarget_new()
+
 	while True:
 		print telescope.logger_name + ' test program'
 		print ' a. move to alt az'

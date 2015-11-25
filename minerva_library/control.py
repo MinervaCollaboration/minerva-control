@@ -1379,7 +1379,7 @@ class control:
 	#image is saved on remote computer's data directory set by imager.set_data_path()
 	#TODO camera_num is actually telescope_num
 	def takeImage(self, exptime, filterInd, objname, telescope_num=0):
-		
+#	def takeImage(self, target, telescope_num=0):
 		telescope_name = 'T' + str(telescope_num) +': '
 		#check camera number is valid
 		if telescope_num > len(self.telescopes) or telescope_num < 0:
@@ -1408,7 +1408,9 @@ class control:
 		telescopeStatus = telescope.getStatus()
 		domeStatus = dome.status()
 
-		
+		#TODO for new takeimage		
+#		telra = str(target['ra']*15.)
+#		teldec = str(target['dec']
 		telra = str(self.ten(telescopeStatus.mount.ra_2000)*15.0)
 		teldec = str(self.ten(telescopeStatus.mount.dec_2000))
 
@@ -1600,22 +1602,37 @@ class control:
 		return 'error'
 		
 	def doBias(self,num=11,telescope_num=0,objectName = 'Bias'):
+		#S Need to build dictionary to get up to date with new takeimage
+		biastarget = {}
+		biastarget['name'] = 'Bias'
+		biastarget['filter'] = 'V'
+		biastarget['exptime'] = 0
 		telescope_name = 'T' + str(telescope_num) +': '
 		for x in range(num):
 			filename = 'error'
 			while filename =='error':
 				self.logger.info(telescope_name + 'Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + '0' + ')')
 				filename = self.takeImage(0,'V',objectName,telescope_num)
+				#TODO for new takeimage
+#				filename = self.takeImage(biastarget,telescope_num)
 			
 	def doDark(self,num=11, exptime=60,telescope_num=0):
+		#S Need to build dictionary to get up to date with new takeimage
+		darktarget = {}
+		darktarget['name'] = 'Dark'
+		darktarget['filter'] = 'V'
+		darktarget
 		telescope_name = 'T' + str(telescope_num) +': '
 		objectName = 'Dark'
 		for time in exptime:
+			darktarget['exptime'] = time
 			for x in range(num):
 				filename = 'error'
 				while filename == 'error':
 					self.logger.info(telescope_name + 'Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(time) + ')')
 					filename = self.takeImage(time,'V',objectName,telescope_num)
+					#TODO for new takeimage
+#					filename = self.takeImage(darktarget,telescope_num)
 		
 	#doSkyFlat for specified telescope
 	def doSkyFlat(self,filters,morning=False,num=11,telescope_num=0):
