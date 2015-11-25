@@ -144,8 +144,7 @@ class server:
                 self.expmeter_com = com.com('expmeter',self.base_directory,self.night,configfile= '/config/com.ini')
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night,configfile= '/config/com.ini')
                 self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
-                self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)
-                
+                self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)              
                 self.i2stage_connect()
 
 #==================server functions===================#
