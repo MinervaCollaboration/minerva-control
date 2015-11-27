@@ -302,7 +302,8 @@ class control:
                 return
 
         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
-	def telescope_acquireTarget(self,ra,dec,tele_list = 0):
+#	def telescope_acquireTarget(self,ra,dec,tele_list = 0):
+	def telescope_acquireTarget(self,target,tele_list = 0):
                 if type(tele_list) is int:
 			if (tele_list < 1) or (tele_list > len(self.telescopes)):
 				tele_list = [x+1 for x in range(len(self.telescopes))]
@@ -313,7 +314,8 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
-                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].acquireTarget,args=(ra,dec))
+				#S i think this might act up due to being a dictionary, but well see. 
+                                threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].acquireTarget,args=(target))
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -1378,8 +1380,8 @@ class control:
 	#take one image based on parameter given, return name of the image, return 'error' if fail
 	#image is saved on remote computer's data directory set by imager.set_data_path()
 	#TODO camera_num is actually telescope_num
-	def takeImage(self, exptime, filterInd, objname, telescope_num=0):
-#	def takeImage(self, target, telescope_num=0):
+#	def takeImage(self, exptime, filterInd, objname, telescope_num=0):
+	def takeImage(self, target, telescope_num=0):
 		telescope_name = 'T' + str(telescope_num) +': '
 		#check camera number is valid
 		if telescope_num > len(self.telescopes) or telescope_num < 0:
@@ -1399,10 +1401,11 @@ class control:
 		#S assign the camera.
 		imager = self.cameras[telescope_num-1]
 		self.logger.info(telescope_name + 'starting imaging thread')
+
 		#start imaging process in a different thread
 		#TODO for new takeimage
-#		imaging_thread = threading.Thread(target = imager.take_image, args = (target['exptime'], filterInd, target['name']))
-		imaging_thread = threading.Thread(target = imager.take_image, args = (exptime, filterInd, objname))
+		imaging_thread = threading.Thread(target = imager.take_image, args = (target['exptime'], target['filter'], target['name']))
+#		imaging_thread = threading.Thread(target = imager.take_image, args = (exptime, filterInd, objname))
 		imaging_thread.start()
 		
 		#Prepare header while waiting for imager to finish taking image
@@ -1411,10 +1414,17 @@ class control:
 		domeStatus = dome.status()
 
 		#TODO for new takeimage		
-#		telra = str(target['ra']*15.)
-#		teldec = str(target['dec']
-		telra = str(self.ten(telescopeStatus.mount.ra_2000)*15.0)
-		teldec = str(self.ten(telescopeStatus.mount.dec_2000))
+		#S try and get the target ra and dec from the dict, but if not default to the telescope status values.
+		#S this should only hopefully happen for darks, biases, and flats, but we'll see. as autofocus
+		try:
+			telra = str(target['ra']*15.)
+			teldec = str(target['dec'])
+		except:
+			telra = str(self.ten(telescopeStatus.mount.ra_2000)*15.0)
+			teldec = str(self.ten(telescopeStatus.mount.dec_2000))
+
+#		telra = str(self.ten(telescopeStatus.mount.ra_2000)*15.0)
+#		teldec = str(self.ten(telescopeStatus.mount.dec_2000))
 
 		# TODO: why doesn't this work? look at this closer later...
 		# this gives it in current epoch; translate to J2000
@@ -1448,7 +1458,7 @@ class control:
 		f['SITEALT'] = (str(self.site.obs.elevation),"Site Altitude (m)")
 		f['OBSERVER'] = ('MINERVA Robot',"Observer")
 		f['TELESCOP'] = "T" + str(telescope_num)
-		f['OBJECT'] = objname
+		f['OBJECT'] = target['name'] #objname
 		f['APTDIA'] = "700"
 		f['APTAREA'] = "490000"
 		gitNum = "100" #for testing purpose
@@ -1592,7 +1602,9 @@ class control:
 		if imager.write_header(header):
 			self.logger.info(telescope_name + 'finish writing image header')
 
-			if objname <> "Bias" and objname <> "Dark" and objname <> "SkyFlat" and objname.lower() <> "autofocus": 
+			#S if the objname is not in the list of calibration or test names
+			no_pa_list = ['bias','dark','skyflat','autofocus','testbias','test']
+			if target['name'].lower() not in no_pa_list:
 				# run astrometry asynchronously
 				self.logger.info(telescope_name + "Running astrometry to find PA on " + imager.image_name())
 				dataPath = '/Data/t' + str(telescope_num) + '/' + self.site.night + '/'
@@ -1614,9 +1626,9 @@ class control:
 			filename = 'error'
 			while filename =='error':
 				self.logger.info(telescope_name + 'Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + '0' + ')')
-				filename = self.takeImage(0,'V',objectName,telescope_num)
+				#filename = self.takeImage(0,'V',objectName,telescope_num)
 				#TODO for new takeimage
-#				filename = self.takeImage(biastarget,telescope_num)
+				filename = self.takeImage(biastarget,telescope_num)
 			
 	def doDark(self,num=11, exptime=60,telescope_num=0):
 		#S Need to build dictionary to get up to date with new takeimage
@@ -1632,12 +1644,16 @@ class control:
 				filename = 'error'
 				while filename == 'error':
 					self.logger.info(telescope_name + 'Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(time) + ')')
-					filename = self.takeImage(time,'V',objectName,telescope_num)
+					#filename = self.takeImage(time,'V',objectName,telescope_num)
 					#TODO for new takeimage
-#					filename = self.takeImage(darktarget,telescope_num)
+					filename = self.takeImage(darktarget,telescope_num)
 		
 	#doSkyFlat for specified telescope
 	def doSkyFlat(self,filters,morning=False,num=11,telescope_num=0):
+		#S an empty target dictionary for taking images
+		target = {}
+		#S all images named SkyFlat
+		target['name']='SkyFlat'
 
 		telescope_name = 'T' + str(telescope_num) +': '
 		if telescope_num < 1 or telescope_num > len(self.telescopes):
@@ -1729,6 +1745,8 @@ class control:
 					Az = self.site.sunaz() + 180.0 # degrees
 					if Az > 360.0: Az = Az - 360.0
 					
+					#S set the target ra and dec
+					
 					# keep slewing to the optimally flat part of the sky (dithers too)
 					# DeltaPos is here to check if we're within DeltaPosLimit of the target pos.
 					DeltaPos = 90.
@@ -1751,9 +1769,13 @@ class control:
 						telescopeStatus = telescope.getStatus()
 						ActualAz = float(telescopeStatus.mount.azm_radian)
 						ActualAlt = float(telescopeStatus.mount.alt_radian)
-						DeltaPos = math.acos( math.sin(ActualAlt)*math.sin(Alt*math.pi/180.0)+math.cos(ActualAlt)*math.cos(Alt*math.pi/180.0)*math.cos(ActualAz-Az*math.pi/180.0) )*(180./math.pi)
+						DeltaPos = math.acos( math.sin(ActualAlt)*math.sin(Alt*math.pi/180.0)+math.cos(ActualAlt)*math.cos(Alt*math.pi/180.0)\
+									      *math.cos(ActualAz-Az*math.pi/180.0) )*(180./math.pi)
 						if DeltaPos > DeltaPosLimit:
-							self.logger.error(telescope_name + "Telescope reports it is " + str(DeltaPos) + " degrees away from the target postion; beginning telescope recovery (ActualAlt=" + str(ActualAlt*180.0/math.pi) + ", Requested Alt=" + str(Alt) + ", (ActualAz=" + str(ActualAz*180.0/math.pi) + ", Requested Az=" + str(Az))
+							self.logger.error(telescope_name + "Telescope reports it is " + str(DeltaPos)\
+										  + " degrees away from the target postion; beginning telescope recovery (ActualAlt="\
+										  + str(ActualAlt*180.0/math.pi) + ", Requested Alt=" + str(Alt) + ", (ActualAz="\
+										  + str(ActualAz*180.0/math.pi) + ", Requested Az=" + str(Az))
 							telescope.recover()
 							SlewRepeat += 1
 						if SlewRepeat>10:
@@ -1762,11 +1784,19 @@ class control:
 								
 					# Take flat fields
 					filename = 'error'
-					while filename == 'error': filename = self.takeImage(exptime, filterInd, 'SkyFlat',telescope_num)
+					#S Set the filter name to the current filter
+					target['filter']=filterInd
+					#S update/get the exposure time
+					target['exptime'] = exptime
+					#while filename == 'error': filename = self.takeImage(exptime, filterInd, 'SkyFlat',telescope_num)
+					#S new target dict implementation
+					while filename == 'error': filename = self.takeImage(target,telescope_num)
 					
 					# determine the mode of the image (mode requires scipy, use mean for now...)
 					mode = imager.getMode()
-					self.logger.info(telescope_name + "image " + str(i+1) + " of " + str(num) + " in filter " + filterInd + "; " + filename + ": mode = " + str(mode) + " exptime = " + str(exptime) + " sunalt = " + str(self.site.sunalt()))
+					self.logger.info(telescope_name + "image " + str(i+1) + " of " + str(num) + " in filter "\
+								 + filterInd + "; " + filename + ": mode = " + str(mode) + " exptime = " \
+								 + str(exptime) + " sunalt = " + str(self.site.sunalt()))
 
 					# if way too many counts, it can roll over and look dark
 					supersaturated = imager.isSuperSaturated()
@@ -1779,7 +1809,8 @@ class control:
 						imager.remove()
 						i-=1
 						if exptime == minExpTime and morning:
-							self.logger.info(telescope_name + "Exposure time at minimum, image saturated, and getting brighter; skipping remaining exposures in filter " + filterInd)
+							self.logger.info(telescope_name + "Exposure time at minimum, image saturated, and "\
+										 + "getting brighter; skipping remaining exposures in filter " + filterInd)
 							break
 							
 					elif mode < 6.0*biasLevel:
@@ -1790,7 +1821,8 @@ class control:
 						i -= 1
 
 						if exptime == maxExpTime and not morning:
-							self.logger.info(telescope_name + "Exposure time at maximum, not enough counts, and getting darker; skipping remaining exposures in filter " + filterInd)
+							self.logger.info(telescope_name + "Exposure time at maximum, not enough counts, and "\
+										 + "getting darker; skipping remaining exposures in filter " + filterInd)
 							break
 					if morning and self.site.sunalt() > maxSunAlt:
 						self.logger.info(telescope_name + "Sun rising and greater than maxsunalt; skipping")
@@ -1978,6 +2010,10 @@ class control:
 
 		reference = None
 
+		#S going to make a copy of the master target dict to modify for input to takeImage
+		#S need to do so as we have lists of filters, exptimes, etc.
+		temp_target = target.copy()
+
 		# take one in each band, then loop over number (e.g., B,V,R,B,V,R,B,V,R)
 		if target['cycleFilter']:
 			for i in range(max(target['num'])):
@@ -1995,6 +2031,11 @@ class control:
 							telescope.acquireTarget(target)
 						if datetime.datetime.utcnow() > target['endtime']: return
 						if i < target['num'][j]:
+
+							#S update the temp_target dict with filters, exptimes
+							temp_target['filter'] = target['filter'][j]
+							temp_target['exptime'] = target['exptime'][j]
+
 							#S make sure the telescope is in position
 							if not telescope.inPosition(m3port='1'):
 								self.logger.debug('T'+str(telescope_num)+': not in position, reacquiring target')
@@ -2003,7 +2044,10 @@ class control:
 							self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " \
 											 + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' \
 											 + target['filter'][j] + ' band') 
-							filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num)
+
+							#S new target dict takeImage
+							filename = self.takeImage(temp_target,telescope_num)
+							#filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num)
 
 							if target['selfguide'] and filename <> 'error': reference = self.guide('/Data/t' + str(telescope_num) + '/'\
 																       + self.site.night + '/' + filename,reference)
@@ -2028,6 +2072,10 @@ class control:
 							telescope.acquireTarget(target)
 						if datetime.datetime.utcnow() > target['endtime']: return
 
+						#S update the temp_target dict with filters, exptimes
+						temp_target['filter'] = target['filter'][j]
+						temp_target['exptime'] = target['exptime'][j]
+
 						#S want to make sure we are on target for the image
 						if not telescope.inPosition(m3port='1'):
 							self.logger.debug('T'+str(telescope_num)+': not in position, reacquiring target')
@@ -2036,7 +2084,10 @@ class control:
 						self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " \
 									 + str(target['exptime'][j]) + ' second exposure of ' + target['name'] \
 									 + ' in the ' + target['filter'][j] + ' band') 
-						filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num)
+
+						#S new target dict takeImage
+						filename = self.takeImage(temp_target,telescope_num)
+						#filename = self.takeImage(target['exptime'][j], target['filter'][j], target['name'],telescope_num)
 						#S guide that thing
 						if target['selfguide'] and filename <> 'error': reference = self.guide('/Data/t'+str(telescope_num)+'/'+self.site.night\
 															       + '/' + filename,reference)
@@ -2621,6 +2672,10 @@ class control:
 	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
 	#S stuff we need to worry about
 	def autofocus_step(self,telescope_num,newfocus,af_exptime,af_filter="V"):
+		af_target={}
+		af_target['name'] = 'autofocus'
+		af_target['exptime'] = af_exptime
+		af_target['filter'] = af_filter
 		telescope = minerva.telescopes[telescope_num-1]
 		status = telescope.getStatus()
 		if newfocus <> status.focuser.position:
@@ -2635,7 +2690,8 @@ class control:
 		#S Set the name for the autofocus image
 		af_name = 'autofocus'
 		#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
-		imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_num=telescope_number)
+		#imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_num=telescope_number)
+		imagename = self.takeImage(af_target, telescope_num=telescope_num)
 		imagenum = (imagename.split('.')[4])
 		#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 		try: 
@@ -2875,6 +2931,11 @@ class control:
 
 	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V"):
 
+		#S define aftarget dict for takeImage
+		af_target['name'] = 'autofocus'
+		af_target['exptime'] = af_axptime
+		af_target['filter'] = af_filter
+
 		#S get the telescope we plan on working with
 		telescope = self.telescopes[telescope_number-1]
 		#S our data path
@@ -2940,7 +3001,9 @@ class control:
 			#S Set the name for the autofocus image
 			af_name = 'autofocus'
 			#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
-			imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_num=telescope_number)
+			imagename = self.takeImage(af_target,telescope_num=telescope_number)
+			#imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_num=telescope_number)
+
 			imagenum_list.append(imagename.split('.')[4])
 			#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 			try: 
