@@ -17,6 +17,7 @@ import re
 import collections
 import subprocess
 import socket
+import numpy as np
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
 
@@ -28,7 +29,6 @@ import imager
 import spectrograph
 import pdu
 import mail
-import ephem
 from get_all_centroids import *
 import segments
 import newauto 
@@ -586,7 +586,7 @@ class control:
 		    ' --radius ' + str(radius) +\
 		    ' --quad-size-min 0.4' + \
 		    ' --quad-size-max 0.6' + \
-		    ' --cpulimit 600' + \
+		    ' --cpulimit 30' + \
 		    ' --no-verify' + \
 		    ' --crpix-center' + \
 		    ' --no-fits2fits' + \
@@ -745,6 +745,56 @@ class control:
 				os.remove(baseName + ext)
 				
 		return PA
+
+
+	#S functions for the jnow to j2000 conversions
+	def hours_to_rads(self,hours):
+		return hours*15.*np.pi/180.
+	def degs_to_rads(self,degrees):
+		return degrees*np.pi/180.
+	def rads_to_hours(self,rads):
+		return rads*180./np.pi/15.
+	def rads_to_degs(self,rads):
+		return rads*180./np.pi
+
+	def jnow_to_j2000_pyephem(self, ra_rads, dec_rads):
+		"""
+		A bastardized version from Kevin, edited by Sam. The telescope 
+		status has them already in degrees. I'm keeping the related
+		functions just in case for future use, etc.
+
+		Given apparent (Jnow) coordinates (ra in hours, dec in degrees),
+		return J2000 coordinates as a tuple:
+		(ra_hours, dec_degs)
+		
+		Uses PyEphem to do the calculation
+		"""
+
+		star = ephem.FixedBody()
+#		star._ra = self.hours_to_rads(ra_app_hours)
+		star._ra = ra_rads
+#		star._dec = self.degs_to_rads(dec_app_degs)
+		star._dec = dec_rads
+
+		star._epoch = ephem.now()
+		star.compute(when=ephem.J2000)
+		return self.rads_to_hours(star.a_ra), self.rads_to_degs(star.a_dec)
+
+	def j2000_to_jnow_pyephem(self, ra_j2000_hours, dec_j2000_degs):
+		"""
+		Given J2000 coordinates (ra in hours, dec in degrees),
+		return Jnow coordinates as a tuple:
+		(ra_hours, dec_degs)
+		
+		Uses PyEphem to do the calculation
+		"""
+		
+		star = ephem.FixedBody()
+		star._ra = self.hours_to_rads(ra_j2000_hours)
+		star._dec = self.degs_to_rads(dec_j2000_degs)
+		star.compute(epoch=ephem.now())
+		return self.rads_to_hours(star.ra), self.rads_to_degs(star.dec)
+
 
 	def getstars(self,imageName):
     
@@ -1420,22 +1470,11 @@ class control:
 			telra = str(target['ra']*15.)
 			teldec = str(target['dec'])
 		except:
-			telra = str(self.ten(telescopeStatus.mount.ra_2000)*15.0)
-			teldec = str(self.ten(telescopeStatus.mount.dec_2000))
+			#S get current ra and dec from telescope mount. this is reported in the status as radians, which we use for the 
+			#S conversion from jnow to j2000 coords. has been tested and checked for a few cases. see our bastarized functinos from
+			#S Kevin at PlaneWave for the conversion using pyephem.
+			telra, teldec = self.jnow_to_j2000_pyephem(float(telescopeStatus.mount.ra_radian),float(telescopeStatus.mount.dec_radian))
 
-#		telra = str(self.ten(telescopeStatus.mount.ra_2000)*15.0)
-#		teldec = str(self.ten(telescopeStatus.mount.dec_2000))
-
-		# TODO: why doesn't this work? look at this closer later...
-		# this gives it in current epoch; translate to J2000
-		#ranow = str(self.ten(telescopeStatus.mount.ra_target)*15.0)
-		#decnow = self.ten(telescopeStatus.mount.dec_target)
-		#if decnow > 90.0: decnow = decnow-360 # fixes bug in PWI
-		#decnow = str(decnow)
-		#eqnow = ephem.Equatorial(str(float(ranow)/15.0),decnow,epoch=ephem.now())
-		#eq2000 = ephem.Equatorial(eqnow,epoch=ephem.J2000)
-		#ra = str(float(repr(ephem.degrees(eq2000.ra)))*180.0/math.pi)
-		#dec = str(float(repr(ephem.degrees(eq2000.dec)))*180.0/math.pi)
 		ra = telra 
 		dec = teldec
 
