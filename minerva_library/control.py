@@ -2969,10 +2969,10 @@ class control:
 
 
 	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V"):
-
+		af_target = {}
 		#S define aftarget dict for takeImage
 		af_target['name'] = 'autofocus'
-		af_target['exptime'] = af_axptime
+		af_target['exptime'] = af_exptime
 		af_target['filter'] = af_filter
 
 		#S get the telescope we plan on working with
