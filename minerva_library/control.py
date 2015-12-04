@@ -1164,10 +1164,7 @@ class control:
                 self.logger.info('Equipment check passed, continuing with '+objname+' exposure.')
                 return
                         
-                                
-                        
-                        
-                        
+                 
                                 
 
 	
