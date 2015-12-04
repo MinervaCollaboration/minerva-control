@@ -70,8 +70,7 @@ class control:
 
                         self.site = env.site('site_mtHopkins.ini',self.base_directory)
 
-#                        for i in range(2):
-                        for i in range(1):
+                        for i in range(2):
 				try:
 					aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
 					if aqawanob.heartbeat(): self.domes.append(aqawanob)
@@ -80,8 +79,7 @@ class control:
 					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 
 			# initialize the 4 telescopes
-#			for i in range(4):
-			for i in range(2):
+			for i in range(4):
 				try: 
 					self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
 					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
