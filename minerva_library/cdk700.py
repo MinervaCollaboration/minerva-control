@@ -608,9 +608,10 @@ class CDK700:
 					self.logger.error('T%s: Focuser moving after is said it was done'%(self.num))
 
 			
-		if telescopeStatus.mount.on_target:
+		if telescopeStatus.mount.on_target and elapsedTime<timeout:
 			self.logger.info('T' + self.num + ': Telescope finished slew')
 			return True
+		#S Thought we needed to check for elapsed time, but we shouldn't be ontarget, so no need to check?
 		else:
 			self.logger.error('T' + self.num + ': Telescope failed to slew')
 			return False

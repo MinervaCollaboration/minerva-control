@@ -70,7 +70,8 @@ class control:
 
                         self.site = env.site('site_mtHopkins.ini',self.base_directory)
 
-                        for i in range(2):
+#                        for i in range(2):
+                        for i in range(1):
 				try:
 					aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
 					if aqawanob.heartbeat(): self.domes.append(aqawanob)
@@ -79,7 +80,8 @@ class control:
 					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 
 			# initialize the 4 telescopes
-			for i in range(4):
+#			for i in range(4):
+			for i in range(2):
 				try: 
 					self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
 					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
@@ -2427,11 +2429,15 @@ class control:
 						target['starttime'] = self.site.NautTwilEnd()
 
 					# compute the rise/set times of the target
+					#S I think something with coordinates is screwing us up here
+					#S We are still going below 20 degrees.
 					self.site.obs.horizon = '21.0'
 					body = ephem.FixedBody()
 					body._ra = str(target['ra'])
 					body._dec = str(target['dec'])
-					body._epoch = '2000.0'
+					#S using UTC now for the epoch, shouldn't make a siginificant 
+					#S difference from using local time
+					body._epoch = datetime.datetime.utcnow()
 					body.compute()
 
 					try:
