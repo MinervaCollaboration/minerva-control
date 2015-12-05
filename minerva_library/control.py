@@ -84,7 +84,7 @@ class control:
 					self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
 					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
 					self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
-				except: 
+				except:
 					self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
 
 
