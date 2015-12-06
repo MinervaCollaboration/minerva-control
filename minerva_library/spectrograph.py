@@ -8,6 +8,7 @@ import threading
 import datetime
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
+import pdu
 
 from si.client import SIClient
 from si.imager import Imager

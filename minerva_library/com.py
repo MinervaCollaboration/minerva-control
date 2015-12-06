@@ -16,10 +16,10 @@ class com:
         #S Parses configfile into List based on id
         #? Not sure if this is how id is working, but makes sense. Need to look
         #? into *.ini files more. 
-        configObj = ConfigObj(self.base_directory+configfile)
+        configObj = ConfigObj(configfile)
 
         #S Get the corresponding item/object (Typer??) from list of configObj,
-        #S throws if not in configfile, printing to stdout. No log it 
+        #S throws if not in configfile, printing to stdout. No log it
         try:
             config = configObj[self.id]
         except:
