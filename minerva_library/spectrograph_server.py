@@ -917,13 +917,9 @@ if __name__ == '__main__':
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
 
-
-        print test_server.get_pump_pressure()	
-        print test_server.get_spec_pressure()
-        ipdb.set_trace()
 	
-	thread = threading.Thread(target=test_server.logexpmeter)
-	thread.start()
+	#thread = threading.Thread(target=test_server.logexpmeter)
+	#thread.start()
 	
 	#	test_server.logexpmeter()
 #	ipdb.set_trace()
