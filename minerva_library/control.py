@@ -37,7 +37,7 @@ class control:
 	
 #============Initialize class===============#
 	#S The standard init
-	def __init__(self,config,base):
+	def __init__(self,config,base):#telescope_list=0,dome_control=1):
                 #S This config file literally only contains the logger name I think.
 		self.config_file = config
 		self.base_directory = base
@@ -47,7 +47,7 @@ class control:
 		self.setup_logger()
 
 		#S See below, lots of new objects created here. 
-		self.create_class_objects()
+		self.create_class_objects()#telescope_list)
 		
 		self.logger_lock = threading.Lock()
 		self.setup_loggers()
@@ -1654,7 +1654,11 @@ class control:
 	def doBias(self,num=11,telescope_num=0,objectName = 'Bias'):
 		#S Need to build dictionary to get up to date with new takeimage
 		biastarget = {}
-		biastarget['name'] = 'Bias'
+		#S just ot chekc whether we canted to call the bias by another name.
+		if objectName == 'Bias':
+			biastarget['name'] = 'Bias'
+		else:
+			biastarget['name'] = objectName
 		biastarget['filter'] = 'V'
 		biastarget['exptime'] = 0
 		telescope_name = 'T' + str(telescope_num) +': '
@@ -2324,7 +2328,6 @@ class control:
 #		self.telescopes[telescope_num-1].killPWI()
 		self.telescopes[telescope_num-1].initialize(tracking=False)
 		self.telescopes[telescope_num-1].home()
-#		self.telescopes[telescope_num-1].initialize_autofocus()
 
 		#S Initialize, home, and park telescope. 
 		#S Enable mount and connect to motors.

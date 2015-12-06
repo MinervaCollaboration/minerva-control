@@ -618,7 +618,7 @@ class server:
 	###
 	# THAT AND FLAT LAMP FUNCTIONS, turn_on, turn_off, time_tracker, time_tracker_check
 	###
-
+	#S these are obsolete from the NI block
         #S Functions for toggling the ThAr lamp
         def thar_turn_on(self):
                 self.dynapower1.on('tharLamp')

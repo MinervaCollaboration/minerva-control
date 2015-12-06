@@ -49,13 +49,13 @@ class vacuum:
         timeout = 1200.0
 
         # close the vent valve
-        pdu.off('ventvalve')
+        self.benchpdu.off('ventvalve')
         
         # close the pump valve
-        pdu.off('pumpvalve')
+        self.benchpdu.off('pumpvalve')
 
         # turn off the pump
-        pdu.off('pump')
+        self.benchpdu.off('pump')
 
         if self.specgauge.pressure() < 500.0:
             mail.send("The spectrograph is pumped and attempting to vent!","Manual login required to continue",level='Debug')
@@ -65,7 +65,7 @@ class vacuum:
             ipdb.set_trace()            
 
         # open the vent valve
-        pdu.on('ventvalve')
+        self.benchpdu.on('ventvalve')
 
         t0 = datetime.datetime.utcnow()
         elapsedtime = 0.0
@@ -96,13 +96,13 @@ class vacuum:
             ipdb.set_trace()
 
         # close the vent valve
-        pdu.off('ventvalve')
+        self.benchpdu.off('ventvalve')
 
         # close the pump valve
-        pdu.off('pumpvalve')
+        self.benchpdu.off('pumpvalve')
 
         # turn on the pump
-        pdu.on('pump')
+        self.benchpdu.on('pump')
 
         # wait until the pump gauge reads < 100 ubar
         t0 = datetime.datetime.utcnow()
@@ -117,7 +117,7 @@ class vacuum:
                 return          
                 
         # open the pump valve
-        pdu.on('pumpvalve')
+        self.benchpdu.on('pumpvalve')
         self.logger.info("Pumping down the spectrograph")
 
         # TODO: wait for pressure to go below some value??
@@ -127,13 +127,13 @@ class vacuum:
     def hold(self):
 
         # make sure the vent valve is closed
-        pdu.off('ventvalve')
+        self.benchpdu.off('ventvalve')
 
         # close the pump valve
-        pdu.off('pumpvalve')
+        self.benchpdu.off('pumpvalve')
 
         # turn off the pump
-        pdu.off('pump')
+        self.benchpdu.off('pump')
 
         
         
