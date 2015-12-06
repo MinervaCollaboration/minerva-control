@@ -12,7 +12,7 @@ import pdu
 
 from si.client import SIClient
 from si.imager import Imager
-from minerva_library import dynapower
+import dynapower
 import ipdb
 
 # spectrograph control class, control all spectrograph hardware
@@ -439,7 +439,7 @@ class spectrograph:
 		while self.get_spec_pressure() < 500:
 			elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds()
 			self.logger.info('Waiting for spectrograph to vent (Pressure = ' + str(self.get_spec_pressure())\
-						 + '; elapsed time = ' str(elapsedtime) + ' seconds)')
+						 + '; elapsed time = '+ str(elapsedtime) + ' seconds)')
 
 			# TODO: monitor pressure during venting and create smarter error condition                                                                                         
 			if elapsedtime < timeout:
@@ -477,7 +477,7 @@ class spectrograph:
 		elapsedtime = 0.0
 		while self.get_pump_pressure() > 0.1:
 			elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds()
-			self.logger.info('Waiting for tube to pump down (Pressure = ' + str(pumpgauge.pressure()) + '; elapsed time = ' str(elapsedtime) + ' seconds)')
+			self.logger.info('Waiting for tube to pump down (Pressure = ' + str(pumpgauge.pressure()) + '; elapsed time = '+ str(elapsedtime) + ' seconds)')
 			if elapsedtime < timeout:
 				time.sleep(5)
 			else:
