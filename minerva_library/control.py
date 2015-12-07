@@ -809,7 +809,7 @@ class control:
 
 		return cc
 
-	def fauguide(self,star=star):
+	def fauguide(self,fau,star=star):
 
 		filename = fau.take_image(5)
 		self.logger.info(telescope_name + "Extracting stars for " + filename)
@@ -819,7 +819,8 @@ class control:
 			self.logger.error(telescope_name + "No stars in frame")
 			return
 
-		# assume brightest star is our target (will have exceptions for double stars)
+		# Assumes brightest star is our target star!
+		# *** will have exceptions that likely need to be handled on a case by case basis ***
 		
 		# proportional servo gain (apply this fraction of the offset)
 		gain = 0.66
@@ -833,10 +834,10 @@ class control:
 		PA = math.acos(arg) # position angle in radians
 		self.logger.info(telescope_name + "Image PA=" + str(PA))
 
-		dx = fiber[0] - stars[0][0]
-		dy = fiber[1] - stars[0][1]
+		dx = fau.fiber[0] - stars[0][0]
+		dy = fau.fiber[1] - stars[0][1]
 
-		# adjust RA/Dec (need to calibrate PA)
+		# adjust RA/Dec (PA needs to be calibrated)
 		deltaRA = -(dx*math.cos(PA) - dy*math.sin(PA))*math.cos(dec)*platescale*gain
 		deltaDec = (dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
 		self.logger.info(telescope_name + "Adjusting the RA,Dec by " + str(deltaRA) + "," + str(deltaDec))

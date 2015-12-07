@@ -746,10 +746,7 @@ class CDK700:
 				# load the pointing model
 				modelfile = telescope.modeldir + telescope.model[m3port]
 				if os.path.isfile(modelfile):
-					shutil.copyfile(modelfile, telescope.modeldir + 'Default_Mount_Model.PXP')
-					# restart PWI
-					self.shutdown()
-					self.restartPWI()
+					self.mountSetPointingModel(modelfile)
 				else:
 					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
 				telescopeStatus = self.m3SelectPort(port=m3port)
