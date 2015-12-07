@@ -809,6 +809,40 @@ class control:
 
 		return cc
 
+	def fauguide(self,star=star):
+
+		filename = fau.take_image(5)
+		self.logger.info(telescope_name + "Extracting stars for " + filename)
+		self.getstars(filename)
+		stars = self.getstars(filename)
+		if len(stars[:,0]) ==  0:
+			self.logger.error(telescope_name + "No stars in frame")
+			return
+
+		# assume brightest star is our target (will have exceptions for double stars)
+		
+		# proportional servo gain (apply this fraction of the offset)
+		gain = 0.66
+
+		# get the platescale from the header
+		hdr = pyfits.getheader(filename)
+		platescale = float(hdr['PIXSCALE'])
+		dec = float(hdr['CRVAL2'])*math.pi/180.0 # declination in radians
+
+		arg = max(min(-float(hdr['CD1_1'])*3600.0/platescale,1.0),-1.0)
+		PA = math.acos(arg) # position angle in radians
+		self.logger.info(telescope_name + "Image PA=" + str(PA))
+
+		dx = fiber[0] - stars[0][0]
+		dy = fiber[1] - stars[0][1]
+
+		# adjust RA/Dec (need to calibrate PA)
+		deltaRA = -(dx*math.cos(PA) - dy*math.sin(PA))*math.cos(dec)*platescale*gain
+		deltaDec = (dx*math.sin(PA) + dy*math.cos(PA))*platescale*gain
+		self.logger.info(telescope_name + "Adjusting the RA,Dec by " + str(deltaRA) + "," + str(deltaDec))
+		telescope.mountOffsetRaDec(deltaRA,deltaDec)
+
+
 	def guide(self,filename, reference):
 
 		threshhold = 60.0 # maximum offset in X or Y (larger corrections will be ignored)
@@ -1775,7 +1809,7 @@ class control:
 			if filterInd in filters and filterInd in imager.filters:
 
 				i = 0
-				NotFirstImage = 0
+				firstImage = True
 				#S While the number of flats in the filter is less than required AND the dome is still open
 				#TODO needs testing, watch out for this.
 				while i < num and dome.isOpen:
@@ -1789,17 +1823,17 @@ class control:
 					
 					# keep slewing to the optimally flat part of the sky (dithers too)
 					# DeltaPos is here to check if we're within DeltaPosLimit of the target pos.
-					DeltaPos = 90.
+					DeltaPos = 90.0
 					DeltaPosLimit = 1.0
 					SlewRepeat = 0
 					while DeltaPos > DeltaPosLimit:
 						self.logger.info(telescope_name + 'Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
 						telescope.mountGotoAltAz(Alt,Az)
 
-						if NotFirstImage == 0:
-							if telescope.inPosition(m3port='1'):
+						if not firstImage:
+							if telescope.inPosition(m3port=telescope.port['IMAGER']):
 								self.logger.info(telescope_name + "Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
-								NotFirstImage = 1
+								firstImage = False
 							else:
 								self.logger.error(telescope_name + "Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
 								# now what?  
@@ -2015,7 +2049,7 @@ class control:
 #			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			try: telescope.acquireTarget(target,pa=pa)
 			except: pass
-			telescope.inPosition(m3port='1')
+			telescope.inPosition(m3port=telescope.port['IMAGER'])
 			telescope.autoFocus()
 			return
 		
@@ -2024,7 +2058,7 @@ class control:
 #			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			try: telescope.acquireTarget(target,pa=pa)
 			except: pass
-			telescope.inPosition(m3port='1')
+			telescope.inPosition(m3port=telescope.port['IMAGER'])
 			try:
 				self.autofocus(telescope_num)
 			except:
@@ -2077,9 +2111,8 @@ class control:
 							temp_target['exptime'] = target['exptime'][j]
 
 							#S make sure the telescope is in position
-							if not telescope.inPosition(m3port='1'):
-								self.logger.debug('T'+str(telescope_num)+': not in position, reacquiring target')
-#								telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
+							if not telescope.inPosition(m3port=telescope.port['IMAGER']):
+								self.logger.error('T'+str(telescope_num)+': not in position, reacquiring target')
 								telescope.acquireTarget(target,pa=pa)
 							self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " \
 											 + str(target['exptime'][j]) + ' second exposure of ' + target['name'] + ' in the ' \
@@ -2117,9 +2150,8 @@ class control:
 						temp_target['exptime'] = target['exptime'][j]
 
 						#S want to make sure we are on target for the image
-						if not telescope.inPosition(m3port='1'):
+						if not telescope.inPosition(m3port=telescope.port['IMAGER']):
 							self.logger.debug('T'+str(telescope_num)+': not in position, reacquiring target')
-#							telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 							telescope.acquireTarget(target,pa=pa)
 						self.logger.info(telescope_name + 'Beginning ' + str(i+1) + " of " + str(target['num'][j]) + ": " \
 									 + str(target['exptime'][j]) + ' second exposure of ' + target['name'] \
@@ -2408,7 +2440,7 @@ class control:
 			self.logger.info(telescope_name + 'Beginning autofocus')
 #			self.telescope_intiailize(telescope_num)
 			#S this is here just to make sure we aren't moving
-			self.telescopes[telescope_num-1].inPosition(m3port='1')
+			self.telescopes[telescope_num-1].inPosition(m3port=telescopes[telescope_num-1].port['IMAGER'])
 #			self.telescope_autoFocus(telescope_num)
 			self.autofocus(telescope_num)
 
@@ -2714,7 +2746,7 @@ class control:
 	#S Small file will be needed for a few minor functions in the fitting process, etc
 	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
 	#S stuff we need to worry about
-	def autofocus_step(self,telescope_num,newfocus,af_exptime,af_filter="V"):
+	def autofocus_step(self,telescope_num,newfocus,af_exptime,af_filter="V",m3port='1'):
 		af_target={}
 		af_target['name'] = 'autofocus'
 		af_target['exptime'] = af_exptime
@@ -2729,7 +2761,7 @@ class control:
 			time.sleep(.5)
 
 		#S Make sure everythin is in position, namely that focuser has stopped moving
-		telescope.inPosition(m3port='1')
+		telescope.inPosition(m3port=m3port)
 		#S Set the name for the autofocus image
 		af_name = 'autofocus'
 		#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
@@ -2972,7 +3004,7 @@ class control:
 
 
 
-	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V"):
+	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",m3port='1'):
 		af_target = {}
 		#S define aftarget dict for takeImage
 		af_target['name'] = 'autofocus'
@@ -3039,7 +3071,7 @@ class control:
 				#S Needed a bit longer to recognize focuser movement, changed from 0.3
 				time.sleep(.5)
 			#S Make sure everythin is in position, namely that focuser has stopped moving
-			telescope.inPosition(m3port='1')
+			telescope.inPosition(m3port=m3port)
 			
 			#S Set the name for the autofocus image
 			af_name = 'autofocus'

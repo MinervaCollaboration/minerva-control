@@ -470,10 +470,13 @@ class spectrograph:
 	# close the valves, hold the pressure (during the night)
 	def hold(self):
 		# make sure the vent valve is closed
+		self.logger.info("Closing vent valve")
 		self.benchpdu.ventvalve.off()
 		# close the pump valve
+		self.logger.info("Closing pump valve")
 		self.benchpdu.pumpvalve.off()
 		# turn off the pump        
+		self.logger.info("Turning off pump")
 		self.benchpdu.pump.off()
 
 			

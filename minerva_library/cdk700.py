@@ -158,7 +158,7 @@ class CDK700:
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.HOST = config['Setup']['HOST']
-			self.PORT = config['Setup']['PORT']
+			self.NETWORKPORT = config['Setup']['NETWORKPORT']
 			self.imager = config['Setup']['IMAGER']
 			self.guider = config['Setup']['GUIDER']
 			self.fau = config['Setup']['FAU']
@@ -166,6 +166,9 @@ class CDK700:
 			self.pdu_config = config['Setup']['PDU']
 			self.telcom_client_config = config['Setup']['TELCOM']
 			self.nfailed = 0
+			self.port = config['PORT']
+			self.modeldir = config['Setup']['MODELDIR']
+			self.model = config['MODEL']
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
@@ -216,7 +219,7 @@ class CDK700:
 		Note that spaces have been URL-encoded to "+" characters.
 		"""
 
-		url = "http://" + self.HOST + ":" + str(self.PORT) + "/?"
+		url = "http://" + self.HOST + ":" + str(self.NETWORKPORT) + "/?"
 		url = url + urllib.urlencode(kwargs.items())
 		return url
 
@@ -443,6 +446,16 @@ class CDK700:
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
 
+	def changeport(self,port):
+		status = self.getStatus
+		if status
+				# load the pointing model to the corresponding port
+		
+		
+
+
+
+
 	def recover(self):
 		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
 		try: self.shutdown()
@@ -521,13 +534,36 @@ class CDK700:
 			ipdb.set_trace()
 
 	def inPosition(self,m3port=None):
+
 		# Wait for telescope to complete motion
-		timeout = 360.0
 		start = datetime.datetime.utcnow()
+		timeout = 30.0
 		elapsedTime = 0
 		time.sleep(0.25) # needs time to start moving
 		telescopeStatus = self.getStatus()
+
+		#S want to make sure we are at the right port before mount, focuser, rotator slew.
+		#S If an allowable port is specified
+		if (str(m3port)=='1') or (str(m3port)=='2'):
+			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
+			while telescopeStatus.m3.port != str(m3port) and elapsedTime < timeout:
+				time.sleep(0.5)
+				#S This returns a status xml, so sending it on repeat shouldnt matter
+				telescopeStatus = self.getStatus()
+				#S Need to track elapsed time.
+				elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+				changedPort = True
+			if elapsedTime > timeout: 
+				self.logger.error('T%s: Failed to select correct M3 port (%s)'%(self.num,m3port))
+				return False
+				
+		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
+		else:
+			self.logger.info('T%s: No M3 port specified or bad, using current port(%s)'%(self.num,telescopeStatus.m3.port))
+
+
 		self.logger.info('T' + self.num + ': Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving)
+		timeout = 60.0
 		while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout:
 			time.sleep(0.1)
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
@@ -564,25 +600,31 @@ class CDK700:
 				self.mountTrackingOn()
 				self.logger.info('T%s: Tracking was off, turned tracking on.'%(self.num))
 #				self.logger.info('T%s: Moving, but because tracking is OFF. Assuming in position'%(self.num))
+		if elapsedTime > timeout or telescopeStatus.mount.on_target == False:
+			self.logger.error('T%s: Failed to slew within timeout (%s)'%(self.num,timeout))
+			return False
 
-		#S want to make sure we are at the right port before focuser, rotator check.
-		#S If an allowable port is specified
-		if (str(m3port)=='1') or (str(m3port)=='2'):
-			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
-			while telescopeStatus.m3.port != str(m3port) and elapsedTime < timeout:
-				time.sleep(0.5)
-				#S This returns a status xml, so sending it on repeat shouldnt matter
-				telescopeStatus = self.m3SelectPort(port=m3port)
-				#S Need to track elapsed time.
-				elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-				
-		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
-		else:
-			self.logger.info('T%s: No M3 port specified or bad, using current port(%s)'%(self.num,telescopeStatus.m3.port))
+		self.logger.info('T' + self.num + ': Waiting for Focuser to finish slew; goto_complete = ' + telescopeStatus.focuser.goto_complete)
+		timeout = 120.0
+		while telescopeStatus.focuser.goto_complete == 'False' and elapsedTime < timeout:
+			time.sleep(0.5)
+			self.logger.debug('T%s: Focuser moving (%sum)'%(self.num,telescopeStatus.focuser.position))
+			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+			telescopeStatus = self.getStatus()
+			if telescopeStatus.focuser.goto_complete == 'True':
+				time.sleep(1)
+				telescopeStatus = self.getStatus()
+				if telescopeStatus.focuser.goto_complete == 'False':
+					self.logger.error('T%s: Focuser moving after is said it was done'%(self.num))
+		if elapsedTime > timeout:
+			self.logger.error('T%s: Failed to get to focus position within timeout (%s)'%(self.num,timeout))
+			return False
+
 
 		#S Make sure the derotating is on.
 		self.rotatorStartDerotating()
 		#S Let it finish derotating.
+		timeout = 360.0
 		self.logger.info('T' + self.num + ': Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
 		while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
 			time.sleep(0.5)
@@ -595,31 +637,19 @@ class CDK700:
 				if telescopeStatus.rotator.goto_complete == 'False':
 					self.logger.error('T' + self.num + ': Rotator moving after it said it was done')
 
-		self.logger.info('T' + self.num + ': Waiting for Focuser to finish slew; goto_complete = ' + telescopeStatus.focuser.goto_complete)
-		while telescopeStatus.focuser.goto_complete == 'False' and elapsedTime < timeout:
-			time.sleep(0.5)
-			self.logger.debug('T%s: Focuser moving (%sum)'%(self.num,telescopeStatus.focuser.position))
-			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-			telescopeStatus = self.getStatus()
-			if telescopeStatus.focuser.goto_complete == 'True':
-				time.sleep(1)
-				telescopeStatus = self.getStatus()
-				if telescopeStatus.focuser.goto_complete == 'False':
-					self.logger.error('T%s: Focuser moving after is said it was done'%(self.num))
-
-			
-		if telescopeStatus.mount.on_target and elapsedTime<timeout:
-			self.logger.info('T' + self.num + ': Telescope finished slew')
-			return True
-		#S Thought we needed to check for elapsed time, but we shouldn't be ontarget, so no need to check?
-		else:
-			self.logger.error('T' + self.num + ': Telescope failed to slew')
+		if elapsedTime > timeout:
+			self.logger.error('T%s: Failed to get to rotator position within timeout (%s)'%(self.num,timeout))
 			return False
+
+		# if it gets here, we are in position
+		return True
 
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
 	def acquireTarget(self,target,pa=None):
+
+		telescopeStatus = self.getStatus()
 
                 ## Constants
                 #S Was using julian date of observation, but this was only to have a more general approach to
@@ -684,7 +714,7 @@ class CDK700:
                 #S Unit vector from observer to object
                 rhat = r/np.linalg.norm(r)
 
-                #S rhat = [cos(dec)cos(ra),cos(dec)sin(ra),sin(dec)] for our corrected ra,dec
+                #S so we know rhat = [cos(dec)cos(ra),cos(dec)sin(ra),sin(dec)] for our corrected ra,dec
                 #S all we need to do is arcsin for declination, returns between [-pi/2,pi/2], converted to degrees
                 dec_corrected = np.degrees(np.arcsin(rhat[2]))
                 #S The tricky one is to get ra on [0,2pi], but this takes care of it. Converted to degrees in either case
@@ -697,8 +727,38 @@ class CDK700:
                         ra_corrected = np.degrees(ra_intermed + 2*np.pi)/15.
                 else:
                         ra_corrected = np.degrees(ra_intermed)/15.
-                	
 
+
+		if 'spectroscopy' in target.keys():
+			if target['spectroscopy']:
+				m3port = telescope.port['FAU']
+			else: 
+				m3port = telescope.port['IMAGER']
+		else:
+			m3port = telescope.port['IMAGER']
+
+		#S want to make sure we are at the right port before mount, focuser, rotator slew.
+		#S If an allowable port is specified
+		if (str(m3port)=='1') or (str(m3port)=='2'):
+			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
+			if telescopeStatus.m3.port != str(m3port):
+				self.logger.info('T%s: Port changed, loading pointing model and restarting PWI'%(self.num))
+				# load the pointing model
+				modelfile = telescope.modeldir + telescope.model[m3port]
+				if os.path.isfile(modelfile):
+					shutil.copyfile(modelfile, telescope.modeldir + 'Default_Mount_Model.PXP')
+					# restart PWI
+					self.shutdown()
+					self.restartPWI()
+				else:
+					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
+				telescopeStatus = self.m3SelectPort(port=m3port)
+				
+		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
+		else:
+			self.logger.error('T%s: Bad M3 port specified (%s); using current port(%s)'%(self.num,m3port,telescopeStatus.m3.port))
+
+                	
 		#S Initialize the telescope
                 self.initialize(tracking=True)
 
@@ -709,12 +769,12 @@ class CDK700:
 			self.logger.info('T' + self.num + ': Slewing rotator to PA=' + str(pa) + ' deg')
 			self.rotatorMove(pa)
 
-		if self.inPosition():
+		if self.inPosition(m3port=m3port):
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 			self.recover()
-			#XXX Something bad is going to happen here.
+			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			self.acquireTarget(target,pa=pa)
 			return
 
