@@ -219,6 +219,13 @@ class server:
 		except:
 			return 'fail'
 		
+	def exposeGuider(self,param):
+		try:
+			self.cam.GuiderExpose(float(param))
+			return 'success'
+		except:
+			return 'fail'
+
 	def expose(self,param):
 		try:
 			param = param.split()
@@ -396,6 +403,8 @@ class server:
 			response = 'fail'
 		elif tokens[0] == 'get_filter_name':
 			response = self.get_filter_name(tokens[1])
+		elif tokens[0] == 'exposeGuider':
+			response = self.exposeGuider(tokens[1])
 		elif tokens[0] == 'expose':
 			response = self.expose(tokens[1])
 		elif tokens[0] == 'save_image':

@@ -364,6 +364,12 @@ class imager:
 	def expose(self, exptime=1, exptype=0, filterInd=1):
 		if (self.send('expose ' + str(exptime) + ' ' + str(exptype) + ' ' + str(filterInd),30)).split()[0] == 'success': return True
 		else: return False
+
+	#start exposure
+	def exposeGuider(self, exptime=1):
+		if (self.send('exposeGuider ' + str(exptime))).split()[0] == 'success': return True
+		else: return False
+
 	#block until image is ready, then save it to file_name
 	def save_image(self,file_name):
 		if self.send('save_image ' + file_name,30) == 'success': return True

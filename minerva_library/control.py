@@ -596,6 +596,7 @@ class control:
 #		' --use-sextractor' + \ #need to install sextractor
 
 		cmd = r'/usr/local/astrometry/bin/' + cmd + ' >/dev/null 2>&1' 
+		self.logger.info("executing solve-field command: " + cmd)
 		os.system(cmd)
 
 	def getPA(self,imageName, email=True):
@@ -809,7 +810,7 @@ class control:
 
 		return cc
 
-	def fauguide(self,fau,star=star):
+	def fauguide(self,fau,star=None):
 
 		filename = fau.take_image(5)
 		self.logger.info(telescope_name + "Extracting stars for " + filename)

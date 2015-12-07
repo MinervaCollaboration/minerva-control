@@ -445,17 +445,6 @@ class CDK700:
 	def m3Stop(self):
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
-
-	def changeport(self,port):
-		status = self.getStatus
-		if status
-				# load the pointing model to the corresponding port
-		
-		
-
-
-
-
 	def recover(self):
 		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
 		try: self.shutdown()
