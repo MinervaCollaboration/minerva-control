@@ -9,7 +9,7 @@ class PT100:
     def __init__(self, config=None, base=None):
 
         self.config_file = config
-        self.num = config[-5]
+        self.controller = config[-5]
 	self.base_directory = base
 	self.load_config()
 	self.setup_logger()
@@ -122,7 +122,7 @@ class PT100:
                     temp = self.ohm2temp(ohm)
 
                     # log the temperature
-                    filename = self.base_directory + '/log/' + self.night + '/temp' + str((int(self.num)-1)*4 + ndx[raw[0]] + 1) + '.log'
+                    filename = '%s/log/%s/temp.%s.%s.log'%(self.base_directory,self.night,self.controller,str(ndx[raw[0]] + 1))
                     self.logger.info("Ohm=" + str(ohm) + ',temp=' + str(temp) + ',filename=' + filename + ',description='+self.description[ndx[raw[0]]])
                     with open(filename,'a') as f:    
                         f.write(str(datetime.datetime.utcnow()) + ',' + str(temp)+ ',' + self.description[ndx[raw[0]]] + '\n')
@@ -131,12 +131,12 @@ class PT100:
                 self.sock.send("34".decode('hex'))
                 time.sleep(0.1)
             except:
-                self.logger.exception("error logging " + self.num)
+                self.logger.exception("error logging controller %s"%(self.controller))
     
             
 if __name__ == "__main__":
 
-    configs = ['PT100_1.ini','PT100_2.ini','PT100_3.ini','PT100_4.ini']
+    configs = ['PT100A.ini','PT100B.ini','PT100C.ini','PT100D.ini']
     pt100s = []
     threads = []
     n=0

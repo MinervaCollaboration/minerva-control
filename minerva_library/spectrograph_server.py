@@ -143,12 +143,13 @@ class server:
 	def create_class_objects(self):
                 #self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
                 #self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)              
-                self.gaugeController = com.com('gaugeController',self.base_directory, self.night)
+                self.gaugeController = com.com('gaugeController',self.base_directory,self.night)
+                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night)
 
                 print("*** REMOVE THIS RETURN AFTER TESTING***")
                 return
-                self.expmeter_com = com.com('expmeter',self.base_directory,self.night,configfile= '/config/com.ini')
-                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night,configfile= '/config/com.ini')
+                self.expmeter_com = com.com('expmeter',self.base_directory,self.night)
+
                 self.i2stage_connect()
 
 #==================server functions===================#
@@ -885,6 +886,23 @@ class server:
                 #S Turn of power to exposure meter
                 self.dynapower1.off('expmeter')
 
+        #S going to log the pressures of the chamber and the pump
+        def log_pressures(self):
+                while True:
+                        with open('%s\\log\\%s\\spec_pressure.log'%(self.base_directory,self.night),'a') as fh:
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+                                pres = self.get_spec_pressure().split()[1]
+                                fh.write('%s\t%s\n'%(now,pres))
+
+                        with open('%s\\log\\%s\\pump_pressure.log'%(self.base_directory,self.night),'a') as fh:
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+                                pres = self.get_pump_pressure().split()[1]
+                                fh.write('%s\t%s\n'%(now,pres))
+
+                        time.sleep(1)
+                
+                        
+
 
 
 
@@ -913,10 +931,13 @@ if __name__ == '__main__':
 	base_directory = 'C:\\minerva-control'
         #ipdb.set_trace()
 	test_server = server('spectrograph.ini',base_directory)
+
+        ipdb.set_trace()
 	
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
-
+        pressure_thread = threading.Thread(target=test_server.log_pressures)
+        pressure_thread.start()
 	
 	#thread = threading.Thread(target=test_server.logexpmeter)
 	#thread.start()
