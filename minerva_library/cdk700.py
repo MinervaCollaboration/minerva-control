@@ -158,7 +158,7 @@ class CDK700:
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.HOST = config['Setup']['HOST']
-			self.PORT = config['Setup']['PORT']
+			self.NETWORKPORT = config['Setup']['NETWORKPORT']
 			self.imager = config['Setup']['IMAGER']
 			self.guider = config['Setup']['GUIDER']
 			self.fau = config['Setup']['FAU']
@@ -166,6 +166,9 @@ class CDK700:
 			self.pdu_config = config['Setup']['PDU']
 			self.telcom_client_config = config['Setup']['TELCOM']
 			self.nfailed = 0
+			self.port = config['PORT']
+			self.modeldir = config['Setup']['MODELDIR']
+			self.model = config['MODEL']
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
@@ -216,7 +219,7 @@ class CDK700:
 		Note that spaces have been URL-encoded to "+" characters.
 		"""
 
-		url = "http://" + self.HOST + ":" + str(self.PORT) + "/?"
+		url = "http://" + self.HOST + ":" + str(self.NETWORKPORT) + "/?"
 		url = url + urllib.urlencode(kwargs.items())
 		return url
 
@@ -443,6 +446,16 @@ class CDK700:
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
 
+	def changeport(self,port):
+		status = self.getStatus
+		if status
+				# load the pointing model to the corresponding port
+		
+		
+
+
+
+
 	def recover(self):
 		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
 		try: self.shutdown()
@@ -455,6 +468,7 @@ class CDK700:
 		try: self.shutdown()
 		except: pass
 		self.restartPWI()
+		
 		if self.initialize():
 			self.logger.info('T' + self.num + ': recovered after restarting PWI')
 			return True
@@ -466,6 +480,7 @@ class CDK700:
 		self.killPWI()
 		self.powercycle()
 		self.startPWI()
+
 		if self.initialize():
 			self.logger.info('T' + self.num + ': recovered after power cycling the mount')
 			return True
@@ -482,7 +497,6 @@ class CDK700:
 			fh.close()
 			while os.path.isfile(filename):
 				time.sleep(1)
-
 		return self.initialize()
 
 		# TODO
@@ -520,13 +534,36 @@ class CDK700:
 			ipdb.set_trace()
 
 	def inPosition(self,m3port=None):
+
 		# Wait for telescope to complete motion
-		timeout = 360.0
 		start = datetime.datetime.utcnow()
+		timeout = 30.0
 		elapsedTime = 0
 		time.sleep(0.25) # needs time to start moving
 		telescopeStatus = self.getStatus()
+
+		#S want to make sure we are at the right port before mount, focuser, rotator slew.
+		#S If an allowable port is specified
+		if (str(m3port)=='1') or (str(m3port)=='2'):
+			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
+			while telescopeStatus.m3.port != str(m3port) and elapsedTime < timeout:
+				time.sleep(0.5)
+				#S This returns a status xml, so sending it on repeat shouldnt matter
+				telescopeStatus = self.getStatus()
+				#S Need to track elapsed time.
+				elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+				changedPort = True
+			if elapsedTime > timeout: 
+				self.logger.error('T%s: Failed to select correct M3 port (%s)'%(self.num,m3port))
+				return False
+				
+		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
+		else:
+			self.logger.info('T%s: No M3 port specified or bad, using current port(%s)'%(self.num,telescopeStatus.m3.port))
+
+
 		self.logger.info('T' + self.num + ': Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving)
+		timeout = 60.0
 		while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout:
 			time.sleep(0.1)
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
@@ -563,22 +600,31 @@ class CDK700:
 				self.mountTrackingOn()
 				self.logger.info('T%s: Tracking was off, turned tracking on.'%(self.num))
 #				self.logger.info('T%s: Moving, but because tracking is OFF. Assuming in position'%(self.num))
+		if elapsedTime > timeout or telescopeStatus.mount.on_target == False:
+			self.logger.error('T%s: Failed to slew within timeout (%s)'%(self.num,timeout))
+			return False
 
-		#S want to make sure we are at the right port before focuser, rotator check.
-		#S If an allowable port is specified
-		if (str(m3port)=='1') or (str(m3port)=='2'):
-			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
-			while telescopeStatus.m3.port != str(m3port) and elapsedTime < timeout:
-				time.sleep(0.5)
-				#S This returns a status xml, so sending it on repeat shouldnt matter
-				telescopeStatus = self.m3SelectPort(port=m3port)
-		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
-		else:
-			self.logger.info('T%s: No M3 port specified or bad, using current port(%s)'%(self.num,telescopeStatus.m3.port))
+		self.logger.info('T' + self.num + ': Waiting for Focuser to finish slew; goto_complete = ' + telescopeStatus.focuser.goto_complete)
+		timeout = 120.0
+		while telescopeStatus.focuser.goto_complete == 'False' and elapsedTime < timeout:
+			time.sleep(0.5)
+			self.logger.debug('T%s: Focuser moving (%sum)'%(self.num,telescopeStatus.focuser.position))
+			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+			telescopeStatus = self.getStatus()
+			if telescopeStatus.focuser.goto_complete == 'True':
+				time.sleep(1)
+				telescopeStatus = self.getStatus()
+				if telescopeStatus.focuser.goto_complete == 'False':
+					self.logger.error('T%s: Focuser moving after is said it was done'%(self.num))
+		if elapsedTime > timeout:
+			self.logger.error('T%s: Failed to get to focus position within timeout (%s)'%(self.num,timeout))
+			return False
+
 
 		#S Make sure the derotating is on.
 		self.rotatorStartDerotating()
 		#S Let it finish derotating.
+		timeout = 360.0
 		self.logger.info('T' + self.num + ': Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
 		while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
 			time.sleep(0.5)
@@ -591,30 +637,20 @@ class CDK700:
 				if telescopeStatus.rotator.goto_complete == 'False':
 					self.logger.error('T' + self.num + ': Rotator moving after it said it was done')
 
-		self.logger.info('T' + self.num + ': Waiting for Focuser to finish slew; goto_complete = ' + telescopeStatus.focuser.goto_complete)
-		while telescopeStatus.focuser.goto_complete == 'False' and elapsedTime < timeout:
-			time.sleep(0.5)
-			self.logger.debug('T%s: Focuser moving (%sum)'%(self.num,telescopeStatus.focuser.position))
-			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-			telescopeStatus = self.getStatus()
-			if telescopeStatus.focuser.goto_complete == 'True':
-				time.sleep(1)
-				telescopeStatus = self.getStatus()
-				if telescopeStatus.focuser.goto_complete == 'False':
-					self.logger.error('T%s: Focuser moving after is said it was done'%(self.num))
-
-			
-		if telescopeStatus.mount.on_target:
-			self.logger.info('T' + self.num + ': Telescope finished slew')
-			return True
-		else:
-			self.logger.error('T' + self.num + ': Telescope failed to slew')
+		if elapsedTime > timeout:
+			self.logger.error('T%s: Failed to get to rotator position within timeout (%s)'%(self.num,timeout))
 			return False
+
+		# if it gets here, we are in position
+		return True
 
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
-	def acquireTarget_new(self,target,pa=None):
+	def acquireTarget(self,target,pa=None):
+
+		telescopeStatus = self.getStatus()
+
                 ## Constants
                 #S Was using julian date of observation, but this was only to have a more general approach to
                 #S what coordinate system we were using. I assume we are using on J2000 coordinates, so I made it only take that for now.
@@ -622,39 +658,33 @@ class CDK700:
                 #epoch = 2451545.0
                 now = datetime.datetime.utcnow()
                 j2000 = datetime.datetime(2000,01,01,12)
-                days_since_j2000 = (now-j200).days #[] = daya
+                days_since_j2000 = (now-j2000).days #[] = daya
                 #jd_obs = days_since_j200 + jd_of_j2000
                 #S One AU in meters
                 AU  = 149597870700. #[] = meters
+		days_in_year = 365.25
                 #S the seconds in a year
-                year_sec = 365.25*24*3600 #[] = seconds/year
-                #S Parsecs in a nAU
+                year_sec = days_in_year*24.*3600. #[] = seconds/year
+                #S Parsecs in an AU
                 pctoau = 3600.*180/math.pi #[] = AU
                 #S km/sec to AU/year
                 kmstoauy = year_sec*1000./AU
-                self.initialize(tracking=True)
+
                 #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
                 #S dec comes in as degrees.
                 ra = np.radians(target['ra']*15.)
                 dec = np.radians(target['dec'])
-                #S 
-                try:
-                        pmra = target['pmra']
-                except:
-                        pmra = 0.
-                try:
-                        pmdec = target['pmdec']
-                except:
-                        pmdec = 0.
-                try:
-                        px = target['px']
-                except:
-                        px = 0.
+                #S basically see what values we can make corrections for.
+                try: pmra = target['pmra']
+                except: pmra = 0.
+                try: pmdec = target['pmdec']
+                except: pmdec = 0.
+                try: px = target['px']
+                except: px = 0.                        
                 #S Need rv if available, in m/s
-                try:
-                        rv = target['rv']
-                except:
-                        rv = 0.
+                try: rv = target['rv']
+                except: rv = 0.
+                        
                 #S Unit vector pointing to star's epoch location
                 r0hat = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
                 #S Vector pointingup at celestial pole
@@ -666,6 +696,7 @@ class CDK700:
                 #S Unit vector pointing north
                 north =  np.cross(r0hat,east)
                 #S Proper motion correction (Not 100% sure what is going on with this calculation)
+		#S this is in AU/year??
                 mu = (pmra*east+pmdec*north)/pctoau/1000.
 
                 #S This can be used if we want to make our code more general and to be able to switch between epochs. I'm
@@ -673,16 +704,17 @@ class CDK700:
                 ##epoch0 = 2000. + (epoch-2451545.0)/365.25
                 ##yearnow = 2000. + (jd_obs - 2451545.0)/365.25
                 #S Days since j2000
-                T = days_since_j2000
+                T = days_since_j2000/days_in_year
                 #S rv away from earth, with parallax
-                vpi = rv/1000.*kmstopauy*(px/1000./pctoau)
+                vpi = (rv/1000.)*kmstoauy*(px/1000./pctoau)
                 #S Total velocity of star on sky (proper motion plus rv away from earth)
                 vel = mu + vpi*r0hat
                 #S corrected vector from observer to object
                 r = vel*T + r0hat
                 #S Unit vector from observer to object
-                rhat = r/p.linalg.norm(r)
-                #S rhat = [cos(dec)cos(ra),cos(dec)sin(ra),sin(dec)] for our corrected ra,dec
+                rhat = r/np.linalg.norm(r)
+
+                #S so we know rhat = [cos(dec)cos(ra),cos(dec)sin(ra),sin(dec)] for our corrected ra,dec
                 #S all we need to do is arcsin for declination, returns between [-pi/2,pi/2], converted to degrees
                 dec_corrected = np.degrees(np.arcsin(rhat[2]))
                 #S The tricky one is to get ra on [0,2pi], but this takes care of it. Converted to degrees in either case
@@ -690,11 +722,46 @@ class CDK700:
                 ra_intermed  = np.arctan2(rhat[1],rhat[0])
                 #S Check to see if less than zero, add 2pi if so to make sure all angles are of ra on [0,2pi]
                 #S We do want to convert to decimal hours though
+
                 if ra_intermed < 0:
                         ra_corrected = np.degrees(ra_intermed + 2*np.pi)/15.
                 else:
                         ra_corrected = np.degrees(ra_intermed)/15.
+
+
+		if 'spectroscopy' in target.keys():
+			if target['spectroscopy']:
+				m3port = telescope.port['FAU']
+			else: 
+				m3port = telescope.port['IMAGER']
+		else:
+			m3port = telescope.port['IMAGER']
+
+		#S want to make sure we are at the right port before mount, focuser, rotator slew.
+		#S If an allowable port is specified
+		if (str(m3port)=='1') or (str(m3port)=='2'):
+			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
+			if telescopeStatus.m3.port != str(m3port):
+				self.logger.info('T%s: Port changed, loading pointing model and restarting PWI'%(self.num))
+				# load the pointing model
+				modelfile = telescope.modeldir + telescope.model[m3port]
+				if os.path.isfile(modelfile):
+					shutil.copyfile(modelfile, telescope.modeldir + 'Default_Mount_Model.PXP')
+					# restart PWI
+					self.shutdown()
+					self.restartPWI()
+				else:
+					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
+				telescopeStatus = self.m3SelectPort(port=m3port)
+				
+		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
+		else:
+			self.logger.error('T%s: Bad M3 port specified (%s); using current port(%s)'%(self.num,m3port,telescopeStatus.m3.port))
+
                 	
+		#S Initialize the telescope
+                self.initialize(tracking=True)
+
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
@@ -702,16 +769,16 @@ class CDK700:
 			self.logger.info('T' + self.num + ': Slewing rotator to PA=' + str(pa) + ' deg')
 			self.rotatorMove(pa)
 
-		if self.inPosition():
+		if self.inPosition(m3port=m3port):
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 			self.recover()
-			#XXX Something bad is going to happen here.
+			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			self.acquireTarget(target,pa=pa)
 			return
 
-	def acquireTarget(self,ra,dec,pa=None):
+	def acquireTarget_old(self,ra,dec,pa=None):
 		self.initialize(tracking=True)
 	
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra) + ',' + str(dec))
@@ -745,6 +812,7 @@ class CDK700:
 
 	def park(self):
 		# park the scope (no danger of pointing at the sun if opened during the day)
+		self.initialize(tracking=True)
 		parkAlt = 45.0
 		parkAz = 0.0 
 
@@ -938,13 +1006,12 @@ class CDK700:
 		else: return False
 	def startPWI(self,email=True):
 		if self.telcom.startPWI():
-#			return self.initialize_autofocus()
-#			mail.send("PWI restarted on " + self.logger_name,"Autofocus parameters will not be respected until manually run once") 
+			time.sleep(5.0)
 			return True
 		else: return False
 	def restartPWI(self,email=True):
 		self.killPWI()
-		time.sleep(5)
+		time.sleep(5.0)
 		return self.startPWI(email=email)
 
 #test program
@@ -959,6 +1026,7 @@ if __name__ == "__main__":
 
 	telescope = CDK700(config_file, base_directory)
 	ipdb.set_trace()
+
 	while True:
 		print telescope.logger_name + ' test program'
 		print ' a. move to alt az'

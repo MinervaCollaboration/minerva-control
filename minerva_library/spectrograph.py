@@ -8,10 +8,13 @@ import threading
 import datetime
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
+import mail
+
+import pdu
 
 from si.client import SIClient
 from si.imager import Imager
-from minerva_library import dynapower
+import dynapower
 import ipdb
 
 # spectrograph control class, control all spectrograph hardware
@@ -96,15 +99,17 @@ class spectrograph:
 	def create_class_objects(self):
                 #TODO Should we have this here? It makes sense to give it the time
                 #TODO to warm and settle.
-                self.cell_heater_on()
+		self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
+#                self.cell_heater_on()
                 
                 
 		
 	#return a socket object connected to the camera server
 	def connect_server(self):
+                print self.ip, self.port
 		try:
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			s.settimeout(1)
+			s.settimeout(3)
 			s.connect((self.ip, self.port))
 			self.logger.info('successfully connected to spectrograph server')
 		except:
@@ -325,65 +330,6 @@ class spectrograph:
 			self.recover()
 			return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter) 
 
-        def vent(self):
-                # close the pump valve
-                self.dynapower.off('pumpvalve')
-
-                # turn off the pump
-                self.dynapower.off('pump')
-
-                if self.specgauge.pressure() < 500:
-                    mail.send("The spectrograph is pumped and attempting to vent!","Manual login required to continue")
-                    self.logger.error("The spectrograph is pumped and attempting to vent; manual login required to continue")
-                    ipdb.set_trace()            
-
-                # open the vent valve
-                self.dynapower.on('ventvalve')
-
-                t0 = datetime.datetime.utcnow()
-                elapsedtime = 0.0
-                while self.specgauge.pressure() < 500:
-                    elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds() 
-                    self.logger.info('Waiting for spectrograph to vent (Pressure = ' + str(specgauge.pressure()) + '; elapsed time = ' + str(elapsedtime) + ' seconds)')
-                    if elapsedtime < timeout:
-                        time.sleep(5)
-                    else:
-                        self.logger.error("Error venting the spectrograph")
-                        return
-
-                self.logger.info("Venting complete")
- 
-        # pump down the spectrograph (during the day)     
-        def pump(self):
-
-                timeout = 300
-
-                # close the pump valve
-                self.dynapower.off('pumpvalve')
-
-                # turn on the pump
-                self.dynapower.on('pump')
-
-                if self.get_vacuum_pressure() > 500:
-                    mail.send("The spectrograph is at atmosphere!","Manual login required to continue")
-                    self.logger.error("The spectrograph is at atmosphere! Manual login required to continue")
-                    ipdb.set_trace()
-
-                # wait until the guage reads < 100 ubar
-                t0 = datetime.datetime.utcnow()
-                elapsedtime = 0.0
-                while self.get_pump_pressure() > 100.0:
-                    elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds() 
-                    self.logger.info('Waiting for tube to pump down (Pressure = ' + str(pumpgauge.pressure()) + '; elapsed time = ' + str(elapsedtime) + ' seconds)')
-                    if elapsedtime < timeout:
-                        time.sleep(5)
-                    else:
-                        self.logger.error("Error pumping down the spectrograph")
-                        return          
-                        
-                # open the pump valve
-                self.dynapower.on('pumpvalve')
-
         ###
         # IODINE CELL HEATER FUNCTIONS
         ###
@@ -408,29 +354,144 @@ class spectrograph:
                 response = self.send('cell_heater_get_set_temp None',10)
                 return float(response.split()[1].split('\\')[0]) 
 
-        # close the valves, hold the pressure (during the night)
-        def hold(self):
 
-                # make sure the vent valve is closed
-                self.dynapower.off('ventvalve')
+	def vent(self):
 
-                # close the pump valve
-                self.dynapower.off('pumpvalve')
+                ipdb.set_trace()
 
-                # turn off the pump
-                self.dynapower.off('pump')
+		timeout = 1200.0
+
+		# close the vent valve
+		self.logger.info("Closing the vent valve")
+		self.benchpdu.ventvalve.off()
+		
+		# close the pump valve
+		self.logger.info("Closing the pump valve")
+		self.benchpdu.pumpvalve.off()
+
+		# turn off the pump
+		self.logger.info("Turning off the pump")
+		self.benchpdu.pump.off()
+
+                spec_pressure= self.get_spec_pressure()
+                self.logger.info("Spectrograph pressure is " + str(spec_pressure) + " mbar")
+
+		if spec_pressure < 500.0:
+			mail.send("The spectrograph is pumped (" + str(spec_pressure) + " mbar and attempting to vent!","Manual login required to continue",level='Debug')
+			self.logger.error("The spectrograph is pumped (" + str(spec_pressure) + " mbar and attempting to vent; manual login required to continue")
+			ipdb.set_trace()
+			time.sleep(60)
+
+			# TODO: make hold file to restart thread
 			
-	def get_vacuum_pressure(self):
-                response = self.send('get_vacuum_pressure None',5)
+		# open the vent valve
+                self.logger.info("Opening the vent valve")
+		self.benchpdu.ventvalve.on()
+
+		t0 = datetime.datetime.utcnow()
+		elapsedtime = 0.0
+                spec_pressure = self.get_spec_pressure()
+		while spec_pressure < 500.0:
+			elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds()
+			self.logger.info('Waiting for spectrograph to vent (Pressure = ' + str(self.get_spec_pressure())\
+						 + ' mbar; elapsed time = '+ str(elapsedtime) + ' seconds)')
+                        spec_pressure = self.get_spec_pressure()
+
+		# TODO: monitor pressure during venting and create smarter error condition                                                                                         
+		if elapsedtime < timeout:
+			time.sleep(5)
+		else:
+			self.logger.error("Error venting the spectrograph")
+			return
+
+		self.logger.info("Venting complete; spectrograph pressure is " + str(spec_pressure) + ' mbar')
+
+
+	# pump down the spectrograph (during the day)
+	def pump(self):
+
+		timeout = 1200
+
+		if self.get_spec_pressure() > 500:
+			mail.send("The spectrograph is at atmosphere!","Manual login required to continue")
+			self.logger.error("The spectrograph is at atmosphere! Manual login required to continue")
+
+			# TODO: make hold file to restart thread
+			ipdb.set_trace()
+
+		# close the vent valve
+		self.logger.info("Closing the vent valve")
+		self.benchpdu.ventvalve.off()
+
+		# close the pump valve
+		self.logger.info("Closing the pump valve")
+		self.benchpdu.pumpvalve.off()
+
+		# turn on the pump
+		self.logger.info("Turning on the pump")
+		self.benchpdu.pump.on()
+
+		# wait until the pump gauge reads < 100 ubar
+		t0 = datetime.datetime.utcnow()
+		elapsedtime = 0.0
+		pump_pressure = self.get_pump_pressure()
+		while pump_pressure > 0.1:
+			elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds()
+			self.logger.info('Waiting for tube to pump down (Pressure = ' + str(pump_pressure) + 'mbar ; elapsed time = '+ str(elapsedtime) + ' seconds)')
+			if elapsedtime < timeout:
+				time.sleep(5)
+			else:
+				self.logger.error("Error pumping down the spectrograph")
+				return
+			pump_pressure = self.get_pump_pressure()
+
+
+		# open the pump valve
+		self.benchpdu.pumpvalve.on()
+		self.logger.info("Pump gauge at " + str(pump_pressure) + " mbar; pumping down the spectrograph")
+
+		# TODO: wait for pressure to go below some value??    
+		t0 = datetime.datetime.utcnow()
+		elapsedtime = 0.0
+		spec_pressure = self.get_spec_pressure()
+		while spec_pressure > 10:
+			elapsedtime = (datetime.datetime.utcnow() - t0).total_seconds()
+			self.logger.info('Waiting for spectrograph to pump down (Pressure = ' + str(spec_pressure) + ' mbar; elapsed time = '+ str(elapsedtime) + ' seconds)')
+			if elapsedtime < timeout:
+				time.sleep(5)
+			else:
+				self.logger.error("Error pumping down the spectrograph")
+				return
+			spec_pressure = self.get_spec_pressure()
+
+		self.logger.info("Spectrograph at " + str(spec_pressure) + " mbar; done")
+
+
+	# close the valves, hold the pressure (during the night)
+	def hold(self):
+		# make sure the vent valve is closed
+		self.logger.info("Closing vent valve")
+		self.benchpdu.ventvalve.off()
+		# close the pump valve
+		self.logger.info("Closing pump valve")
+		self.benchpdu.pumpvalve.off()
+		# turn off the pump        
+		self.logger.info("Turning off pump")
+		self.benchpdu.pump.off()
+
+			
+	def get_spec_pressure(self):
+                response = self.send('get_spec_pressure None',5)
                 if response == 'fail':
                         return 'UNKNOWN'
-                ipdb.set_trace()
-		return float(response.split()[1].split('\\')[0])
+		return float(response.split()[1])
 
-        ### doesn't work!###
-        def get_atm_pressure(self):
-                response = self.send('get_atm_pressure None',5)
-                return float(response.split()[1].split('\\')[0])
+	def get_pump_pressure(self):
+                response = self.send('get_pump_pressure None',5)
+                if response == 'fail':
+                        return 'UNKNOWN'
+		return float(response.split()[1])
+
         ###
         # THORLABS STAGE, For Iodine Cell
         ###
@@ -531,6 +592,8 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
         if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	test_spectrograph = spectrograph('spectrograph.ini',base_directory)
+        test_spectrograph.pump()
+	ipdb.set_trace()
 	while True:
 		print 'spectrograph_control test program'
 		print ' a. take_image'

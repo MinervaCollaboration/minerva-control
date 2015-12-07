@@ -141,11 +141,14 @@ class server:
 
 	#S Create class objects
 	def create_class_objects(self):
+                #self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
+                #self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)              
+                self.gaugeController = com.com('gaugeController',self.base_directory, self.night)
+
+                print("*** REMOVE THIS RETURN AFTER TESTING***")
+                return
                 self.expmeter_com = com.com('expmeter',self.base_directory,self.night,configfile= '/config/com.ini')
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night,configfile= '/config/com.ini')
-                self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
-                self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)
-                
                 self.i2stage_connect()
 
 #==================server functions===================#
@@ -167,10 +170,10 @@ class server:
                         response = self.cell_heater_set_temp(tokens[1])
                 elif tokens[0] == 'cell_heater_get_set_temp':
                         response = self.cell_heater_get_set_temp()                        
-                elif tokens[0] == 'get_vacuum_pressure':
-                        response = self.get_vacuum_pressure()
-                elif tokens[0] == 'get_atm_pressure':
-                        response = self.get_atm_pressure()
+                elif tokens[0] == 'get_spec_pressure':
+                        response = self.get_spec_pressure()
+                elif tokens[0] == 'get_pump_pressure':
+                        response = self.get_pump_pressure()
 		elif tokens[0] == 'get_filter_name':
 			response = self.get_filter_name(tokens[1])
 		elif tokens[0] == 'expose':
@@ -602,25 +605,20 @@ class server:
                 #S Return to sender.
                 return "success " + set_temp + " C"
         
-	def get_vacuum_pressure(self):
-                specgauge = com.com('specgauge',self.night,configfile=self.base_directory + '/config/com.ini')
-                response = str(specgauge.send('RD'))
-                #ipdb.set_trace()
-                if response == '': return 'fail'
-                return 'success ' + response
+	def get_spec_pressure(self):
+                response = str(self.gaugeController.send('#  RDCG2'))
+                if '*' in response: return 'success ' + str(float(response.split()[1]))
+                return 'fail'
 
-        def get_atm_pressure(self):
-                atmgauge = com.com('atmGauge',self.night,configfile=self.base_directory + '/config/com.ini')
-                atmgauge.send('OPEN')
-                pressure = atmgauge.send('R')
-                atmgauge.send('CLOSE')
-                ipdb.set_trace()
-                return 'success ' + str(pressure)
+        def get_pump_pressure(self):
+                response = str(self.gaugeController.send('#  RDCG1'))
+                if '*' in response: return 'success ' + str(float(response.split()[1]))
+                return 'fail'
 
 	###
 	# THAT AND FLAT LAMP FUNCTIONS, turn_on, turn_off, time_tracker, time_tracker_check
 	###
-
+	#S these are obsolete from the NI block
         #S Functions for toggling the ThAr lamp
         def thar_turn_on(self):
                 self.dynapower1.on('tharLamp')
@@ -897,10 +895,12 @@ class server:
         #S power. INCLUDES:
         #S Functino to ensure power is shut off to exposure meter
         def safe_close(self,signal):
-                self.dynapower1.off('expmeter')
-		self.thar_turn_off()
-		self.flat_turn_off()
-		self.i2stage_disconnect()
+                print("***REMOVE THESE COMMENTS AFTER TESTING***")
+                #self.dynapower1.off('expmeter')
+		#self.thar_turn_off()
+		#self.flat_turn_off()
+		#self.i2stage_disconnect()
+		
 		#S Something fucky going on here, won't let me close browsers.
 		#TODO
 		#self.dynapower1.browser.close()
@@ -913,17 +913,13 @@ if __name__ == '__main__':
 	base_directory = 'C:\\minerva-control'
         #ipdb.set_trace()
 	test_server = server('spectrograph.ini',base_directory)
+	
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
 
-
-#        print test_server.get_atm_pressure()
 	
-#        print test_server.get_vacuum_pressure()
-#        ipdb.set_trace()
-	
-	thread = threading.Thread(target=test_server.logexpmeter)
-	thread.start()
+	#thread = threading.Thread(target=test_server.logexpmeter)
+	#thread.start()
 	
 	#	test_server.logexpmeter()
 #	ipdb.set_trace()
