@@ -717,32 +717,8 @@ class CDK700:
                 else:
                         ra_corrected = np.degrees(ra_intermed)/15.
 
-
-		if 'spectroscopy' in target.keys():
-			if target['spectroscopy']:
-				m3port = telescope.port['FAU']
-			else: 
-				m3port = telescope.port['IMAGER']
-		else:
-			m3port = telescope.port['IMAGER']
-
-		#S want to make sure we are at the right port before mount, focuser, rotator slew.
-		#S If an allowable port is specified
-		if (str(m3port)=='1') or (str(m3port)=='2'):
-			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
-			if telescopeStatus.m3.port != str(m3port):
-				self.logger.info('T%s: Port changed, loading pointing model and restarting PWI'%(self.num))
-				# load the pointing model
-				modelfile = telescope.modeldir + telescope.model[m3port]
-				if os.path.isfile(modelfile):
-					self.mountSetPointingModel(modelfile)
-				else:
-					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
-				telescopeStatus = self.m3SelectPort(port=m3port)
-				
-		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
-		else:
-			self.logger.error('T%s: Bad M3 port specified (%s); using current port(%s)'%(self.num,m3port,telescopeStatus.m3.port))
+		#S make sure the m3 port is in the correct orientation
+		self.m3port_check(target)
 
                 	
 		#S Initialize the telescope
@@ -763,6 +739,35 @@ class CDK700:
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			self.acquireTarget(target,pa=pa)
 			return
+	
+	def m3port_check(self,target):
+
+		if 'spectroscopy' in target.keys():
+			if target['spectroscopy']:
+				m3port = self.port['FAU']
+			else: 
+				m3port = self.port['IMAGER']
+		else:
+			m3port = self.port['IMAGER']
+
+		#S want to make sure we are at the right port before mount, focuser, rotator slew.
+		#S If an allowable port is specified
+		if (str(m3port)=='1') or (str(m3port)=='2'):
+			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
+			if telescopeStatus.m3.port != str(m3port):
+				self.logger.info('T%s: Port changed, loading pointing model and restarting PWI'%(self.num))
+				# load the pointing model
+				modelfile = self.modeldir + self.model[m3port]
+				if os.path.isfile(modelfile):
+					self.mountSetPointingModel(modelfile)
+				else:
+					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
+				telescopeStatus = self.m3SelectPort(port=m3port)
+				
+		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
+		else:
+			self.logger.error('T%s: Bad M3 port specified (%s); using current port(%s)'%(self.num,m3port,telescopeStatus.m3.port))
+					   
 
 	def acquireTarget_old(self,ra,dec,pa=None):
 		self.initialize(tracking=True)

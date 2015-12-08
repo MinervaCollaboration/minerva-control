@@ -222,7 +222,7 @@ class spectrograph:
 	#start exposure
 	def expose(self, exptime=1.0, exptype=0, expmeter=None):
 
-        	host = "localhost"
+        	host = "192.168.1.22"
                 port = 2055
                 client = SIClient (host, port)
                 self.logger.info("Connected to SI client")

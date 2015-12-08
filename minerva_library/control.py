@@ -1171,11 +1171,11 @@ class control:
                         #TODO Find a better cellheater temptolerance.
                         TEMPTOLERANCE = 0.501
                         #S Here we need the i2stage in
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
-                        i2stage_move_thread.start()
+#                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
+#                        i2stage_move_thread.start()
                         #S Make sure the lamps are off
-                        self.spectrograph.thar_turn_off()
-                        self.spectrograph.flat_turn_off()
+#                        self.spectrograph.thar_turn_off()
+#                        self.spectrograph.flat_turn_off()
                         #S Let's query the cellheater's setpoint for checks onthe temperature
                         
                         self.spectrograph.cell_heater_set_temp(55.00)
@@ -1419,22 +1419,25 @@ class control:
                 f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
                 #TODOTDOTDO
                 #S TESTING trying to isolate errors, need to remove
-                f['VAC_PRES'] = (0.0,"Vac pretture TEMPORARY")#(self.spectrograph.get_vacuum_pressure(),"Vacuum Tank Pressure (mbar)")
+                f['SPECPRES'] = (str(self.spectrograph.get_spec_pressure()),"spectrograph pressure (mbars)")
+                f['PUMPPRES'] = (str(self.spectrograph.get_pump_pressure()),"vacuum pump pressure (mbars)")
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
-                for i in range(16):
-                        filename = self.base_directory + '/log/' + self.night + '/temp' + str(i+1) + '.log'
-                        with open(filename,'r') as fh:
-                                lineList = fh.readlines()
-                                temps = lineList[-1].split(',')
-                                if temps[1] == "None" : temp = 'UNKNOWN'
-                                else: temp = float(temps[1])
-                        f['TEMP' + str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
+		temp_controllers = ['A','B','C','D']
+		for cont in temp_controllers:
+			for i in range(4):
+				filename = '%s/log/%s/temp.%s.%s.log'%(self.base_directory,self.night,cont,str(i+1))
+				with open(filename,'r') as fh:
+					lineList = fh.readlines()
+					temps = lineList[-1].split(',')
+					if temps[1] == "None" : temp = 'UNKNOWN'
+					else: temp = float(temps[1])
+					f['TEMP'+cont+str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
                 f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
                 f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
-                f['I2POSAF'] = (self.spectrograph.i2stage_get_pos()[0],'Iodine Stage Actual Position [cm]')
-                f['I2POSAS'] = (self.spectrograph.i2stage_get_pos()[1],'Iodine Stage Actual Position [string]')
-                f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
-                f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+#                f['I2POSAF'] = (self.spectrograph.i2stage_get_pos()[0],'Iodine Stage Actual Position [cm]')
+#                f['I2POSAS'] = (self.spectrograph.i2stage_get_pos()[1],'Iodine Stage Actual Position [string]')
+#                f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
+#                f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
                 #S PDU Header info
                 self.spectrograph.update_dynapower1()
                 self.spectrograph.update_dynapower2()
@@ -2442,7 +2445,7 @@ class control:
 			self.logger.info(telescope_name + 'Beginning autofocus')
 #			self.telescope_intiailize(telescope_num)
 			#S this is here just to make sure we aren't moving
-			self.telescopes[telescope_num-1].inPosition(m3port=telescopes[telescope_num-1].port['IMAGER'])
+			self.telescopes[telescope_num-1].inPosition(m3port=self.telescopes[telescope_num-1].port['IMAGER'])
 #			self.telescope_autoFocus(telescope_num)
 			self.autofocus(telescope_num)
 
@@ -2753,7 +2756,7 @@ class control:
 		af_target['name'] = 'autofocus'
 		af_target['exptime'] = af_exptime
 		af_target['filter'] = af_filter
-		telescope = minerva.telescopes[telescope_num-1]
+		telescope = self.telescopes[telescope_num-1]
 		status = telescope.getStatus()
 		if newfocus <> status.focuser.position:
 			telescope.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " \
@@ -3006,15 +3009,17 @@ class control:
 
 
 
-	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",m3port='1'):
+	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",spectroscopy=False):
+		#S get the telescope we plan on working with
+		telescope = self.telescopes[telescope_number-1]
+		
 		af_target = {}
 		#S define aftarget dict for takeImage
 		af_target['name'] = 'autofocus'
 		af_target['exptime'] = af_exptime
 		af_target['filter'] = af_filter
+		af_target['spectroscopy'] = spectroscopy
 
-		#S get the telescope we plan on working with
-		telescope = self.telescopes[telescope_number-1]
 		#S our data path
 		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
 
@@ -3067,21 +3072,19 @@ class control:
 			newfocus = telescope.focus + step*1000.0
 			status = telescope.getStatus()
 			
+			#S ensure we have the correct port
+			telescope.m3port_check(af_target)
+			#S move and wait for focuser
 			if newfocus <> status.focuser.position:
 				self.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " + str(step) + ' mm, to ' + str(newfocus))
 				telescope.focuserMove(newfocus)
 				#S Needed a bit longer to recognize focuser movement, changed from 0.3
 				time.sleep(.5)
-			#S Make sure everythin is in position, namely that focuser has stopped moving
-			telescope.inPosition(m3port=m3port)
-			
-			#S Set the name for the autofocus image
-			af_name = 'autofocus'
+
 			#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
 			imagename = self.takeImage(af_target,telescope_num=telescope_number)
-			#imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_num=telescope_number)
-
 			imagenum_list.append(imagename.split('.')[4])
+
 			#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 			try: 
 				catalog = newauto.sextract(datapath,imagename)

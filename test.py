@@ -13,6 +13,7 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 #	minerva.endNight(num=2,email=True)
+	minerva.cameras[2].take_fau_image()
 	ipdb.set_trace()
 	print minerva.telescopes[0].getStatus()
 	minerva.telescope_initialize(1,tracking=True)
