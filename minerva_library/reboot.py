@@ -5,7 +5,8 @@ import ipdb
 config_file = 'imager_t' + socket.gethostname()[1] + '.ini'
 base_directory = 'C:\minerva-control'
 
-camera = imager.imager(config_file,base_directory)
+try: camera = imager.imager(config_file,base_directory)
+except: pass
 
 # disconnect from the camera
 try: camera.disconnect_camera()
