@@ -163,8 +163,8 @@ class server:
 			# If we were responsible for launching Maxim, this prevents
 			# Maxim from closing when our application exits
 			self.logger.info('Preventing maxim from closing upon exit')
-			maxim = Dispatch("MaxIm.Application")
-			maxim.LockApp = True
+			self.maxim = Dispatch("MaxIm.Application")
+			self.maxim.LockApp = True
 			
 			#S Turn on the cooler so we don't hit any issues with self.safe_close
 			self.cam.CoolerOn = True
@@ -236,21 +236,36 @@ class server:
 			return 'success'
 		except:
 			return 'fail'
-	
+
 	def save_image(self,param):
-		
-		if len(param.split()) != 1:
+
+                if len(param.split()) == 2:
+                        file_name = param.split()[0]
+                        fau = True
+                elif len(param.split()) == 1:
+                        file_name = param.split()[0]
+                        fau = False
+                else:
 			self.logger.error('parameter mismatch')
 			return 'fail'
-		try:
-			while not self.cam.ImageReady:
-				time.sleep(0.1)
-			self.logger.info('saving image to:' + param)
-			self.file_name = self.data_path + '\\' + param
-			self.cam.SaveImage(self.file_name)
+                if True:
+#		try:
+                        if fau:
+                                self.logger.info('Saving guider image')
+                                while self.cam.GuiderRunning:
+                                        time.sleep(0.1)
+                                self.logger.info('saving image to:' + file_name)
+                                self.fau_file_name = self.data_path + '\\' + file_name
+                                self.maxim.CurrentDocument.SaveFile(self.fau_file_name,3, False, 1)
+                        else:
+        			while not self.cam.ImageReady:
+                			time.sleep(0.1)
+                                self.logger.info('saving image to:' + file_name)
+        			self.file_name = self.data_path + '\\' + file_name
+                                self.cam.SaveImage(self.file_name)
 			return 'success'
-		except:
-			return 'fail'
+#		except:
+#			return 'fail'
 
 	def write_header(self,param):
 		
