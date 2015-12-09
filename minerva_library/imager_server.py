@@ -255,8 +255,8 @@ class server:
                                 while self.cam.GuiderRunning:
                                         time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)
-                                self.fau_file_name = self.data_path + '\\' + file_name
-                                self.maxim.CurrentDocument.SaveFile(self.fau_file_name,3, False, 1)
+                                self.file_name = self.data_path + '\\' + file_name
+                                self.maxim.CurrentDocument.SaveFile(self.file_name,3, False, 1)
                         else:
         			while not self.cam.ImageReady:
                 			time.sleep(0.1)
