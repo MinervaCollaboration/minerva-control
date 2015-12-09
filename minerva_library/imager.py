@@ -37,7 +37,7 @@ class imager:
 		self.set_temperature()
 		
 	def load_config(self):
-	
+
 		try:
                         # common to spectrograph detector and imaging camera
                         config = ConfigObj(self.base_directory + '/config/' + self.config_file)
