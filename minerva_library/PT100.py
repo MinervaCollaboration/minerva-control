@@ -56,8 +56,8 @@ class PT100:
     # https://www.picotech.com/download/manuals/USBPT104ProgrammersGuide.pdf
     def ohm2temp(self,ohm):
         reftemp = np.linspace(-50,200,num=251)
-        refohm = np.loadtxt('C:\minerva-control\minerva_library\pt100.dat')
-        f = interp1d(refohm,reftemp)#,kind='cubic')
+        refohm = np.loadtxt(self.base_directory+'/minerva_library/pt100.dat')
+        f = interp1d(refohm,reftemp)#,kind='cubic)
         try: temp = f(ohm)[()]
         except: temp = None
         return temp
@@ -140,8 +140,12 @@ if __name__ == "__main__":
     pt100s = []
     threads = []
     n=0
+    if socket.gethostname() == 'Kiwispec-PC':
+        base = 'C:/minerva-control/'
+    else:
+        base = '/home/minerva/minerva-control/'
     for config in configs:
-        pt100s.append(PT100(config=config, base="C:/minerva-control/"))
+        pt100s.append(PT100(config=config, base=base))
         threads.append(threading.Thread(target = pt100s[n].logtemp))
         threads[n].start()
         n += 1

@@ -13,6 +13,7 @@ from configobj import ConfigObj
 import ipdb
 import subprocess
 import cdk700
+import fau
 sys.dont_write_bytecode = True
 
 class imager:
@@ -62,22 +63,21 @@ class imager:
 			self.night = 'test'
 			self.nfailed = 0
 			self.nserver_failed = 0
+			self.pdu_config = config['Setup']['PDU']			
+			
+			# imaging camera 
+			self.telcom_client_config = config['Setup']['TELCOM']
+			self.platescale = float(config['Setup']['PLATESCALE'])
+			self.filters = config['FILTERS']
+			self.pointingModel = config['Setup']['POINTINGMODEL']
+			self.telescope_name = config['Setup']['TELESCOPE']
+			self.telnum = self.telescope_name[1]
+			self.exptypes = {'Dark' : 0,'Bias' : 0,'SkyFlat' : 1,}
+			self.fau_config = config['Setup']['FAU_CONFIG']
 
-                        #unique to imaging camera
-                        if 'si_imager' <> config['Setup']['LOGNAME'].lower():
-                                self.pdu_config = config['Setup']['PDU']
-				self.telcom_client_config = config['Setup']['TELCOM']
-                                self.platescale = float(config['Setup']['PLATESCALE'])
-                                self.filters = config['FILTERS']
-                                self.pointingModel = config['Setup']['POINTINGMODEL']
-                                self.telescope_name = config['Setup']['TELESCOPE']
-                                self.telnum = self.telescope_name[1]
-                                self.exptypes = {'Dark' : 0,'Bias' : 0,'SkyFlat' : 1,}
+			# fau
+			self.fau = fau.fau(self.fau_config,self.base_directory)
 
-
-                        # unique to spectrograph detector
-                        else:
-                                pass
 		except:
 			print('ERROR accessing config file: ' + self.config_file)
 			sys.exit()
@@ -367,13 +367,18 @@ class imager:
 
 	#start exposure
 	def exposeGuider(self, exptime=1):
-		if (self.send('exposeGuider ' + str(exptime))).split()[0] == 'success': return True
+		if (self.send('exposeGuider ' + str(exptime),30)).split()[0] == 'success': return True
 		else: return False
 
 	#block until image is ready, then save it to file_name
 	def save_image(self,file_name):
 		if self.send('save_image ' + file_name,30) == 'success': return True
 		else: return False
+
+	def save_fau_image(self,file_name):
+		if self.send('save_image ' + file_name + ' fau',30) == 'success': return True
+		else: return False
+
 	def image_name(self):
 		return self.file_name
 	#write fits header for self.file_name, header_info must be in json format
@@ -395,6 +400,36 @@ class imager:
 		else:
 			self.logger.error('Failed to finish writing header')			
 			return False
+
+	def take_fau_image(self, exptime=1, objname='test'):
+		telescope_name = 'T' + self.telnum + ': '
+		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
+		#put together file name for the image
+		ndx = self.get_index()
+		if ndx == -1:
+			self.logger.error(telescope_name + "Error getting the filename index")
+			if self.recover(): return self.take_fau_image(exptime=exptime, objname=objname)
+			return False
+
+		self.file_name = self.night + "." + self.telescope_name + "." + objname + ".FAU." + str(ndx).zfill(4) + ".fits"
+
+		if self.exposeGuider(exptime):
+			self.write_status()
+			time.sleep(exptime)
+			if self.save_fau_image(self.file_name):
+				self.logger.info(telescope_name + 'finish taking image: ' + self.file_name)
+				self.nfailed = 0 # success; reset the failed counter
+				return self.file_name
+			else: 
+				ipdb.set_trace()
+				self.logger.error(telescope_name + 'failed to save image: ' + self.file_name)
+				self.file_name = ''
+				if self.recover(): return self.take_fau_image(exptime=exptime, objname=objname)
+				return False
+		self.logger.error(telescope_name + 'taking image failed, image not saved: ' + self.file_name)
+		self.file_name = ''
+		return 'false'		
+
 	#returns file name of the image saved, return 'false' if error occurs
 	def take_image(self,exptime=1,filterInd='zp',objname = 'test' ):
 		
@@ -541,16 +576,19 @@ class imager:
 		self.logger.warning('T' + self.telnum + ': Camera failed, beginning recovery') 
                 
                 self.disconnect_camera()
+		time.sleep(5.0)
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by reconnecting') 
                         return True
 
                 self.logger.warning('T' + self.telnum + ': Camera failed to connect; restarting maxim') 
                 self.disconnect_camera()
+		time.sleep(5.0)
                 self.kill_maxim()
                 self.kill_PWI()
                 self.kill_server()
                 self.start_server()
+		time.sleep(5.0)
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by restarting maxim') 
                         return True
@@ -562,6 +600,7 @@ class imager:
                 self.kill_server()
                 self.powercycle()
                 self.start_server()
+		time.sleep(5.0)
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it') 
                         return True

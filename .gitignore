@@ -9,3 +9,5 @@
 *.dat
 *.pyc
 *.pyc
+*.pyc
+*pywinauto*

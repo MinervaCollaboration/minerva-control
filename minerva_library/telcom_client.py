@@ -22,6 +22,7 @@ class telcom_client:
 			self.ip = config['SERVER']
 			self.port = int(config['PORT'])
 			self.logger_name = config['LOGNAME']
+
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
@@ -114,7 +115,18 @@ class telcom_client:
 			return True
 		else:
 			return False
-		
+	def setxmlfile(self, filename):
+		if (self.send('setxmlfile '+filename,15)).split()[0] == 'success':
+			return True
+		else:
+			return False
+	def checkPointingModel(self, filename):
+		if (self.send('checkPointingModel '+filename,15)).split()[0] == 'success':
+			return True
+		else:
+			return False
+
+
 if __name__ == '__main__':
 	
 	config_file = 'telcom_client_2.ini'
@@ -128,3 +140,4 @@ if __name__ == '__main__':
 	
 	
 	
+  

@@ -869,7 +869,7 @@ class server:
                         #S turned off expmeter, program still running. May need
                         #S to implement other actions?
                         if reading > MAXSAFECOUNT:
-                                self.expmeter_com.logger.error("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)+" > maxsafecount="+str(MAXSAFECOUNT))                    
+                                self.expmeter_com.logger.error("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)+" > maxsafecount="+str(MAXSAFECOUNT))
                                 break
                         #? Not sure if we need this guy, seems like we are already lgging?
                         with open(self.base_directory + "/log/" + self.night + "/expmeter.dat", "a") as fh:
