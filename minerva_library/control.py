@@ -2368,12 +2368,19 @@ class control:
 
 
 	def doSpectra(self,target,telescope_num=0):
-		telescope_name = 'T' + str(telescope_num) + ': '
+#		telescope_name = 'T' + str(telescope_num) + ': '
 		
-		if telescope_num < 1 or telescope_num > len(self.telescopes):
-			self.logger.error('invalid telescope index')
-			return
-	
+#		if telescope_num < 1 or telescope_num > len(self.telescopes):
+#			self.logger.error('invalid telescope index')
+#			return
+		#S see notes in def telescope_*
+		if type(tele_list) is int:
+			if (tele_list < 1) or (tele_list > len(self.telescopes)):
+				tele_list = [x+1 for x in range(len(self.telescopes))]
+			else:
+				tele_list = [tele_list]
+                tele_list = [x-1 for x in tele_list]
+                threads = [None] * len(tele_list)
 
 
 	#if telescope_num out of range or not specified, do science for all telescopes
