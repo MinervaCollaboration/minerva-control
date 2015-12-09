@@ -32,7 +32,7 @@ class server:
 			self.logger_name = config['LOGNAME']
                         for i in range(4):
                                 if os.path.exists('C:\Users\T'+str(i+1)):
-                                        self.mountdir = config['MOUNTDIRS']['T'+str(i)]
+                                        self.mountdir = config['MOUNTDIRS']['T'+str(i+1)]
 			self.xmlname = config['XMLNAME']
 			self.header_buffer = ''
 		except:
@@ -288,13 +288,14 @@ class server:
 		self.run_server()
 
 if __name__ == '__main__':
+        ipdb.set_trace()
 	config_file = 'telcom_server.ini'
 	base_directory = 'C:\minerva-control'
 	
-	test_server = server(config_file,base_directory)
+	
+	test_server = server(config_file,base_directory)	
+
 	test_server.run_server()
-	
-	
 	
 	
 	
