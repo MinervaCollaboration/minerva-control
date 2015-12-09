@@ -592,7 +592,7 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
         if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	test_spectrograph = spectrograph('spectrograph.ini',base_directory)
-        test_spectrograph.pump()
+#        test_spectrograph.pump()
 	ipdb.set_trace()
 	while True:
 		print 'spectrograph_control test program'

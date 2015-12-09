@@ -67,12 +67,9 @@ class CDK700:
 		self.load_config()
 		#S Set up logger
 		self.setup_logger()
-		#TODO Not really sure what powerswitch is really for yet.
 		self.pdu = pdu.pdu(self.pdu_config,base)
 		#TODO Get reading telcom as well
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
-		#TODO I think I understand threading to some degre, but need to do some
-		#TODO of my own experimenting to get a good grasp on it.
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
 		
@@ -169,6 +166,7 @@ class CDK700:
 			self.port = config['PORT']
 			self.modeldir = config['Setup']['MODELDIR']
 			self.model = config['MODEL']
+			self.settingsxml = config['SETTINGSXML']
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
@@ -387,6 +385,13 @@ class CDK700:
 
 	def mountOffsetRaDec(self, deltaRaArcseconds, deltaDecArcseconds):
 		return self.pwiRequestAndParse(device="mount", cmd="move", incrementra=deltaRaArcseconds, incrementdec=deltaDecArcseconds)
+
+	def increment_alt_az_balanced(self,alt=0,azm=0):
+		status = self.getStatus()
+		curr_alt = float(status.mount.alt_radian)
+		alttosend = str(alt)
+		azmtosend = str(azm/np.cos(curr_alt))
+		return self.mountOffsetAltAz(alttosend,azmtosend)
 
 	def mountOffsetAltAz(self, deltaAltArcseconds, deltaAzArcseconds):
 		return self.pwiRequestAndParse(device="mount", cmd="move", incrementazm=deltaAzArcseconds, incrementalt=deltaAltArcseconds)
@@ -731,7 +736,9 @@ class CDK700:
 			self.logger.info('T' + self.num + ': Slewing rotator to PA=' + str(pa) + ' deg')
 			self.rotatorMove(pa)
 
-		if self.inPosition(m3port=m3port):
+### check on this; m3port not defined ####
+#		if self.inPosition(m3port=m3port):
+		if self.inPosition():
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
@@ -742,6 +749,7 @@ class CDK700:
 	
 	def m3port_check(self,target):
 
+		ipdb.set_trace()
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
 				m3port = self.port['FAU']
@@ -754,14 +762,24 @@ class CDK700:
 		#S If an allowable port is specified
 		if (str(m3port)=='1') or (str(m3port)=='2'):
 			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
+			telescopeStatus = self.getStatus()
 			if telescopeStatus.m3.port != str(m3port):
 				self.logger.info('T%s: Port changed, loading pointing model and restarting PWI'%(self.num))
-				# load the pointing model
+				# load the pointing model and settingsxml
 				modelfile = self.modeldir + self.model[m3port]
-				if os.path.isfile(modelfile):
+				xmlfile = self.modeldir + self.settingsxml[m3port]
+				#S checkPointingModel just needs filename, NOT absolute path
+				if self.telcom.checkPointingModel(self.model[m3port]):
 					self.mountSetPointingModel(modelfile)
 				else:
 					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
+
+				if self.telcom.setxmlfile(xmlfile):
+					self.logger.info('Succesfully switched xml file, restarting PWI')
+					#S need to restart PWI to see the updated settingsxml
+					self.restartPWI()
+				else:
+					self.logger.error('T%s: xml file (%s) does not exist; using current xml'%(self.num, xmlfile))
 				telescopeStatus = self.m3SelectPort(port=m3port)
 				
 		#S If a bad port is specified (e.g. 3) or no port (e.g. None)

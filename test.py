@@ -6,14 +6,32 @@ from minerva_library import control
 import ipdb, datetime, time, socket
 #from si.client import SIClient
 #from si.imager import Imager
+import threading
 
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+
+
+	target = {
+		'name' : 'HD19373',
+		'ra' : 3.15111666667,
+		'dec' : 49.6132777778,
+		'exptime' : 1,
+		}
+
+	minerva.cameras[2].fau.guiding = True
+	minerva.guideallfaus(target)
+	time.sleep(60)
+	minerva.cameras[2].fau.guiding = False
+	time.sleep(30)
+	
+
+	
+
 #	minerva.endNight(num=2,email=True)
-	minerva.cameras[2].take_fau_image()
 	ipdb.set_trace()
 	print minerva.telescopes[0].getStatus()
 	minerva.telescope_initialize(1,tracking=True)

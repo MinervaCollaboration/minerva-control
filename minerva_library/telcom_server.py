@@ -3,6 +3,7 @@ from scp import SCPClient
 import numpy as np
 import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, psutil, subprocess
 import pywinauto, SendKeys
+import shutil
 
 class server:
 
@@ -29,6 +30,10 @@ class server:
 			self.host = config['HOST']
 			self.port = int(config['PORT'])
 			self.logger_name = config['LOGNAME']
+                        for i in range(4):
+                                if os.path.exists('C:\Users\T'+str(i+1)):
+                                        self.mountdir = config['MOUNTDIRS']['T'+str(i)]
+			self.xmlname = config['XMLNAME']
 			self.header_buffer = ''
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -199,6 +204,23 @@ class server:
 			if self.start_pwi() == 'success':
 				return 'success'
 		return 'fail'
+
+	def setxmlfile(self,filename):
+		if os.path.exists(self.mountdir+filename):
+			self.logger.info('Switching settingsMount.xml to '+filename)
+			shutil.copy(self.mountdir+filename,self.mountdir+self.xmlname)
+			return 'success'
+		else:
+			self.logger.error('Requested file not found,'+filename)
+			return 'fail'
+
+	def checkPointingModel(self,filename):
+		if os.path.exists(self.mountdir+filename):
+			self.logger.info('Model exists, good to switch')
+			return 'success'
+		else:
+			self.logger.error('Model does not exist, do not switch')
+			return 'fail'
 		
 #==================server functions===================#
 #used to process communication between camera client and server==#
@@ -222,6 +244,10 @@ class server:
 			response = self.home_rotator()
 		elif tokens[0] == 'initialize_autofocus':
 			response = self.initialize_autofocus()
+		elif tokens[0] == 'setxmlfile':
+			response == self.setxmlfile(tokens[1])
+		elif tokens[0] == 'checkPointingModel':
+			response == self.checkPointingModel(tokens[1])
 		else:
 			response = 'fail'
 		try:
