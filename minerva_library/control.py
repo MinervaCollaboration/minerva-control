@@ -64,32 +64,29 @@ class control:
                         #S Give some time for the spec_server to start up, get settled.
                #         time.sleep(20)
 		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
-		#	self.site = env.site('site_Wellington.ini',self.base_directory)
 		#	#imager.imager('si_imager.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
 		self.pdus = []
-                if socket.gethostname() == 'Main':
+		self.site = env.site('site_mtHopkins.ini',self.base_directory)
 
-                        self.site = env.site('site_mtHopkins.ini',self.base_directory)
+		for i in range(2):
+			try:
+				aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
+				if aqawanob.heartbeat(): self.domes.append(aqawanob)
+				else: self.logger.error("Failed to initialize Aqawan " + str(i+1))
+			except:
+				self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 
-                        for i in range(2):
-				try:
-					aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
-					if aqawanob.heartbeat(): self.domes.append(aqawanob)
-					else: self.logger.error("Failed to initialize Aqawan " + str(i+1))
-				except:
-					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
-
-			# initialize the 4 telescopes
-			for i in range(4):
-				try: 
-					self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
-					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
-					self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
-				except:
-					self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
+		# initialize the 4 telescopes
+		for i in range(4):
+			try: 
+				self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
+				self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
+				self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
+			except:
+				self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
 
 
 	def load_config(self):
@@ -172,8 +169,7 @@ class control:
 		for c in self.cameras:
 			c.setup_logger()
 		self.site.setup_logger()
-		if socket.gethostname() == 'KiwiSpec':
-			self.spectrograph.setup_logger()
+		self.spectrograph.setup_logger()
 		self.logger_lock.release()
 		
 	#enable sending commands to telcom
