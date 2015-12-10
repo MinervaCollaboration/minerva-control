@@ -141,8 +141,8 @@ class server:
 
 	#S Create class objects
 	def create_class_objects(self):
-                #self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
-                #self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)              
+                self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
+                self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)              
                 self.gaugeController = com.com('gaugeController',self.base_directory,self.night)
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night)
 
