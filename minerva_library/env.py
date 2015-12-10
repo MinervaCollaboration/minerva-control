@@ -67,7 +67,7 @@ class site:
 			'windDirectionDegrees':[0.0,360.0],
 			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude':[-90,0],
-			'MearthCloud':[-999,-30],
+			'MearthCloud':[-999,-32],
 			'HATCloud': [-999,-999],			
 			'AuroraCloud': [-999,-999],
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
@@ -85,7 +85,7 @@ class site:
 			'windDirectionDegrees':[0.0,360.0],
 			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude':[-90,0],
-			'MearthCloud':[-999,-28],
+			'MearthCloud':[-999,-30],
 			'HATCloud': [-999,-999],			
 			'AuroraCloud': [-999,-999],
 			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]

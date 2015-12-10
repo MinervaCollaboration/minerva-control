@@ -814,19 +814,74 @@ class control:
 
 		return cc
 
+	def doSpectra(self, target, tele_list):
+
+		# acquire the target and begin guiding on each telescope
+                if type(tele_list) is int:
+                        if (tele_list < 1) or (tele_list > len(self.telescopes)):
+                                tele_list = [x+1 for x in range(len(self.telescopes))]
+                        else:
+                                tele_list = [tele_list]
+                threads = [None] * len(tele_list)
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]-1]:
+                                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement                                
+                                #S i think this might act up due to being a dictionary, but well see.                               
+                                threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
+                                threads[t].start()
+
+		# wait for all telescopes to point and begin guiding
+                for t in range(len(tele_list)):
+                        if self.telcom_enabled[tele_list[t]-1]:
+                                threads[t].join()
+
+		# wait for all telescopes to put target on their fibers (or timeout)
+		acquired = False
+		timeout = 30.0 # is this long enough?
+		elapsedTime = 0.0
+		t0 = datetime.datetime.utcnow()
+		while not acquired and elapsedTime < timeout:
+			acquired = True
+			for i in range(len(tele_list)):
+				if not self.cameras[tele_list[i]].fau.acquired: 
+					self.logger.info("T" + str(tele_list[i]) + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
+					acquired = False
+			time.sleep(1.0)
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			
+		# what's the right thing to do in a timeout? 
+		# Try again? 
+		# Go on anyway? (as long as one telescope succeeded?)
+		# We'll try going on anyway for now...
+
+		# begin exposure(s)
+		for i in range(nexp):
+			# should have enclosure checks
+			self.takeSpectrum(target)
+
+		# set camera.fau.guiding == False to stop guiders
+		for i in range(len(tele_list)):
+			self.cameras[tele_list[i]-1].fau.guiding = False
+
+		return
+
+
+	def pointAndGuide(self, target, tel_num):
+
+		self.logger.info("T" + str(tel_num) + ": pointing to target")
+		self.telescopes[tel_num-1].acquireTarget(target)
+		self.logger.info("T" + str(tel_num) + ": beginning guiding")
+		self.cameras[tel_num-1].fau.guiding=True
+		self.fauguide(target,tel_num)
+
+
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
-	def guideallfaus(self, target):
-		for camera in self.cameras:
-			if camera.fau.guiding:
-#				guidethread = threading.Thread(target=self.fauguide, args=(fau,))
-#				guidethread.start()
-				self.fauguide(camera,target)
+	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None):
 
-	def fauguide(self, camera, target, guiding=True, xfiber=None, yfiber=None):
-
-		self.logger.info('Platescale = ' + str(camera.fau.platescale))
-
+		telescope = self.telescopes[tel_num-1]
+		camera = self.cameras[tel_num-1]
+		
 		if xfiber <> None:
 			camera.fau.xfiber = xfiber
 		if yfiber <> None: 
@@ -861,11 +916,10 @@ class control:
                 #MAIN LOOP
 		i=0
 		while camera.fau.guiding:
-			time.sleep(0.3)
 			if i>npts:
 				break
-            #Grab image data from FAU
-			filename = self.takeFauImage(target, telescope_num=int(camera.telnum))
+                        # Grab image data from FAU
+			filename = self.takeFauImage(target, telescope_num=tel_num)
 
 			dataPath = '/Data/t' + camera.telnum + '/' + self.night + '/'
 			imagedata = get_centroid(dataPath + filename, badpixelmask=camera.fau.badpix)
@@ -881,7 +935,12 @@ class control:
 			filterx=camera.fau.filterdata(xvals, N=camera.fau.smoothing)
 			filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
 			filtercurpos=np.array([filterx, filtery])
-			if (camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1]) < camera.fau.bp*camera.fau.platescale):
+			separation = camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1])*camera.fau.platescale
+			if separation < camera.fau.acquisition_tolerance:
+				camera.fau.acquired = True
+			else: camera.fau.acquired = False
+
+			if separation < camera.fau.bp:
                                 #note units are arc-seconds here in the "if"
 				updateval = p.update(filtercurpos)
 				self.logger.info("Using slow loop")
@@ -891,18 +950,17 @@ class control:
 				updateval = pfast.update(filtercurpos)
 				fast = True
 
-            #Rotate the PID value by the negative of the rotation angle
+                        # Rotate the PID value by the negative of the rotation angle
 			updateval= np.dot(camera.fau.rotmatrix(-camera.fau.rotangle), updateval)
 			error[i,:] = np.array(p.error)
-            #Slew the telescope
+                
+                        # Slew the telescope
 			telupdateval = updateval*camera.fau.platescale
 
 			if guiding == True:
-				#self.telescopes[2].increment_alt_az_balanced(telupdateval[0],telupdateval[1])
-				self.telescopes[2].mountOffsetRaDec(-telupdateval[0],-telupdateval[1])
+				#telescope.increment_alt_az_balanced(telupdateval[0],telupdateval[1])
+				telescope.mountOffsetRaDec(-telupdateval[0],-telupdateval[1])
 
-#				pwi.increment_alt_az_balanced('http://192.168.1.9:8800/',
-#							      telupdateval[0], telupdateval[1])
 				if fast:
 					time.sleep(5)
 				else:
@@ -1332,17 +1390,15 @@ class control:
 
                 self.logger.info('Equipment check passed, continuing with '+objname+' exposure.')
                 return
-                        
-	def acquireSpectrum(self,target,pa=None):
-		self.acquireTarget(target, pa=pa)
-	
-        def takeSpectrum(self,exptime,objname,template=False, expmeter=None,filterwheel=None):
+ 
+        def takeSpectrum(self,target):#exptime,objname,template=False, expmeter=None,filterwheel=None):
+		
                 #S This is a check to ensure that everything is where/how it's supposed to be
                 #S based on objname.
-                self.spec_equipment_check(objname)
+                self.spec_equipment_check(target['name'])
                 #start imaging process in a different thread
-                kwargs = {'expmeter':expmeter}
-		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (exptime, objname), kwargs=kwargs)
+                kwargs = {'expmeter':target['expmeter']}
+		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (target['exptime'], target['name']), kwargs=kwargs)
 		imaging_thread.start()
                         
                 # Get status info for headers while exposing/reading out
@@ -1452,18 +1508,24 @@ class control:
                     telra = ten(telescopeStatus.mount.ra_2000)*15.0
                     #S Telescopes mounts current dec from status
                     teldec = ten(telescopeStatus.mount.dec_2000)
+
                     #S The targets current ra, hours again
-                    ra = ten(telescopeStatus.mount.ra_target)*15.0
+                    ra = target['ra']*15.0
                     #S the targets dec, degrees
-                    dec = ten(telescopeStatus.mount.dec_target)
+                    dec = target['dec']
                     #S Fixes an unforetold but legendary bug in PWI. You probably have heard about it. Wait, you haven't?! Get with the picture, dammit!
                     #S My guess is that PWI will return a wrap arund for declination sometimes. 
                     if dec > 90.0: dec = dec-360 # fixes bug in PWI
                     #S Fill out header information based on each telescope.
                     f['TELRA' + telnum] = (telra,"Telescope RA (J2000 deg)")
                     f['TELDEC' + telnum] = (teldec,"Telescope Dec (J2000 deg)")
-                    f['RA' + telnum] = (ra, "Target RA (J2000 deg)")
-                    f['DEC'+ telnum] = (dec,"Target Dec (J2000 deg)")
+                    f['RA' + telnum] = (ra, "Solved RA (J2000 deg)")
+                    f['DEC'+ telnum] = (dec,"Solved Dec (J2000 deg)")
+                    f['TARGRA' + telnum] = (ra, "Target RA (J2000 deg)")
+                    f['TARGDEC'+ telnum] = (dec,"Target Dec (J2000 deg)")
+		    f['PMRA' + telnum] = (target["pmra"], "Target Proper Motion in RA (mas/yr)")  
+		    f['PMDEC' + telnum] = (target["pmdec"], "Target Proper Motion in DEC (mas/yr)")  
+		    f['PARLAX' + telnum] = (target["parallax"], "Target Parallax (mas)")  
                     #S Get that moon seperation, put in in a header
                     moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
                     f['MOONDIS' + telnum] = (moonsep, "Distance between pointing and moon (deg)")
@@ -1480,6 +1542,7 @@ class control:
                     # M3 Specific
                     f['PORT' + telnum] = (telescopeStatus.m3.port,"Selected port for " + telescope.name)
                     #S Ahh, the otafan. Obtuse telescope ass fan, obviously.
+		    #J Or "Optical Tube Assembly"
                     f['OTAFAN' + telnum] = (telescopeStatus.fans.on,"OTA Fans on?")
                     #S Get mirror temps
                     try: m1temp = telescopeStatus.temperature.primary
@@ -1620,7 +1683,7 @@ class control:
 
 		#start imaging process in a different thread
 		#TODO for new takeimage
-		imaging_thread = threading.Thread(target = imager.take_fau_image, args = (target['exptime'],))
+		imaging_thread = threading.Thread(target = imager.take_fau_image, args = (target['fauexptime'],))
 		imaging_thread.start()
 		
 		#Prepare header while waiting for imager to finish taking image
@@ -2365,23 +2428,6 @@ class control:
 					if email: mail.send("Errors in target file: " + targetFile,emailbody,level='serious')
 					return False
 		return True
-
-
-	def doSpectra(self,target,telescope_num=0):
-#		telescope_name = 'T' + str(telescope_num) + ': '
-		
-#		if telescope_num < 1 or telescope_num > len(self.telescopes):
-#			self.logger.error('invalid telescope index')
-#			return
-		#S see notes in def telescope_*
-		if type(tele_list) is int:
-			if (tele_list < 1) or (tele_list > len(self.telescopes)):
-				tele_list = [x+1 for x in range(len(self.telescopes))]
-			else:
-				tele_list = [tele_list]
-                tele_list = [x-1 for x in tele_list]
-                threads = [None] * len(tele_list)
-
 
 	#if telescope_num out of range or not specified, do science for all telescopes
 	#S I don't think the above is true. Do we want to do something similar tp what

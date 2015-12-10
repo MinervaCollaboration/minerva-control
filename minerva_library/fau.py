@@ -92,9 +92,6 @@ class fau:
 			self.rotangle= float(config['Tel_params']['rotangle'])
 			self.platescale= float(config['Tel_params']['platescale'])
 			
-			self.setpointx_default = float(config['Ctrl_params']['setpoint_x'])
-			self.setpointy_default = float(config['Ctrl_params']['setpoint_y'])
-			
 			self.smoothing = int(config['Scale_params']['smoothing'])
 
 			self.ip = config['Setup']['SERVER_IP']
@@ -106,6 +103,7 @@ class fau:
 			self.ybin = int(config['Setup']['YBIN'])
 			self.xfiber = float(config['Setup']['XFIBER'])
 			self.yfiber = float(config['Setup']['YFIBER'])
+			self.acquisition_tolerance = float(config['Setup']['ACQUISITION_TOLERANCE'])
 			self.x1 = int(config['Setup']['X1'])
 			self.x2 = int(config['Setup']['X2'])
 			self.y1 = int(config['Setup']['Y1'])
@@ -118,6 +116,7 @@ class fau:
 			self.night = 'test'
 			self.nfailed = 0
 			self.nserver_failed = 0
+			self.acquired = False
 
 		except:
 			print('ERROR accessing config file: ' + self.config_file)

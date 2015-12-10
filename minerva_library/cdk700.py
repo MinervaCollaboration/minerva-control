@@ -749,7 +749,6 @@ class CDK700:
 	
 	def m3port_check(self,target):
 
-		ipdb.set_trace()
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
 				m3port = self.port['FAU']

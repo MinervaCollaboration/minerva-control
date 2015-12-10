@@ -14,13 +14,30 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
-
 	target = {
-		'name' : 'HD19373',
-		'ra' : 3.15111666667,
-		'dec' : 49.6132777778,
-		'exptime' : 1,
-		}
+		"name" : "HD19373", 
+		"ra" : 3.15111666667, 
+		"dec" : 49.6132777778, 
+		"starttime" : "2015-01-01 00:00:00", 
+		"endtime" : "2018-01-01 00:00:00", 
+		"spectroscopy": True, 
+		"filter": ["rp"], 
+		"num": [100], 
+		"exptime": [300], 
+		"fauexptime": 1, 
+		"defocus": 0.0, 
+		"selfguide": True, 
+		"guide": False, 
+		"cycleFilter": True, 
+		"positionAngle": 0.0, 
+		"pmra": 1262.41, 
+		"pmdec" : -91.5, 
+		"parallax" : 94.87, 
+		"i2": False}
+
+	minerva.doSpectra(target,[3])
+	ipdb.set_trace()
+
 
 	minerva.cameras[2].fau.guiding = True
 	minerva.guideallfaus(target)
