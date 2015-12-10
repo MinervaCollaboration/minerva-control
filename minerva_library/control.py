@@ -1412,7 +1412,9 @@ class control:
                 moonphase = self.site.moonphase()
 
                 #S Path for good stuff online
-                gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
+		if socket.gethostname() == 'Main':
+			gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
+		else: gitNum = 'UNKNOWN'
 		
                 # emulate MaximDL header for consistency
 		f = collections.OrderedDict()
