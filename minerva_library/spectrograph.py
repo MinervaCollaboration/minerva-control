@@ -106,7 +106,6 @@ class spectrograph:
 		
 	#return a socket object connected to the camera server
 	def connect_server(self):
-                print self.ip, self.port
 		try:
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			s.settimeout(3)
@@ -134,6 +133,8 @@ class spectrograph:
 			self.logger.exception("connection timed out")
 			return 'fail'
 		data = repr(data).strip("'")
+
+		if data.split() == '': ipdb.set_trace()
 		if data.split()[0] == 'success':
 			self.logger.info(msg.split()[0] + " command completed")
 		else:
@@ -343,7 +344,6 @@ class spectrograph:
         #TODO I don't think the second split is necessary on all these 'returns'
         def cell_heater_temp(self):
                 response = self.send('cell_heater_temp None',10)
-                print response
                 return float(response.split()[1].split('\\')[0])
 
         def cell_heater_set_temp(self, temp):

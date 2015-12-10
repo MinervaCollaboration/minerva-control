@@ -60,12 +60,12 @@ class control:
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
 		#S Commenting put for operation on minervaMain
-		if socket.gethostname() == 'Kiwispec-PC':
+		#if socket.gethostname() == 'Kiwispec-PC':
                         #S Give some time for the spec_server to start up, get settled.
-                        time.sleep(20)
-			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
-			self.site = env.site('site_Wellington.ini',self.base_directory)
-			#imager.imager('si_imager.ini',self.base_directory)
+               #         time.sleep(20)
+		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+		#	self.site = env.site('site_Wellington.ini',self.base_directory)
+		#	#imager.imager('si_imager.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
@@ -830,14 +830,14 @@ class control:
                                 threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
                                 threads[t].start()
 
-		# wait for all telescopes to point and begin guiding
-                for t in range(len(tele_list)):
-                        if self.telcom_enabled[tele_list[t]-1]:
-                                threads[t].join()
+#		# wait for all telescopes to point and begin guiding
+#                for t in range(len(tele_list)):
+#                        if self.telcom_enabled[tele_list[t]-1]:
+#                                threads[t].join()
 
 		# wait for all telescopes to put target on their fibers (or timeout)
 		acquired = False
-		timeout = 30.0 # is this long enough?
+		timeout = 3.0 # is this long enough?
 		elapsedTime = 0.0
 		t0 = datetime.datetime.utcnow()
 		while not acquired and elapsedTime < timeout:
@@ -855,7 +855,7 @@ class control:
 		# We'll try going on anyway for now...
 
 		# begin exposure(s)
-		for i in range(nexp):
+		for i in range(target['num'][0]):
 			# should have enclosure checks
 			self.takeSpectrum(target)
 
@@ -1397,8 +1397,12 @@ class control:
                 #S based on objname.
                 self.spec_equipment_check(target['name'])
                 #start imaging process in a different thread
-                kwargs = {'expmeter':target['expmeter']}
-		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (target['exptime'], target['name']), kwargs=kwargs)
+		if 'expmeter' in target.keys():
+			kwargs = {'expmeter':target['expmeter']}
+		else:
+			kwargs = {'expmeter':None}
+
+		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (target['exptime'][0], target['name']), kwargs=kwargs)
 		imaging_thread.start()
                         
                 # Get status info for headers while exposing/reading out
@@ -1412,9 +1416,8 @@ class control:
                 moonphase = self.site.moonphase()
 
                 #S Path for good stuff online
-                gitPath = "C:/Users/Kiwispec/AppData/Local/GitHub/PortableGit_c2ba306e536fdf878271f7fe636a147ff37326ad/bin/git.exe"
-                gitNum = subprocess.check_output([gitPath, "rev-list", "HEAD", "--count"]).strip()
-
+                gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
+		
                 # emulate MaximDL header for consistency
 		f = collections.OrderedDict()
 
@@ -1496,18 +1499,20 @@ class control:
 
                 # loop over each telescope and insert the appropriate keywords
                 for telescope in self.telescopes:
+			
                     #? What? What is this concat?
-                    telescop += telescope.name
+#                    telescop += telescope.name
                     #S the telescope number, striped of the chararray that is the string telescope.name[-1]
                     #S Not wure where self.telescope[x].name comes from though. Not in config files that I can find.
-                    telnum = telescope.name[-1]
+
+                    telnum = telescope.num
                     #S Getting this mysterious status dict (I believe).
                     telescopeStatus = telescope.getStatus()
                     #S The telescopes current ra.
                     #S NOTE: telescopestatus.mount.ra_2000 in hours. 
-                    telra = ten(telescopeStatus.mount.ra_2000)*15.0
+                    telra = self.ten(telescopeStatus.mount.ra_2000)*15.0
                     #S Telescopes mounts current dec from status
-                    teldec = ten(telescopeStatus.mount.dec_2000)
+                    teldec = self.ten(telescopeStatus.mount.dec_2000)
 
                     #S The targets current ra, hours again
                     ra = target['ra']*15.0
@@ -1540,7 +1545,7 @@ class control:
                     #S So we do have access to port info, keep this in mind!!!
                     #SNOTE 
                     # M3 Specific
-                    f['PORT' + telnum] = (telescopeStatus.m3.port,"Selected port for " + telescope.name)
+                    f['PORT' + telnum] = (telescopeStatus.m3.port,"Selected port for T" + telnum)
                     #S Ahh, the otafan. Obtuse telescope ass fan, obviously.
 		    #J Or "Optical Tube Assembly"
                     f['OTAFAN' + telnum] = (telescopeStatus.fans.on,"OTA Fans on?")
@@ -1568,8 +1573,8 @@ class control:
                 # loop over each aqawan and insert the appropriate keywords
                 for aqawan in self.domes:
                     aqStatus = aqawan.status()
-                    aqnum = aqawan.name[-1]
 
+                    aqnum = aqawan.num
                     f['AQSOFTV'+aqnum] = (aqStatus['SWVersion'],"Aqawan software version number")
                     f['AQSHUT1'+aqnum] = (aqStatus['Shutter1'],"Aqawan shutter 1 state")
                     f['AQSHUT2'+aqnum] = (aqStatus['Shutter2'],"Aqawan shutter 2 state")
@@ -1728,7 +1733,8 @@ class control:
 		f['OBJECT'] = target['name'] #objname
 		f['APTDIA'] = "700"
 		f['APTAREA'] = "490000"
-		gitNum = "100" #for testing purpose
+
+                gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
 		f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
 
 		# Site Specific
@@ -1952,7 +1958,9 @@ class control:
 		f['OBJECT'] = target['name'] #objname
 		f['APTDIA'] = "700"
 		f['APTAREA'] = "490000"
-		gitNum = "100" #for testing purpose
+
+
+                gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
 		f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
 
 		# Site Specific

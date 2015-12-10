@@ -666,7 +666,7 @@ if __name__ == '__main__':
 
 	if socket.gethostname() == 'Main':
         	base_directory = '/home/minerva/minerva-control'
-        	config_file = 'imager_t1.ini'
+        	config_file = 'imager_t3.ini'
         else:
                 base_directory = 'C:/minerva-control/'
                 config_file = 'imager_t' + socket.gethostname()[1] + '.ini'

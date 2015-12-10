@@ -15,6 +15,8 @@ import telcom_client
 import threading
 import numpy as np
 import socket
+import shutil
+import subprocess
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -452,6 +454,7 @@ class CDK700:
 
 	def recover(self):
 		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
+
 		try: self.shutdown()
 		except: pass
 		if self.initialize():
@@ -767,18 +770,19 @@ class CDK700:
 				# load the pointing model and settingsxml
 				modelfile = self.modeldir + self.model[m3port]
 				xmlfile = self.modeldir + self.settingsxml[m3port]
-				#S checkPointingModel just needs filename, NOT absolute path
-				if self.telcom.checkPointingModel(self.model[m3port]):
-					self.mountSetPointingModel(modelfile)
+				
+				if os.path.isfile(modelfile):
+					shutil.copyfile(modelfile,self.modeldir + 'Default_Mount_Model.PXP')
 				else:
 					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
 
-				if self.telcom.setxmlfile(xmlfile):
-					self.logger.info('Succesfully switched xml file, restarting PWI')
-					#S need to restart PWI to see the updated settingsxml
-					self.restartPWI()
+				if os.path.isfile(xmlfile):
+					shutil.copyfile(xmlfile,self.modeldir + 'settingsMount.xml')
 				else:
 					self.logger.error('T%s: xml file (%s) does not exist; using current xml'%(self.num, xmlfile))
+					
+				self.restartPWI()
+
 				telescopeStatus = self.m3SelectPort(port=m3port)
 				
 		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
@@ -1009,25 +1013,63 @@ class CDK700:
 		if self.telcom.initialize_autofocus():return True
 		else: return False
 
-	def killPWI(self):
-		if self.telcom.killPWI():return True
-		else: return False
 	def startPWI(self,email=True):
-		if self.telcom.startPWI():
-			time.sleep(5.0)
-			return True
-		else: return False
+		self.send_to_computer('schtasks /Run /TN "Start PWI"')
+		time.sleep(5.0)
+
 	def restartPWI(self,email=True):
 		self.killPWI()
 		time.sleep(5.0)
 		return self.startPWI(email=email)
+
+        def killPWI(self):
+                # disconnect telescope gracefully first (PWI gets angry otherwise)!
+#		try: self.shutdown()
+# 		except: pass
+                return self.kill_remote_task('PWI.exe')
+
+	def kill_remote_task(self,taskname):
+                return self.send_to_computer("taskkill /IM " + taskname + " /f")
+ 
+
+        def send_to_computer(self, cmd):
+                f = open(self.base_directory + '/credentials/authentication.txt','r')
+                username = f.readline().strip()
+                password = f.readline().strip()
+                f.close()
+
+                process = subprocess.Popen(["winexe","-U","HOME/" + username + "%" + password,"//" + self.HOST, cmd],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                out,err = process.communicate()
+                self.logger.info('T' + self.num + ': cmd=' + cmd + ', out=' + out + ', err=' + err)
+
+                if 'NT_STATUS_HOST_UNREACHABLE' in out:
+                        self.logger.error('T' + self.num + ': the host is not reachable')
+                        mail.send("T" + self.num + ' is unreachable',
+                                  "Dear Benevolent Humans,\n\n"+
+                                  "I cannot reach T" + self.num + ". Can you please check the power and internet connection?\n\n" +
+                                  "Love,\nMINERVA",level="serious")
+                        return False
+                elif 'NT_STATUS_LOGON_FAILURE' in out:
+                        self.logger.error('T' + self.num + ': invalid credentials')
+                        mail.send("Invalid credentials for T" + self.num,
+                                  "Dear Benevolent Humans,\n\n"+
+                                  "The credentials in " + self.base_directory +
+                                  '/credentials/authentication.txt (username=' + username +
+                                  ', password=' + password + ') appear to be outdated. Please fix it.\n\n' +
+                                  'Love,\nMINERVA',level="serious")
+                        return False
+                elif 'ERROR: The process' in err:
+                        self.logger.info('T' + self.num + ': task already dead')
+                        return True
+                return True
+
 
 #test program
 if __name__ == "__main__":
 
 	if socket.gethostname() == 'Main':
 		base_directory = '/home/minerva/minerva-control'
-		config_file = 'telescope_1.ini'
+		config_file = 'telescope_3.ini'
         else: 
 		base_directory = 'C:/minerva-control/'
 		config_file = 'telescope_' + socket.gethostname()[-1] + '.ini'

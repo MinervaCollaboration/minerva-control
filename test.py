@@ -35,6 +35,8 @@ if __name__ == '__main__':
 		"parallax" : 94.87, 
 		"i2": False}
 
+	minerva.takeSpectrum(target)
+
 	minerva.doSpectra(target,[3])
 	ipdb.set_trace()
 
