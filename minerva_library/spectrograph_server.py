@@ -71,6 +71,8 @@ class server:
                         self.header_buffer = ''
                         self.thar_file = config['THARFILE']
                         self.flat_file = config['FLATFILE']
+                        self.i2serial = int(config['I2SERIAL'])
+                        self.i2hwtype = int(config['I2HWTYPE'])
                         self.i2positions = config['I2POSITIONS']
                         for key in self.i2positions.keys():
                                 self.i2positions[key] = float(self.i2positions[key])
@@ -141,16 +143,20 @@ class server:
 
 	#S Create class objects
 	def create_class_objects(self):
+                ipdb.set_trace()
+                self.i2stage_connect()
                 self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
                 self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)              
                 self.gaugeController = com.com('gaugeController',self.base_directory,self.night)
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night)
-
+                #ipdb.set_trace()
+                #self.i2stage_connect()
+#                ipdb.set_trace()
                 print("*** REMOVE THIS RETURN AFTER TESTING***")
                 return
                 self.expmeter_com = com.com('expmeter',self.base_directory,self.night)
 
-                self.i2stage_connect()
+
 
 #==================server functions===================#
 #used to process communication between camera client and server==#
@@ -374,11 +380,7 @@ class server:
 
         #S Initialize the stage, needs to happen before anyhting else.
         def i2stage_connect(self):
-                #S Unique serial number for I2 stage, hardwaretype for BSC201(?)
-                #S Using HW=12, waiting for response form THORLABS. Seems to work fine
-                #S in testing though.
-                SN = 40853360
-                HWTYPE = 12
+
                 #S Decided to place a power cycle before any connectino we make to the i2stage.
                 #S There is an issue that occurs in a dynamic linked librry (.dll) file that PyAPT uses
                 #S if the motor was not discnnected properly. If the issue is hit, it crashes python.exe,
@@ -386,15 +388,15 @@ class server:
                 #S as possible, a power cycle is being included. The ten second sleep time is there to give
                 #S the motor some time to do it's start up stuff (e.g. it won't connect if you try to
                 #S quickly after the cycle.
-                self.dynapower2.cycle('i2stage',2)
-                time.sleep(10)
+                #self.dynapower2.cycle('i2stage',2)
+                time.sleep(1)
                 
                 
                 #S Try and connect and initialize
                 try:
                         #S Connect the motor with credentials above.
                         #ipdb.set_trace()
-                        self.motorI2 = APTMotor(SN , HWTYPE)
+                        self.motorI2 = APTMotor(SerialNum=self.i2serial , HWTYPE=self.i2hwtype)
                         #S Initialize motor, we can move and get info with this.
                         #S Can't be controllecd by anything else until relesased.
                         #S NOTE this is actually included in APTMotor routine, so commenting out.
@@ -409,7 +411,8 @@ class server:
                         
                 #S Something goes wrong. Remember, only one application can connect at
                 #S a time, e.g. Kiwispec but not *.py
-                except:
+                except Exception as e:
+                        print e
                         self.logger.error("ERROR: did not connect to the Iodine stage.")
                 return 'success'
         #S Disconnect gracefully from Iodine stage. Not sure if we want to log last position
@@ -914,15 +917,15 @@ class server:
         #S Functino to ensure power is shut off to exposure meter
         def safe_close(self,signal):
                 print("***REMOVE THESE COMMENTS AFTER TESTING***")
-                #self.dynapower1.off('expmeter')
+                self.dynapower1.off('expmeter')
 		#self.thar_turn_off()
 		#self.flat_turn_off()
-		#self.i2stage_disconnect()
+		self.i2stage_disconnect()
 		
 		#S Something fucky going on here, won't let me close browsers.
 		#TODO
-		#self.dynapower1.browser.close()
-		#self.dynapower2.browser.close()
+		self.dynapower1.browser.close()
+		self.dynapower2.browser.close()
 
                 
                 
@@ -932,12 +935,12 @@ if __name__ == '__main__':
         #ipdb.set_trace()
 	test_server = server('spectrograph.ini',base_directory)
 
-        ipdb.set_trace()
+#        ipdb.set_trace()
 	
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
-        pressure_thread = threading.Thread(target=test_server.log_pressures)
-        pressure_thread.start()
+#        pressure_thread = threading.Thread(target=test_server.log_pressures)
+#        pressure_thread.start()
 	
 	#thread = threading.Thread(target=test_server.logexpmeter)
 	#thread.start()
