@@ -16,8 +16,7 @@ if __name__ == '__main__':
 
 	target = {
 		"name" : "HD19373", 
-		"ra2" : 3.15111666667, 
-		"ra" : 18.15111666667, 
+		"ra" : 3.15111666667, 
 		"dec" : 49.6132777778, 
 		"starttime" : "2015-01-01 00:00:00", 
 		"endtime" : "2018-01-01 00:00:00", 
@@ -34,13 +33,14 @@ if __name__ == '__main__':
 		"pmra": 1262.41, 
 		"pmdec" : -91.5, 
 		"parallax" : 94.87, 
+		"template" : False, 
 		"i2": False}
 
-	minerva.takeSpectrum(target)
-	ipdb.set_trace()
+#	minerva.takeSpectrum(target)
+#	ipdb.set_trace()
 
 	minerva.doSpectra(target,[3])
-
+	ipdb.set_trace()
 
 
 	minerva.cameras[2].fau.guiding = True

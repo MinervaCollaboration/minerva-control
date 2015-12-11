@@ -453,9 +453,12 @@ class CDK700:
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
 	def recover(self):
-		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
+		#S need to make sure all these functinos don't call recover
+		#S shutdown looks clear, all basePWI functions
 
+		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
 		try: self.shutdown()
+		
 		except: pass
 		if self.initialize():
 			self.logger.info('T' + self.num + ': recovered after reconnecting')
@@ -939,13 +942,14 @@ class CDK700:
 		time.sleep(30) # wait for the panel to initialize
 
 	def home(self, timeout=420.0):
-                
+                #S running into problems where we get recursion between mountconnecting failing and 
+		#S homing. 
 		# turning on mount tracking
-		self.logger.info('T' + self.num + ': Connecting to mount')
-		self.mountConnect()
-
-		self.logger.info('T' + self.num + ': Enabling motors')
-		self.mountEnableMotors()
+#		self.logger.info('T' + self.num + ': Connecting to mount')
+#		self.mountConnect()
+#
+#		self.logger.info('T' + self.num + ': Enabling motors')
+#		self.mountEnableMotors()
 
                 status = self.getStatus()
                 if status.mount.encoders_have_been_set == 'True':

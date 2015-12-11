@@ -1235,21 +1235,21 @@ class control:
 	#S Somethings, like turning lamps on, need to be called before. More
 	#S to develop on this
 	#TODO TODO
-        def spec_equipment_check(self,objname,filterwheel=None,template = False):
+        def spec_equipment_check(self,target):#objname,filterwheel=None,template = False):
                 #S Desired warmup time for lamps, in minutes
                 #? Do we want seperate times for each lamp, both need to warm for the same rightnow
                 WARMUPMINUTES = .5#10.
                 #S Convert to lowercase, just in case.
-                objname = objname.lower()
+                objname = target['name'].lower()
                 #S Some logic to see what type of spectrum we'll be taking.
 
                 #S Decided it would be best to include a saftey to make sure the lamps
                 #S were turned on.
                 #S LAMPS NEED TO BE SHUT DOWN MANUALLY THOUGH.
-                if (objname == 'arc'):
-                        self.spectrograph.thar_turn_on()
-                if (objname == 'flat'):
-                        self.spectrograph.flat_turn_on()
+#                if (objname == 'arc'):
+#                        self.spectrograph.thar_turn_on()
+#                if (objname == 'flat'):
+#                        self.spectrograph.flat_turn_on()
                 
                 #S These factors are necessary for all types of exposures,
                 #S so we'll put them in the equipment check
@@ -1265,6 +1265,7 @@ class control:
                 #S for that long. We could have it default to turn on the lamp,
                 #S but for now it doesn't.
                 if (objname == 'arc'):
+			pass
                         #S Move the I2 stage out of the way of the slit.
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
                         i2stage_move_thread.start()
@@ -1291,6 +1292,7 @@ class control:
                 #S Flat exposures require the flat lamp to be on for ten minutes too.
                 #S Same questions as for thar specs.
                 elif (objname == 'flat'):
+			pass
                         #S Move the I2 stage out of the way of the slit.
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('flat',))
                         i2stage_move_thread.start()
@@ -1318,6 +1320,7 @@ class control:
 
                 #S Conditions for both bias and dark.
                 elif (objname == 'bias') or (objname == 'dark'):
+			pass
                         #S Make sure the lamps are off
                         self.spectrograph.thar_turn_off()
                         self.spectrograph.flat_turn_off()
@@ -1335,7 +1338,8 @@ class control:
 
                 #S Conditions for template images, just in case we need them might
                 #S as well have it programmed in.
-                elif template:
+                elif target['template']:
+			pass
                         #S Get that iodine out of my face!
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
                         i2stage_move_thread.start()
@@ -1391,7 +1395,7 @@ class control:
 		
                 #S This is a check to ensure that everything is where/how it's supposed to be
                 #S based on objname.
-                self.spec_equipment_check(target['name'])
+                self.spec_equipment_check(target)
                 #start imaging process in a different thread
 		if 'expmeter' in target.keys():
 			kwargs = {'expmeter':target['expmeter']}
