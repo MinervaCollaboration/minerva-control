@@ -1236,6 +1236,7 @@ class control:
 	#S to develop on this
 	#TODO TODO
         def spec_equipment_check(self,target):#objname,filterwheel=None,template = False):
+		return
                 #S Desired warmup time for lamps, in minutes
                 #? Do we want seperate times for each lamp, both need to warm for the same rightnow
                 WARMUPMINUTES = .5#10.
@@ -1402,6 +1403,8 @@ class control:
 		else:
 			kwargs = {'expmeter':None}
 
+#		self.spectrograph.take_image(target['exptime'][0],target['name'])
+
 		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (target['exptime'][0], target['name']), kwargs=kwargs)
 		imaging_thread.start()
                         
@@ -1502,11 +1505,6 @@ class control:
                 # loop over each telescope and insert the appropriate keywords
                 for telescope in self.telescopes:
 			
-                    #? What? What is this concat?
-#                    telescop += telescope.name
-                    #S the telescope number, striped of the chararray that is the string telescope.name[-1]
-                    #S Not wure where self.telescope[x].name comes from though. Not in config files that I can find.
-
                     telnum = telescope.num
                     #S Getting this mysterious status dict (I believe).
                     telescopeStatus = telescope.getStatus()
@@ -1533,13 +1531,16 @@ class control:
 		    f['PMRA' + telnum] = (target["pmra"], "Target Proper Motion in RA (mas/yr)")  
 		    f['PMDEC' + telnum] = (target["pmdec"], "Target Proper Motion in DEC (mas/yr)")  
 		    f['PARLAX' + telnum] = (target["parallax"], "Target Parallax (mas)")  
+		    f['FLUXMID' + telnum] = ("UNKNOWN","The flux-weighted mid exposure time for Telescope " + telnum + " (JD_UTC)")
+
                     #S Get that moon seperation, put in in a header
                     moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
                     f['MOONDIS' + telnum] = (moonsep, "Distance between pointing and moon (deg)")
                     #TODO Now this, where are we storing pointing model? How is it set?
                     #TODO Obviously it's in status, but where does status get it? Is it just
                     #TODO not on this computer?
-                    f['PMODEL' + telnum] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
+                    f['PMODEL' + telnum] = (telescope.model[telescopeStatus.m3.port],"Pointing Model File")
+                    f['XMLFILE' + telnum] = (telescope.settingsxml[telescopeStatus.m3.port],"Pointing Model File")
                     #S Focus stuff
                     f['FOCPOS' + telnum] = (telescopeStatus.focuser.position,"Focus Position (microns)")
                     #S Rotator stuff, only needed for photometry?
@@ -1633,8 +1634,8 @@ class control:
 					if temps[1] == "None" : temp = 'UNKNOWN'
 					else: temp = float(temps[1])
 					f['TEMP'+cont+str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
-                f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
-                f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
+#                f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
+#                f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
 #                f['I2POSAF'] = (self.spectrograph.i2stage_get_pos()[0],'Iodine Stage Actual Position [cm]')
 #                f['I2POSAS'] = (self.spectrograph.i2stage_get_pos()[1],'Iodine Stage Actual Position [string]')
 #                f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')

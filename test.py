@@ -15,7 +15,7 @@ if __name__ == '__main__':
 	minerva = control.control('control.ini',base_directory)
 
 	target = {
-		"name" : "HD19373", 
+		"name" : "test", 
 		"ra" : 3.15111666667, 
 		"dec" : 49.6132777778, 
 		"starttime" : "2015-01-01 00:00:00", 
@@ -23,7 +23,7 @@ if __name__ == '__main__':
 		"spectroscopy": True, 
 		"filter": ["rp"], 
 		"num": [100], 
-		"exptime": [300], 
+		"exptime": [0.01], 
 		"fauexptime": 1, 
 		"defocus": 0.0, 
 		"selfguide": True, 
@@ -35,6 +35,9 @@ if __name__ == '__main__':
 		"parallax" : 94.87, 
 		"template" : False, 
 		"i2": False}
+
+	minerva.takeSpectrum(target)
+	ipdb.set_trace()
 
 #	minerva.takeSpectrum(target)
 #	ipdb.set_trace()

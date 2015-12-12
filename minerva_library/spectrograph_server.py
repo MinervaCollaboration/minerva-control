@@ -313,7 +313,7 @@ class server:
 		try:
 			header_info = self.header_buffer + param
 			self.header_buffer = ''
-			f = pyfits.open(self.file_name, mode='update')
+			f = pyfits.open(self.file_name, uint16=True, mode='update')
 			for key,value in json.loads(header_info,object_pairs_hook=collections.OrderedDict).iteritems():
 				if isinstance(value, (str, unicode)):
 					f[0].header[key] = value
@@ -321,6 +321,7 @@ class server:
 					f[0].header[key] = (value[0],value[1])
 
                         f[0].header['SIMPLE'] = True
+			f[0].header['BITPIX'] = 16
                         f[0].header['EXPTIME'] = float(f[0].header['PARAM24'])/1000.0
                         f[0].header['SET-TEMP'] = float(f[0].header.comments['PARAM62'].split('(')[1].split('C')[0].strip())
                         f[0].header['CCD-TEMP'] = float(f[0].header['PARAM0'])
@@ -358,15 +359,16 @@ class server:
                         del f[0].header['TIME']
                         for i in range(80): del f[0].header['PARAM' + str(i)]
 
-                        # recast as 16 bit unsigned integer (2x smaller with no loss of information)
-                        #data = f[0].data.astype('uint16')
-                        #f.close()
+                        # recast as 16 signed integer (2x smaller with no loss of information)
+                        # FITS standard uses "two's complement" => signed int = unsigned int
+#                       f[0].data = f[0].data.astype('int16') 
+#                       f[0].data = f[0].data.astype('uint16')
 
-                        # Write final image
-                        #pyfits.writeto(filename,data,hdr)
-                        
 			f.flush()
 			f.close()
+
+			return 'success'
+
 		except:
 			self.logger.error("failed to create header")
 			self.logger.exception("failed to create header")
