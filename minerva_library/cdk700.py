@@ -130,16 +130,19 @@ class CDK700:
 
 		# turning on mount tracking
 		self.logger.info('T' + self.num + ': Connecting to mount')
-		self.mountConnect()
-                #S Start yer engines
+		if not self.mountConnect():
+			return False                #S Start yer engines
 		self.logger.info('T' + self.num + ': Enabling motors')
-		self.mountEnableMotors()
+		if not self.mountEnableMotors():
+			return False
 
 		self.logger.info('T' + self.num + ': Connecting to focuser')
-		self.focuserConnect()
+		if not self.focuserConnect():
+			return False
 		
 		self.logger.info('T' + self.num + ': Homing telescope')
-		self.home()
+		if not self.home():
+			return False
 
 		# turning on mount tracking, rotator tracking
 		#S I'm defaulting this off, but including an argument in case we do want it
@@ -452,15 +455,15 @@ class CDK700:
 	def m3Stop(self):
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
-	def recover(self):
+	def recover(self,tracking = True):
 		#S need to make sure all these functinos don't call recover
 		#S shutdown looks clear, all basePWI functions
 
 		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
 		try: self.shutdown()
-		
 		except: pass
-		if self.initialize():
+		
+		if self.initialize(tracking=tracking):
 			self.logger.info('T' + self.num + ': recovered after reconnecting')
 			return True
 
@@ -469,7 +472,7 @@ class CDK700:
 		except: pass
 		self.restartPWI()
 		
-		if self.initialize():
+		if self.initialize(tracking=tracking):
 			self.logger.info('T' + self.num + ': recovered after restarting PWI')
 			return True
 
@@ -490,48 +493,14 @@ class CDK700:
 		    "I have failed to recover automatially. Please recover me, then delete " + filename + " to restart operations.\n\n" + \
 		    "Love,\n" + \
 		    "MINERVA"			
-		while not self.initialize():
+		while not self.initialize(tracking=tracking):
 			self.logger.error('T' + self.num + ': Telescope has failed to automatically recover; intervention required')
 			mail.send('T' + self.num + " has failed",body,level='serious')
 			fh = open(filename,'w')
 			fh.close()
 			while os.path.isfile(filename):
 				time.sleep(1)
-		return self.initialize()
-
-		# TODO
-                # we never reset self.nfailed
-		self.nfailed = self.nfailed + 1
-		if self.nfailed == 1:
-                        # just try to reconnect
-			self.logger.info('T' + self.num + ': Failed 1 times; trying to reconnect')
-                        try: self.shutdown()
-                        except: pass
-                        self.initialize()
-                elif self.nfailed == 2:
-                        # restart PWI and reconnect
-			self.logger.info('T' + self.num + ': Failed 2 times; trying to restarting PWI')
-                        try: self.shutdown()
-                        except: pass
-                        self.restartPWI()
-                        self.initialize()
-                elif self.nfailed == 3:
-                        # power cycle and rehome the scope
-			self.logger.info('T' + self.num + ': Failed 3 times; power cycling the mount')
- 			try: self.shutdown()
-			except: pass
-			self.killPWI()
-			self.powercycle()
-			self.startPWI()
-			self.initialize()
-		if self.nfailed > 3:  
-			self.logger.error('T' + self.num + ': Telescope has failed ' + str(self.nfailed) + ' times; something is probably seriously wrong...')
-			body = "Dear benevolent humans,\n\n" + \
-			    "I'm broken and have failed to recover automatially. Please help!\n\n" + \
-			    "Love,\n" + \
-			    "MINERVA"			
-			mail.send('T' + self.num + " has failed " + str(self.nfailed) + " times",body,level='serious')
-			ipdb.set_trace()
+		return True
 
 	def inPosition(self,m3port=None):
 
@@ -945,11 +914,11 @@ class CDK700:
                 #S running into problems where we get recursion between mountconnecting failing and 
 		#S homing. 
 		# turning on mount tracking
-#		self.logger.info('T' + self.num + ': Connecting to mount')
-#		self.mountConnect()
-#
-#		self.logger.info('T' + self.num + ': Enabling motors')
-#		self.mountEnableMotors()
+		self.logger.info('T' + self.num + ': Connecting to mount')
+		self.mountConnect()
+
+		self.logger.info('T' + self.num + ': Enabling motors')
+		self.mountEnableMotors()
 
                 status = self.getStatus()
                 if status.mount.encoders_have_been_set == 'True':
@@ -968,10 +937,8 @@ class CDK700:
                                 status = self.getStatus()
 		
 		time.sleep(5.0)
-		#S Initialize here iterates home again, but it should catch and see
-		#S that mount encoders are set. 
-		self.initialize()
 		status = self.getStatus()
+
 		#S Let's force close PWI here (after a disconnect). What is happening I think is that 
 		#S PWI freezes, and it can't home. While it's stuck in this loop of rehoming
 		#S with no hope of exiting. All it does is continually hit time out. 
@@ -980,27 +947,10 @@ class CDK700:
 		#S and it won't keep spiralling downward.
 		#TODO Need to think of a good way to setup iteration check... be right back to it
 		if status.mount.encoders_have_been_set == 'False':
-                        self.logger.error('T' + self.num + ': Mount failed to home; beginning recovery')
-                        self.recover()
-                        return self.home()
-                else:
-                        return True
-
-		
-		self.logger.info('T' + self.num + ': Homing the telscope')
-		if self.telcom.home():return True
-		else: 
-			body = 'Dear humans,\n\n'\
-			    'I failed to home correctly, and will need someone to help me through the process.'\
-			    'Some investigation is in order to why this happened, and could be due to a number of reasons:\n'\
-			    '1) Pywinauto may not have been able to get a hold of the correct windows.\n'\
-			    '2) Hitting enter at the "OK" button on the pup-up DialogBox failed to get rid '\
-			    'of the window after some attempts (should be five)\n'\
-			    '3) I could have had an interruption in other software, causing a potential fail(?)\n\n'\
-			    'Love,\n'\
-			    '-MINERVA'
-			mail.send('T' + self.num + ' failed to home correctly',body,level='serious')
 			return False
+		else:
+			return True
+
 		
 	def home_rotator(self):
 		self.logger.info('T' + self.num + ': Connecting to rotator')

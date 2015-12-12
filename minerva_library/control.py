@@ -2226,7 +2226,8 @@ class control:
 		self.logger.info(telescope_name + 'Beginning twilight flats')
 
 		# make sure the telescope/dome is ready for obs
-		telescope.initialize(tracking=True)
+		if not telescope.initialize(tracking=True):
+			telescope.recover()
 		
 		# start off with the extreme exposure times
 		if morning: exptime = maxExpTime
@@ -2787,34 +2788,12 @@ class control:
 		self.prepNight(telescope_num)
 		self.scheduleIsValid(telescope_num)
 
-		self.telescopes[telescope_num-1].shutdown()
-#		self.telescopes[telescope_num-1].killPWI()
-		self.telescopes[telescope_num-1].initialize(tracking=False)
-		self.telescopes[telescope_num-1].home()
-
-		#S Initialize, home, and park telescope. 
-		#S Enable mount and connect to motors.
-#		self.telescopes[telescope_num-1].initialize(tracking=False)
-
-		'''
-		#S Send her home, make sure everything is running right. 
-		self.telescopes[telescope_num-1].home()
-		time.sleep(300)
-		#S Same for rotator
-		self.telescopes[telescope_num-1].home_rotator()
-		time.sleep(420)
-		'''
-		#S Do an initial connection to autofocus, this way we can use it later 
-		#S without issue. For some reason, we can't autofocus unless we have started
-		#S stopped it once.
-#		self.telescopes[telescope_num-1].initialize_autofocus()
-		#S Let her run?
-#		time.sleep(60)
-		
+		if not self.telescopes[telescope_num-1].initialize(tracking=False):
+			self.telescopes[telescope_num-1].recover(tracking=False)
 
 		#S Finally (re)park the telescope. 
 		self.telescopes[telescope_num-1].park()
-		
+
 		#TODO A useless bias
 		#S do a single bias to get the shutters to close, a cludge till we can get there and
 		#S check things out ourselves.
@@ -2848,7 +2827,8 @@ class control:
 
 		# Take Evening Sky flats
 		#S Initialize again, but with tracking on.
-		self.telescopes[telescope_num-1].initialize(tracking=True)
+		if not self.telescopes[telescope_num-1].initialize(tracking=True):
+			self.telescopes[telescope_num-1].recover(tracking=True)
 		flatFilters = CalibInfo['flatFilters']
 		self.doSkyFlat(flatFilters, False, CalibInfo['nflat'],telescope_num)
 		
@@ -3468,8 +3448,8 @@ class control:
 #		"""
 
 		#S Initialize telescope, we want tracking ON
-#		telescope.initialize(tracking=False)
-		telescope.initialize(tracking=True)
+		if not telescope.initialize(tracking=True):
+			telescope.recover(tracking=True)
 
 		#S make array of af_defocus_steps
 		defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)
