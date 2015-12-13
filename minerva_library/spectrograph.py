@@ -255,7 +255,7 @@ class spectrograph:
                                         break
 
                         
-                else:
+		else:
                         imager.do()
                 
 
@@ -293,6 +293,7 @@ class spectrograph:
         def recover(self):
                 sys.exit()
         
+	#TODO Can we change this to take a dict as an argument?
 	def take_image(self,exptime=1,objname='test',expmeter=None):
 
                 exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
@@ -300,7 +301,6 @@ class spectrograph:
 		ndx = self.get_index()
 		if ndx == -1:
 			self.logger.error("Error getting the filename index")
-			ipdb.set_trace()
 			self.recover()
 			return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname,expmeter=expmeter)
 

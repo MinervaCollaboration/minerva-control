@@ -208,7 +208,6 @@ class CDK700:
                 self.logger.setLevel(logging.DEBUG)
                 self.logger.addHandler(console)
 
-	
 	# SUPPORT FUNCITONS
 	def makeUrl(self, **kwargs):
 		"""
@@ -444,6 +443,15 @@ class CDK700:
 		sidereal tracking in arcseconds per second in RA and Dec.
 		"""
 		return self.pwiRequestAndParse(device="mount", cmd="trackingrates", rarate=raArcsecPerSec, decrate=decArcsecPerSec)
+
+	# this is untested!!!
+	def hourangle(self,obs,ra,dec):
+		c = coord.ICRSCoordinates(ra=ra, dec=dec, unit=(u.hour,u.deg))
+		t = coord.Angle(obs.sidereal_time(),u.radian)
+		t.lat = obs.lat
+		t.lon = obs.lon
+		ha = coor.angles.RA.hour_angle(c.ra,t)
+		return None
 
 	def mountSetPointingModel(self, filename):
 		return self.pwiRequestAndParse(device="mount", cmd="setmodel", filename=filename)
@@ -1026,7 +1034,7 @@ if __name__ == "__main__":
 		config_file = 'telescope_3.ini'
         else: 
 		base_directory = 'C:/minerva-control/'
-		config_file = 'telescope_' + socket.gethostname()[-1] + '.ini'
+		config_file = 'telescope_' + socket.gethostname()[1] + '.ini'
 
 	telescope = CDK700(config_file, base_directory)
 	ipdb.set_trace()

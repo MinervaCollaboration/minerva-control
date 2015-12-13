@@ -117,6 +117,7 @@ class fau:
 			self.nfailed = 0
 			self.nserver_failed = 0
 			self.acquired = False
+			self.failed = False
 
 		except:
 			print('ERROR accessing config file: ' + self.config_file)

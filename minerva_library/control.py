@@ -557,6 +557,19 @@ class control:
 		self.observing = True
 		threading.Thread(target = self.domeControl_catch).start()
 
+	# this is untested!!!
+	def hourangle(self):
+		obs = self.site.obs
+#		ra = 
+
+                c = coord.ICRSCoordinates(ra=ra, dec=dec, unit=(u.hour,u.deg))
+                t = coord.Angle(obs.sidereal_time(),u.radian)
+                t.lat = obs.lat
+                t.lon = obs.lon
+                ha = coor.angles.RA.hour_angle(c.ra,t)
+                return None
+
+
 	def ten(self,string):
 		array = string.split()
 		if "-" in array[0]:
@@ -1362,13 +1375,13 @@ class control:
                         #TODO Find a better cellheater temptolerance.
                         TEMPTOLERANCE = 0.501
                         #S Here we need the i2stage in
+#			ipdb.set_trace()
 #                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
 #                        i2stage_move_thread.start()
                         #S Make sure the lamps are off
 #                        self.spectrograph.thar_turn_off()
 #                        self.spectrograph.flat_turn_off()
-                        #S Let's query the cellheater's setpoint for checks onthe temperature
-                        
+                        #S Let's query the cellheater's setpoint for checks on the temperature                        
                         self.spectrograph.cell_heater_set_temp(55.00)
                         set_temp = self.spectrograph.cell_heater_get_set_temp()
                         #S This loop is a hold for the cell heater to be within a set tolerance
@@ -1379,20 +1392,20 @@ class control:
 			elapsedTime = 0.
 			timeout = 10
                         while (abs(set_temp - self.spectrograph.cell_heater_temp()) > TEMPTOLERANCE) and elapsedTime<timeout:
-                                #S Give her some time to get there.
+                                #S Give it some time to get there.
                                 time.sleep(1)
 				elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
                
                         
 #                        self.logger.info('Waiting on i2stage_move_thread')
- #                       i2stage_move_thread.join()       
+#			i2stage_move_thread.join()       
 
                         
 
                 self.logger.info('Equipment check passed, continuing with '+objname+' exposure.')
                 return
  
-        def takeSpectrum(self,target):#exptime,objname,template=False, expmeter=None,filterwheel=None):
+        def takeSpectrum(self,target,tele_list=0):#exptime,objname,template=False, expmeter=None,filterwheel=None):
 		
                 #S This is a check to ensure that everything is where/how it's supposed to be
                 #S based on objname.
@@ -1506,6 +1519,7 @@ class control:
                 for telescope in self.telescopes:
 			
                     telnum = telescope.num
+		    imager = self.cameras[int(telnum)-1]
                     #S Getting this mysterious status dict (I believe).
                     telescopeStatus = telescope.getStatus()
                     #S The telescopes current ra.
@@ -1520,8 +1534,29 @@ class control:
                     dec = target['dec']
                     #S Fixes an unforetold but legendary bug in PWI. You probably have heard about it. Wait, you haven't?! Get with the picture, dammit!
                     #S My guess is that PWI will return a wrap arund for declination sometimes. 
+		    
                     if dec > 90.0: dec = dec-360 # fixes bug in PWI
                     #S Fill out header information based on each telescope.
+
+		    # State can be:
+		    # INACTIVE -- Telescope is not requested for spectroscopy
+		    # FAILED -- Telescope was requested for spectroscopy but has failed
+		    # ACQUIRING -- Telescope was requested for spectroscopy but is still acquiring
+		    # GUIDING -- Telescope was requested for spectroscopy and is guiding
+		    # UNKNOWN -- We don't know; something went wrong
+		    if not imager.fau.guiding:
+			    state = 'INACTIVE'
+		    elif imager.fau.failed:
+			    state = 'FAILED'
+		    elif imager.fau.acquired and imager.fau.guiding:
+			    state = 'GUIDING'
+		    elif not imager.fau.acquired and imager.fau.guiding:
+			    state = 'ACQUIRING'
+		    else: state = 'UNKNOWN'
+			    
+		    f['T' + telnum + 'STATE'] = (state,"State of telescope")
+		    
+
                     f['TELRA' + telnum] = (telra,"Telescope RA (J2000 deg)")
                     f['TELDEC' + telnum] = (teldec,"Telescope Dec (J2000 deg)")
                     f['RA' + telnum] = (ra, "Solved RA (J2000 deg)")
@@ -1531,7 +1566,7 @@ class control:
 		    f['PMRA' + telnum] = (target["pmra"], "Target Proper Motion in RA (mas/yr)")  
 		    f['PMDEC' + telnum] = (target["pmdec"], "Target Proper Motion in DEC (mas/yr)")  
 		    f['PARLAX' + telnum] = (target["parallax"], "Target Parallax (mas)")  
-		    f['FLUXMID' + telnum] = ("UNKNOWN","The flux-weighted mid exposure time for Telescope " + telnum + " (JD_UTC)")
+		    f['FLUXMID' + telnum] = ("UNKNOWN","Flux-weighted midtime for T" + telnum + " (JD_UTC)")
 
                     #S Get that moon seperation, put in in a header
                     moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
@@ -1573,6 +1608,8 @@ class control:
                     except: bcktemp = 'UNKNOWN'
                     f['BCKTEMP'+telnum] = (bcktemp,"Backplate Temp (C)")
 
+
+
                 # loop over each aqawan and insert the appropriate keywords
                 for aqawan in self.domes:
                     aqStatus = aqawan.status()
@@ -1594,6 +1631,12 @@ class control:
                     f['AQEXTMP'+aqnum] = (aqStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
                     f['AQINTMP'+aqnum] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
                     f['AQLITON'+aqnum] = (aqStatus['LightsOn'],"Aqawan lights on?")
+		    if aqnum == '1':
+			    pdu = self.pdus[0]
+		    elif aqnum == '2':
+			    pdu = self.pdus[2]
+		    f['MONITOR'+aqnum] = 	(pdu.monitor.status(),"Monitor on?")
+
 
                 # Weather station
                 f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
@@ -1677,8 +1720,10 @@ class control:
 			return 'error'
 		if telescope_num > 2:
 			dome = self.domes[1]
+			pdu = self.pdus[2]
 		elif telescope_num > 0:
 			dome = self.domes[0]
+			pdu = self.pdus[0]
 
 		###TELESCOPE DEPENDENT STUFF###
 		#S Get the current status of the telescope.
@@ -1731,6 +1776,7 @@ class control:
 		f['SITELAT'] = str(self.site.obs.lat)
 		f['SITELONG'] = (str(self.site.obs.lon),"East Longitude of the imaging location")
 		f['SITEALT'] = (str(self.site.obs.elevation),"Site Altitude (m)")
+		f['OBSID'] = ("696","Minor Planet Center Observatory ID for Mt. Hopkins")
 		f['OBSERVER'] = ('MINERVA Robot',"Observer")
 		f['TELESCOP'] = "T" + str(telescope_num)
 		f['OBJECT'] = target['name'] #objname
@@ -1760,6 +1806,7 @@ class control:
 		f['AQEXTMP'] = (domeStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
 		f['AQINTMP'] = (domeStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
 		f['AQLITON'] = (domeStatus['LightsOn'],"Aqawan lights on?")
+		f['MONITOR'] = 	(pdu.monitor.status(),"Monitor on?")
 
 		# Mount specific
 		f['TELRA'] = (telra,"Telescope RA (J2000 deg)")
@@ -1770,8 +1817,7 @@ class control:
 		f['TARGDEC'] =  (dec, "Target Dec (J2000 deg)")
 		f['ALT'] = (alt,'Telescope altitude (deg)')
 		f['AZ'] = (az,'Telescope azimuth (deg E of N)')
-#		print airmass
-#		ipdb.set_trace()
+#		f['HOURANG'] = (hourang,'Telescope hour angle (hours)')
 		f['AIRMASS'] = (airmass,"airmass (plane approximation)")
 
 		f['MOONRA'] = (moonra, "Moon RA (J2000)")    

@@ -23,7 +23,7 @@ if __name__ == '__main__':
 		"spectroscopy": True, 
 		"filter": ["rp"], 
 		"num": [100], 
-		"exptime": [0.01], 
+		"exptime": [1], 
 		"fauexptime": 1, 
 		"defocus": 0.0, 
 		"selfguide": True, 
