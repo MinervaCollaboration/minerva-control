@@ -988,7 +988,10 @@ class CDK700:
                 # disconnect telescope gracefully first (PWI gets angry otherwise)!
 #		try: self.shutdown()
 # 		except: pass
-                return self.kill_remote_task('PWI.exe')
+		if socket.hostname() == 'Main':
+			return self.kill_remote_task('PWI.exe')
+		else:
+			os.system("taskkill /IM PWI.exe /f")
 
 	def kill_remote_task(self,taskname):
                 return self.send_to_computer("taskkill /IM " + taskname + " /f")
