@@ -1249,10 +1249,10 @@ class control:
 	#S to develop on this
 	#TODO TODO
         def spec_equipment_check(self,target):#objname,filterwheel=None,template = False):
-		return
+
                 #S Desired warmup time for lamps, in minutes
                 #? Do we want seperate times for each lamp, both need to warm for the same rightnow
-                WARMUPMINUTES = .5#10.
+                WARMUPMINUTES = 0.5#10.
                 #S Convert to lowercase, just in case.
                 objname = target['name'].lower()
                 #S Some logic to see what type of spectrum we'll be taking.
@@ -1261,9 +1261,9 @@ class control:
                 #S were turned on.
                 #S LAMPS NEED TO BE SHUT DOWN MANUALLY THOUGH.
 #                if (objname == 'arc'):
-#                        self.spectrograph.thar_turn_on()
-#                if (objname == 'flat'):
-#                        self.spectrograph.flat_turn_on()
+
+#                if (objname == 'fiberflat'):
+
                 
                 #S These factors are necessary for all types of exposures,
                 #S so we'll put them in the equipment check
@@ -1280,13 +1280,18 @@ class control:
                 #S but for now it doesn't.
                 if (objname == 'arc'):
 			pass
+
                         #S Move the I2 stage out of the way of the slit.
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
                         i2stage_move_thread.start()
                         
                         #self.spectrograph.i2stage_move('out')
-                        #S Ensure that the flat lamp is off
-                        self.spectrograph.flat_turn_off()
+
+                        #Configure the lamps
+#                        self.spectrograph.thar_turn_on()
+#                        self.spectrograph.flat_turn_off()
+                        self.spectrograph.led_turn_off()
+
                         #S Move filter wheel where we want it.
                         #TODO A move filterwheel function
                         #S Make sure the calibration shutter is open
@@ -1305,15 +1310,44 @@ class control:
                             
                 #S Flat exposures require the flat lamp to be on for ten minutes too.
                 #S Same questions as for thar specs.
-                elif (objname == 'flat'):
-			pass
+                elif (objname == 'slitflat'):
                         #S Move the I2 stage out of the way of the slit.
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('flat',))
                         i2stage_move_thread.start()
                         #self.spectrograph.i2stage_move('flat')
-                        #S Ensure that the thar lamp is off
-                        self.spectrograph.thar_turn_off()
+
+                        # Configure the lamps
+                        self.spectrograph.led_turn_on()
+#                        self.spectrograph.thar_turn_off()
+#                        self.spectrograph.flat_turn_off()
                         
+			#S Move filter wheel where we want it.
+                        #TODO A move filterwheel function
+                        #S Make sure the calibration shutter is open
+                        #TODO Calibrtoin shutter open.
+
+                        #S Time left for warm up
+#                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.led_file)
+#                        print '\t\t\t\t WARM TIME IS '+str(warm_time)
+#                        #S Make sure the lamp has been on long enough, or sleep until it has.
+#                        if (warm_time > 0):
+#                                time.sleep(warm_time)
+#                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
+#                        else:
+#                                time.sleep(0)
+                        self.logger.info('Waiting on i2stage_move_thread')
+                        i2stage_move_thread.join()
+                elif (objname == 'fiberflat'):
+			pass
+                        #S Move the I2 stage out of the way of the slit.
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
+                        i2stage_move_thread.start()
+                        #self.spectrograph.i2stage_move('flat')
+
+                        #Configure the lamps
+#                        self.spectrograph.thar_turn_off()
+#                        self.spectrograph.flat_turn_on()
+                        self.spectrograph.led_turn_off()
                                 
                         #S Move filter wheel where we want it.
                         #TODO A move filterwheel function
@@ -1334,16 +1368,18 @@ class control:
 
                 #S Conditions for both bias and dark.
                 elif (objname == 'bias') or (objname == 'dark'):
-			pass
-                        #S Make sure the lamps are off
-                        self.spectrograph.thar_turn_off()
-                        self.spectrograph.flat_turn_off()
+
+                        #Configure the lamps
+#                        self.spectrograph.thar_turn_off()
+#                        self.spectrograph.flat_turn_off()
+                        self.spectrograph.led_turn_off()
+
                         #S Make sure the calibrations shutter is closed.
                         #S Move the I2 stage out of the way of the slit.
                         #S Not sure if we need to move it out necessarily, but I think
                         #S this is better than having it randomly in 'flat' or 'in',
                         #S and will at least make things orderly.
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
                         i2stage_move_thread.start()
                         #TODO Calibration shutter closed
                         self.logger.info('Waiting on i2stage_move_thread')
@@ -1357,9 +1393,13 @@ class control:
                         #S Get that iodine out of my face!
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
                         i2stage_move_thread.start()
-                        #S Make sure the lamps are off
-                        self.spectrograph.thar_turn_off()
-                        self.spectrograph.flat_turn_off()
+
+
+                        #Configure the lamps
+#                        self.spectrograph.thar_turn_off()
+#                        self.spectrograph.flat_turn_off()
+                        self.spectrograph.led_turn_off()
+
                         #S Make sure the calibrations shutter is closed.
                         #TODO Calibration shutter closed
                         self.logger.info('Waiting on i2stage_move_thread')
@@ -1369,18 +1409,21 @@ class control:
                 #S The cell heater should be turned on before starting this, to give
                 #S it time to warm up. It should really be turned on at the beginning
                 #S of the night, but just a reminder.
-                else :
+                else:
                         #S Define the temperature tolerance
                         self.spectrograph.cell_heater_on()
                         #TODO Find a better cellheater temptolerance.
                         TEMPTOLERANCE = 0.501
                         #S Here we need the i2stage in
 #			ipdb.set_trace()
-#                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
-#                        i2stage_move_thread.start()
-                        #S Make sure the lamps are off
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
+                        i2stage_move_thread.start()
+
+                        #Configure the lamps
 #                        self.spectrograph.thar_turn_off()
 #                        self.spectrograph.flat_turn_off()
+                        self.spectrograph.led_turn_off()
+
                         #S Let's query the cellheater's setpoint for checks on the temperature                        
                         self.spectrograph.cell_heater_set_temp(55.00)
                         set_temp = self.spectrograph.cell_heater_get_set_temp()
@@ -1397,10 +1440,8 @@ class control:
 				elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
                
                         
-#                        self.logger.info('Waiting on i2stage_move_thread')
-#			i2stage_move_thread.join()       
-
-                        
+                        self.logger.info('Waiting on i2stage_move_thread')
+			i2stage_move_thread.join()                      
 
                 self.logger.info('Equipment check passed, continuing with '+objname+' exposure.')
                 return
@@ -1554,7 +1595,7 @@ class control:
 			    state = 'ACQUIRING'
 		    else: state = 'UNKNOWN'
 			    
-		    f['T' + telnum + 'STATE'] = (state,"State of telescope")
+		    f['T' + telnum + 'STATE'] = (state,"State of T" + telnum + " at start of exposure")
 		    
 
                     f['TELRA' + telnum] = (telra,"Telescope RA (J2000 deg)")
@@ -1817,7 +1858,9 @@ class control:
 		f['TARGDEC'] =  (dec, "Target Dec (J2000 deg)")
 		f['ALT'] = (alt,'Telescope altitude (deg)')
 		f['AZ'] = (az,'Telescope azimuth (deg E of N)')
-#		f['HOURANG'] = (hourang,'Telescope hour angle (hours)')
+
+		hourang = 'UNKNOWN'
+		f['HOURANG'] = (hourang,'Telescope hour angle (hours)')
 		f['AIRMASS'] = (airmass,"airmass (plane approximation)")
 
 		f['MOONRA'] = (moonra, "Moon RA (J2000)")    
@@ -2308,6 +2351,8 @@ class control:
 					while DeltaPos > DeltaPosLimit:
 						self.logger.info(telescope_name + 'Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
 						telescope.mountGotoAltAz(Alt,Az)
+						# flats are only useful for imagers
+						telescope.m3port_switch(telescope.port['IMAGER'])
 
 						if not firstImage:
 							if telescope.inPosition(m3port=telescope.port['IMAGER']):
@@ -3472,6 +3517,15 @@ class control:
 		af_target['filter'] = af_filter
 		af_target['spectroscopy'] = spectroscopy
 
+		# select the appropriate port (default to imager)
+		if 'spectroscopy' in af_target.keys():
+			if af_target['spectroscopy']:
+				m3port = telescope.port['FAU']
+			else: 
+				m3port = telescope.port['IMAGER']
+		else:
+			m3port = telescope.port['IMAGER']
+
 		#S our data path
 		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
 
@@ -3525,7 +3579,7 @@ class control:
 			status = telescope.getStatus()
 			
 			#S ensure we have the correct port
-			telescope.m3port_check(af_target)
+			telescope.m3port_switch(m3port)
 			#S move and wait for focuser
 			if newfocus <> status.focuser.position:
 				self.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " + str(step) + ' mm, to ' + str(newfocus))

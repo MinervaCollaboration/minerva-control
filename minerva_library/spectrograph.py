@@ -548,6 +548,16 @@ class spectrograph:
                 response = self.send('flat_turn_off None',10)
                 return response
 
+        def led_turn_on(self):
+                response = self.send('led_turn_on None',10)
+                return response
+	
+        def led_turn_off(self):
+                response = self.send('led_turn_off None',10)
+                return response
+
+
+
         #S This is used to check how long the lamp has been turned on for
         #S from the LAST time it was turned on, not total time on. Used
         #S for equipment checks in control.py, so needed to send to

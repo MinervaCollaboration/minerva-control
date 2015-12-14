@@ -22,7 +22,7 @@ if __name__ == '__main__':
 		"endtime" : "2018-01-01 00:00:00", 
 		"spectroscopy": True, 
 		"filter": ["rp"], 
-		"num": [100], 
+		"num": [1], 
 		"exptime": [1], 
 		"fauexptime": 1, 
 		"defocus": 0.0, 
@@ -36,6 +36,8 @@ if __name__ == '__main__':
 		"template" : False, 
 		"i2": False}
 
+
+	target['name'] = 'slitflat'
 	minerva.takeSpectrum(target)
 	ipdb.set_trace()
 

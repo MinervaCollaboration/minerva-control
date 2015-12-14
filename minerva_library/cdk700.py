@@ -706,8 +706,14 @@ class CDK700:
                         ra_corrected = np.degrees(ra_intermed)/15.
 
 		#S make sure the m3 port is in the correct orientation
-		self.m3port_check(target)
-
+		if 'spectroscopy' in target.keys():
+			if target['spectroscopy']:
+				m3port = self.port['FAU']
+			else: 
+				m3port = self.port['IMAGER']
+		else:
+			m3port = self.port['IMAGER']
+		self.m3port_switch(m3port)
                 	
 		#S Initialize the telescope
                 self.initialize(tracking=True)
@@ -730,15 +736,7 @@ class CDK700:
 			self.acquireTarget(target,pa=pa)
 			return
 	
-	def m3port_check(self,target):
-
-		if 'spectroscopy' in target.keys():
-			if target['spectroscopy']:
-				m3port = self.port['FAU']
-			else: 
-				m3port = self.port['IMAGER']
-		else:
-			m3port = self.port['IMAGER']
+	def m3port_switch(self,m3port):
 
 		#S want to make sure we are at the right port before mount, focuser, rotator slew.
 		#S If an allowable port is specified
@@ -988,10 +986,7 @@ class CDK700:
                 # disconnect telescope gracefully first (PWI gets angry otherwise)!
 #		try: self.shutdown()
 # 		except: pass
-		if socket.hostname() == 'Main':
-			return self.kill_remote_task('PWI.exe')
-		else:
-			os.system("taskkill /IM PWI.exe /f")
+		return self.kill_remote_task('PWI.exe')
 
 	def kill_remote_task(self,taskname):
                 return self.send_to_computer("taskkill /IM " + taskname + " /f")
