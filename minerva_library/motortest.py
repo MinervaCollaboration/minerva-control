@@ -7,7 +7,7 @@ import ipdb
 #HWTYPE = 31
 ipdb.set_trace()
 #S Iodine stage
-SN = 40853360
+SN = 40864672
 HWTYPE = 12
 
 motor = APTMotor(SN,HWTYPE)
