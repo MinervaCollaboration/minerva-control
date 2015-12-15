@@ -31,11 +31,6 @@ class spectrograph:
 		self.file_name = ''
 		# threading.Thread(target=self.write_status_thread).start()
 
-   
-
-
-
-
 	#load configuration file
 	def load_config(self):
 	
@@ -43,18 +38,19 @@ class spectrograph:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.ip = config['SERVER_IP']
 			self.port = int(config['SERVER_PORT'])
+			self.camera_port = int(config['CAMERA_PORT'])
 			self.logger_name = config['LOGNAME']
-			self.exptypes = {'Template':0,
-                                         'Flat':0,
-                                         'Arc':0,
-                                         'FiberArc': 0,
-                                         'FiberFlat':0,
+			self.exptypes = {'Template':1,
+                                         'SlitFlat':1,
+                                         'Arc':1,
+                                         'FiberArc': 1,
+                                         'FiberFlat':1,
                                          'Bias':0,
                                          'Dark':0,
                                         }
 
-			# reset the night at 10 am local                                                                                                 
-                        today = datetime.datetime.utcnow()
+			# reset the night at 10 am local
+			today = datetime.datetime.utcnow()
                         if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                                 today = today + datetime.timedelta(days=1)
                         self.night = 'n' + today.strftime('%Y%m%d')
@@ -63,6 +59,8 @@ class spectrograph:
                                 self.i2positions[key] = float(self.i2positions[key])
                         self.thar_file = config['THARFILE']
                         self.flat_file = config['FLATFILE']
+			self.i2settemp = float(config['I2SETTEMP'])
+			self.i2temptol = float(config['I2TEMPTOL'])
 
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -100,7 +98,7 @@ class spectrograph:
                 #TODO Should we have this here? It makes sense to give it the time
                 #TODO to warm and settle.
 		self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
-#                self.cell_heater_on()
+                self.cell_heater_on()
                 
                 
 		
@@ -125,7 +123,6 @@ class spectrograph:
 			self.logger.exception("connection lost")
 			return 'fail'
 		try:
-                        self.logger.info('Timeout is '+str(timeout))
 			s.settimeout(timeout)
 			data = s.recv(1024)
 		except:
@@ -221,10 +218,17 @@ class spectrograph:
                         
 		
 	#start exposure
-	def expose(self, exptime=1.0, exptype=0, expmeter=None):
+	def expose(self, exptime=1.0, exptype=1, expmeter=None):
 
-        	host = "192.168.1.22"
-                port = 2055
+        	host = self.ip
+                port = self.camera_port
+#		host = "192.168.1.22"
+#		port = 2055
+#		print "which of these isn't the same?"
+#		print self.ip == host
+#		print self.camera_port == port
+#		ipdb.set_trace()
+
                 client = SIClient (host, port)
                 self.logger.info("Connected to SI client")
 
@@ -233,7 +237,8 @@ class spectrograph:
                 imager.nexp = 1		        # number of exposures
                 imager.texp = exptime		# exposure time, float number
                 imager.nome = "image"		# file name to be saved
-                imager.dark = False		# dark frame?
+		if exptype == 0: imager.dark = True
+		else: imager.dark = False
                 imager.frametransfer = False	# frame transfer?
                 imager.getpars = False		# Get camera parameters and print on the screen
 
@@ -292,6 +297,12 @@ class spectrograph:
 
         def recover(self):
                 sys.exit()
+
+	def take_bias(self):
+		self.take_dark(exptime=0)
+
+	def take_dark(self,exptime=1):
+		pass
         
 	#TODO Can we change this to take a dict as an argument?
 	def take_image(self,exptime=1,objname='test',expmeter=None):
@@ -302,7 +313,7 @@ class spectrograph:
 		if ndx == -1:
 			self.logger.error("Error getting the filename index")
 			self.recover()
-			return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname,expmeter=expmeter)
+			return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter)
 
 		self.file_name = self.night + "." + objname + "." + str(ndx).zfill(4) + ".fits"
 		self.logger.info('Start taking image: ' + self.file_name)
@@ -344,14 +355,17 @@ class spectrograph:
         #TODO I don't think the second split is necessary on all these 'returns'
         def cell_heater_temp(self):
                 response = self.send('cell_heater_temp None',10)
+		if response == 'fail': return False
                 return float(response.split()[1].split('\\')[0])
 
         def cell_heater_set_temp(self, temp):
                 response = self.send('cell_heater_set_temp ' + str(temp),10)
+		if response == 'fail': return False
                 return float(response.split()[1].split('\\')[0])
 
         def cell_heater_get_set_temp(self):
                 response = self.send('cell_heater_get_set_temp None',10)
+		if response == 'fail':return False
                 return float(response.split()[1].split('\\')[0]) 
 
 
@@ -511,8 +525,9 @@ class spectrograph:
         #S response is 'success '+str(position)
         def i2stage_get_pos(self):
                 response = self.send('i2stage_get_pos None',10)
-                return [float(response.split()[1].split('\\')[0]),response.split()[2]]
-        
+		if response == 'fail': return False
+		return [float(response.split()[1].split('\\')[0]),response.split()[2]]
+
         #S Send a command to move the i2stage to one of the set positions.
         #S The positions are defined in spectrograph.ini AND spectrograph_server.ini,
         #S but I'm fairly certain they don't need to be in spectrograph.ini. Left

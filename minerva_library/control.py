@@ -613,7 +613,6 @@ class control:
 		os.system(cmd)
 
 	def getPA(self,imageName, email=True):
-
 		telescope_name = 'T' + os.path.splitext(imageName)[0].split('.')[1][1] + ': '
 		
 		self.logger.info(telescope_name + 'Finding PA for ' + imageName)
@@ -839,20 +838,16 @@ class control:
                                 threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
                                 threads[t].start()
 
-#		# wait for all telescopes to point and begin guiding
-#                for t in range(len(tele_list)):
-#                        if self.telcom_enabled[tele_list[t]-1]:
-#                                threads[t].join()
-
 		# wait for all telescopes to put target on their fibers (or timeout)
 		acquired = False
-		timeout = 3.0 # is this long enough?
+		timeout = 300.0 # is this long enough?
 		elapsedTime = 0.0
 		t0 = datetime.datetime.utcnow()
 		while not acquired and elapsedTime < timeout:
 			acquired = True
 			for i in range(len(tele_list)):
-				if not self.cameras[tele_list[i]].fau.acquired: 
+				self.logger.info("T" + str(tele_list[i]) + ": acquired = " + str(self.cameras[tele_list[i]].fau.acquired))
+				if not self.cameras[tele_list[i]-1].fau.acquired: 
 					self.logger.info("T" + str(tele_list[i]) + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
 					acquired = False
 			time.sleep(1.0)
@@ -865,7 +860,7 @@ class control:
 
 		# begin exposure(s)
 		for i in range(target['num'][0]):
-			# should have enclosure checks
+			# should have dome checks
 			self.takeSpectrum(target)
 
 		# set camera.fau.guiding == False to stop guiders
@@ -886,10 +881,13 @@ class control:
 
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
-	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None):
+	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False):
 
 		telescope = self.telescopes[tel_num-1]
 		camera = self.cameras[tel_num-1]
+
+
+		camera.fau.acquired = False
 		
 		if xfiber <> None:
 			camera.fau.xfiber = xfiber
@@ -945,9 +943,12 @@ class control:
 			filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
 			filtercurpos=np.array([filterx, filtery])
 			separation = camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1])*camera.fau.platescale
+			self.logger.info("Target is " + str(separation) + '" away from the fiber -- tolerance is ' + str(camera.fau.acquisition_tolerance) + '"')
 			if separation < camera.fau.acquisition_tolerance:
+				self.logger.info("Target acquired")
 				camera.fau.acquired = True
-			else: camera.fau.acquired = False
+				if acquireonly: return
+#			else: camera.fau.acquired = False
 
 			if separation < camera.fau.bp:
                                 #note units are arc-seconds here in the "if"
@@ -1257,6 +1258,10 @@ class control:
                 objname = target['name'].lower()
                 #S Some logic to see what type of spectrum we'll be taking.
 
+		#S Turn on the Iodine cell heater 
+		self.spectrograph.cell_heater_set_temp(self.spectrograph.i2settemp)
+		self.spectrograph.cell_heater_on()
+
                 #S Decided it would be best to include a saftey to make sure the lamps
                 #S were turned on.
                 #S LAMPS NEED TO BE SHUT DOWN MANUALLY THOUGH.
@@ -1311,10 +1316,9 @@ class control:
                 #S Flat exposures require the flat lamp to be on for ten minutes too.
                 #S Same questions as for thar specs.
                 elif (objname == 'slitflat'):
-                        #S Move the I2 stage out of the way of the slit.
+                        #S Move the LED in place with the Iodine stage
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('flat',))
                         i2stage_move_thread.start()
-                        #self.spectrograph.i2stage_move('flat')
 
                         # Configure the lamps
                         self.spectrograph.led_turn_on()
@@ -1385,60 +1389,38 @@ class control:
                         self.logger.info('Waiting on i2stage_move_thread')
                         i2stage_move_thread.join()
 
-
-                #S Conditions for template images, just in case we need them might
-                #S as well have it programmed in.
-                elif target['template']:
-			pass
-                        #S Get that iodine out of my face!
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
-                        i2stage_move_thread.start()
-
-
-                        #Configure the lamps
-#                        self.spectrograph.thar_turn_off()
-#                        self.spectrograph.flat_turn_off()
-                        self.spectrograph.led_turn_off()
-
-                        #S Make sure the calibrations shutter is closed.
-                        #TODO Calibration shutter closed
-                        self.logger.info('Waiting on i2stage_move_thread')
-                        i2stage_move_thread.join()
-
                 #S Let's do some science!
                 #S The cell heater should be turned on before starting this, to give
                 #S it time to warm up. It should really be turned on at the beginning
                 #S of the night, but just a reminder.
                 else:
-                        #S Define the temperature tolerance
-                        self.spectrograph.cell_heater_on()
-                        #TODO Find a better cellheater temptolerance.
-                        TEMPTOLERANCE = 0.501
-                        #S Here we need the i2stage in
-#			ipdb.set_trace()
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
-                        i2stage_move_thread.start()
-
+                        #S Move the iodine either in or out, as requested
+			if target['i2']:
+				i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
+				i2stage_move_thread.start()
+			else:
+				i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
+				i2stage_move_thread.start()
+				
                         #Configure the lamps
 #                        self.spectrograph.thar_turn_off()
 #                        self.spectrograph.flat_turn_off()
                         self.spectrograph.led_turn_off()
 
-                        #S Let's query the cellheater's setpoint for checks on the temperature                        
-                        self.spectrograph.cell_heater_set_temp(55.00)
-                        set_temp = self.spectrograph.cell_heater_get_set_temp()
                         #S This loop is a hold for the cell heater to be within a set tolerance
                         #S for the iodine stage's temperature. The least sigfig returned from the
-                        #S heater is actually tenthes, so this may be a little tight ofa restriction.
+                        #S heater is actually tenths, so this may be a little tight of a restriction.
                         #TODO revise tolerance of heater temp?
 			start = datetime.datetime.utcnow()
-			elapsedTime = 0.
+			elapsedTime = 0.0
 			timeout = 10
-                        while (abs(set_temp - self.spectrograph.cell_heater_temp()) > TEMPTOLERANCE) and elapsedTime<timeout:
+			i2temp = self.spectrograph.cell_heater_temp()
+			while (abs(self.spectrograph.i2settemp - i2temp) > self.spectrograph.i2temptol) and elapsedTime<timeout:
                                 #S Give it some time to get there.
+				self.logger.info("Waiting for the Iodine cell temperature (" + str(i2temp) + ") to reach its setpoint (" + str(self.spectrograph.i2settemp) + ")")
                                 time.sleep(1)
+				i2temp = self.spectrograph.cell_heater_temp()
 				elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
-               
                         
                         self.logger.info('Waiting on i2stage_move_thread')
 			i2stage_move_thread.join()                      
@@ -1446,6 +1428,24 @@ class control:
                 self.logger.info('Equipment check passed, continuing with '+objname+' exposure.')
                 return
  
+	def takeSpecBias(self, num):
+		self.takeSpecDark(num, 0.0)
+
+	def takeSpecDark(self, num, exptime):
+		target = {}
+		target['exptime'] = [exptime]
+		if exptime == 0.0:
+			target['name'] = 'Bias' 
+		else: target['name'] = 'Dark'
+		for i in range(num):
+			self.takeSpectrum(target,tele_list = [])
+	def takeSlitFlat(self, num, exptime):
+		target = {}
+		target['name'] = 'slitFlat'
+		target['exptime'] = [exptime]
+		for i in range(num):
+			self.takeSpectrum(target, tele_list = [])
+
         def takeSpectrum(self,target,tele_list=0):#exptime,objname,template=False, expmeter=None,filterwheel=None):
 		
                 #S This is a check to ensure that everything is where/how it's supposed to be
@@ -1458,7 +1458,6 @@ class control:
 			kwargs = {'expmeter':None}
 
 #		self.spectrograph.take_image(target['exptime'][0],target['name'])
-
 		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (target['exptime'][0], target['name']), kwargs=kwargs)
 		imaging_thread.start()
                         
@@ -1570,13 +1569,15 @@ class control:
                     teldec = self.ten(telescopeStatus.mount.dec_2000)
 
                     #S The targets current ra, hours again
-                    ra = target['ra']*15.0
+		    if 'ra' in target.keys(): ra = target['ra']*15.0
+		    else: ra = 'N/A'
                     #S the targets dec, degrees
-                    dec = target['dec']
+		    if 'dec' in target.keys(): dec = target['dec']
+		    else: dec = 'N/A'
                     #S Fixes an unforetold but legendary bug in PWI. You probably have heard about it. Wait, you haven't?! Get with the picture, dammit!
                     #S My guess is that PWI will return a wrap arund for declination sometimes. 
 		    
-                    if dec > 90.0: dec = dec-360 # fixes bug in PWI
+                    if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI
                     #S Fill out header information based on each telescope.
 
 		    # State can be:
@@ -1604,9 +1605,19 @@ class control:
                     f['DEC'+ telnum] = (dec,"Solved Dec (J2000 deg)")
                     f['TARGRA' + telnum] = (ra, "Target RA (J2000 deg)")
                     f['TARGDEC'+ telnum] = (dec,"Target Dec (J2000 deg)")
-		    f['PMRA' + telnum] = (target["pmra"], "Target Proper Motion in RA (mas/yr)")  
-		    f['PMDEC' + telnum] = (target["pmdec"], "Target Proper Motion in DEC (mas/yr)")  
-		    f['PARLAX' + telnum] = (target["parallax"], "Target Parallax (mas)")  
+		    
+		    if 'pmra' in target.keys(): pmra = target['pmra']
+		    else: pmra = 'UNKNOWN' 
+		    f['PMRA' + telnum] = (pmra, "Target Proper Motion in RA (mas/yr)")  
+		    
+		    if 'pmdec' in target.keys(): pmdec = target['pmdec']
+		    else: pmdec = "UNKNOWN"
+		    f['PMDEC' + telnum] = (pmdec, "Target Proper Motion in DEC (mas/yr)")  
+
+		    if 'parallax' in target.keys(): parallax = target['parallax']
+		    else: parallax = "UNKNOWN"
+		    f['PARLAX' + telnum] = (parallax, "Target Parallax (mas)")  
+
 		    f['FLUXMID' + telnum] = ("UNKNOWN","Flux-weighted midtime for T" + telnum + " (JD_UTC)")
 
                     #S Get that moon seperation, put in in a header
@@ -1680,6 +1691,7 @@ class control:
 
 
                 # Weather station
+		while self.site.getWeather() == -1: pass
                 f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
                 f['RAIN'] = (self.site.weather['wxt510Rain'],"Current Rain since UT 00:00 (mm)")
                 f['TOTRAIN'] = (self.site.weather['totalRain'],"Total yearly rain (mm)")
@@ -1705,8 +1717,19 @@ class control:
                 f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
                 #TODOTDOTDO
                 #S TESTING trying to isolate errors, need to remove
-                f['SPECPRES'] = (str(self.spectrograph.get_spec_pressure()),"spectrograph pressure (mbars)")
-                f['PUMPPRES'] = (str(self.spectrograph.get_pump_pressure()),"vacuum pump pressure (mbars)")
+#		specpressure = self.spectrograph.get_spec_pressure()
+		with open('/Data/kiwilog/' + self.night + '/spec_pressure.log') as fh:
+			fh.seek(-1024,2)
+			line = fh.readlines()[-1].decode()
+			specpressure = line.split()[1]
+#		pumppressure = self.spectrograph.get_spec_pressure()
+		with open('/Data/kiwilog/' + self.night + '/pump_pressure.log') as fh:
+			fh.seek(-1024,2)
+			line = fh.readlines()[-1].decode()
+			pumppressure = line.split()[1]
+
+                f['SPECPRES'] = (str(specpressure),"spectrograph pressure (mbars)")
+                f['PUMPPRES'] = (str(pumppressure),"vacuum pump pressure (mbars)")
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
 		temp_controllers = ['A','B','C','D']
 		for cont in temp_controllers:
@@ -1718,19 +1741,27 @@ class control:
 					if temps[1] == "None" : temp = 'UNKNOWN'
 					else: temp = float(temps[1])
 					f['TEMP'+cont+str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
-#                f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
-#                f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
-#                f['I2POSAF'] = (self.spectrograph.i2stage_get_pos()[0],'Iodine Stage Actual Position [cm]')
-#                f['I2POSAS'] = (self.spectrograph.i2stage_get_pos()[1],'Iodine Stage Actual Position [string]')
-#                f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
-#                f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+                f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
+                f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
+
+		i2stagepos = self.spectrograph.i2stage_get_pos()
+		try:
+			f['I2POSAF'] = (i2stagepos[0],'Iodine Stage Actual Position (mm)')
+			f['I2POSAS'] = (i2stagepos[1],'Iodine Stage Actual Position [string]')
+                except:			
+			f['I2POSAF'] = ('UNKNOWN','Iodine Stage Actual Position (mm)')
+			f['I2POSAS'] = ('UNKNOWN','Iodine Stage Actual Position [string]')
+
+		f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
+                f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+
                 #S PDU Header info
                 self.spectrograph.update_dynapower1()
                 self.spectrograph.update_dynapower2()
                 dyna1keys  = ['tharLamp','flatLamp','expmeter','i2heater']
                 for key in dyna1keys:
                         f[key] = (self.spectrograph.dynapower1_status[key],"Outlet for "+key)
-                dyna2keys = ['i2stage']
+                dyna2keys = ['i2stage','slitflat']
                 for key in dyna2keys:
                         f[key] = (self.spectrograph.dynapower2_status[key],"Outlet for "+key)
 
@@ -3006,7 +3037,14 @@ class control:
 						target['endtime'] = settime
 
 					if target['starttime'] < target['endtime']:
-						self.doScience(target,telescope_num)
+						if 'spectroscopy' in target.keys():
+							if target['spectroscopy']:
+								# only one telescope for now...
+								self.doSpectra(target,[telescope_num])
+							else:
+								self.doScience(target,telescope_num)
+						else:
+							self.doScience(target,telescope_num)
 					else:
 						self.logger.info(telescope_name + target['name']+ ' not observable; skipping')
 						
@@ -3084,10 +3122,29 @@ class control:
 			mail.send("DomeControl thread died",body,level='serious')
 			sys.exit()
 
+	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=5):
+		self.takeSpecBias(nbias)
+		self.takeSpecDark(ndark, darkexptime)
+		self.takeSlitFlat(nflat, flatexptime)
+
+	def specCalib_catch(self):
+		try:
+			self.specCalib()
+		except Exception as e:
+			self.logger.exception('specCalib thread died: ' + str(e.message) )
+                        body = "Dear benevolent humans,\n\n" + \
+                            'I have encountered an unhandled exception which has killed the specCalib control thread. The error message is:\n\n' + \
+                            str(e.message) + "\n\n" + \
+			    "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart 'main.py\n\n'" + \
+                            "Love,\n" + \
+                            "MINERVA"
+                        mail.send("specCalib thread died",body,level='serious')
+                        sys.exit()
+
 	def observingScript_all(self):
 		self.domeControlThread()
 		
-		# python bug work around -- strptime not thread safe. Must call this onece before starting threads
+		# python bug work around -- strptime not thread safe. Must call this once before starting threads
 		junk = datetime.datetime.strptime('2000-01-01 00:00:00','%Y-%m-%d %H:%M:%S')
 
 		threads = [None]*len(self.telescopes)
@@ -3095,7 +3152,10 @@ class control:
 		for t in range(len(self.telescopes)):
 			threads[t] = threading.Thread(target = self.observingScript_catch,args = (t+1,))
 			threads[t].start()
-		for t in range(len(self.telescopes)):
+		threads.append(threading.Thread(target=self.specCalib_catch))
+		threads[-1].start()
+			       
+		for t in range(len(self.telescopes)+1):
 			threads[t].join()
 			
 	#TODO:set up http server to handle manual commands
@@ -3263,12 +3323,17 @@ class control:
 			time.sleep(.5)
 
 		#S Make sure everythin is in position, namely that focuser has stopped moving
-		telescope.inPosition(m3port=m3port)
+		telescope.m3port_switch(m3port=m3port)
 		#S Set the name for the autofocus image
 		af_name = 'autofocus'
+
 		#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
 		#imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_num=telescope_number)
-		imagename = self.takeImage(af_target, telescope_num=telescope_num)
+		if telescope.port['IMAGER'] == m3port:
+			imagename  = self.takeImage(af_target, telescope_num=telescope_num)
+		elif telescope.port['FAU'] == m3port:
+			imagename  = self.takeFauImage(af_target, telescope_num=telescope_num)
+
 		imagenum = (imagename.split('.')[4])
 		#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 		try: 
@@ -3301,7 +3366,7 @@ class control:
 		t0 = datetime.datetime.utcnow()
 		"""
 #		
-		#S Loop to wait for dome to open, cancels afeter ten minutes
+		#S Loop to wait for dome to open, cancels afeter ten minutes 
 		while dome.isOpen == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()

@@ -14,8 +14,24 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+	ipdb.set_trace()
+
+	if False:
+		target = {
+			"name" : "HD19373", 
+			"ra" : 3.15111666667, 
+			"dec" : 49.6132777778, 
+			"fauexptime" : 1,
+			}
+
+		telnum = 3
+		minerva.cameras[telnum-1].fau.guiding=True
+		minerva.cameras[telnum-1].fau.acquisition_tolerance=1.5
+		minerva.fauguide(target,3,acquireonly=True)
+		ipdb.set_trace()
+
 	target = {
-		"name" : "test", 
+		"name" : "HD19373", 
 		"ra" : 3.15111666667, 
 		"dec" : 49.6132777778, 
 		"starttime" : "2015-01-01 00:00:00", 
@@ -23,7 +39,7 @@ if __name__ == '__main__':
 		"spectroscopy": True, 
 		"filter": ["rp"], 
 		"num": [1], 
-		"exptime": [1], 
+		"exptime": [300], 
 		"fauexptime": 1, 
 		"defocus": 0.0, 
 		"selfguide": True, 
@@ -34,18 +50,48 @@ if __name__ == '__main__':
 		"pmdec" : -91.5, 
 		"parallax" : 94.87, 
 		"template" : False, 
-		"i2": False}
+		"i2": False,
+		"comment":"RV standard star"}
+
+	target = {
+		"name" : "HR398", 
+		"ra" : 1.42958611111,
+		"dec" : 70.9798869722, 
+		"starttime" : "2015-01-01 00:00:00", 
+		"endtime" : "2018-01-01 00:00:00", 
+		"spectroscopy": True, 
+		"filter": ["rp"], 
+		"num": [1], 
+		"exptime": [300], 
+		"fauexptime": 1, 
+		"defocus": 0.0, 
+		"selfguide": True, 
+		"guide": False, 
+		"cycleFilter": True, 
+		"positionAngle": 0.0, 
+		"pmra": 9.31, 
+		"pmdec" : -14.19, 
+		"parallax" : 6.89, 
+		"template" : False, 
+		"i2": True}
 
 
-	target['name'] = 'slitflat'
-	minerva.takeSpectrum(target)
+#	minerva.doSpectra(target,[3])
+#	ipdb.set_trace()
+
+
+#	target['name'] = 'HD19373'
+#	minerva.takeSpectrum(target)
+#	ipdb.set_trace()
+
+	minerva.specCalib(nbias=1,ndark=1,nflat=1)
+
+
 	ipdb.set_trace()
 
 #	minerva.takeSpectrum(target)
 #	ipdb.set_trace()
 
-	minerva.doSpectra(target,[3])
-	ipdb.set_trace()
 
 
 	minerva.cameras[2].fau.guiding = True

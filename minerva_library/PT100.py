@@ -63,8 +63,18 @@ class PT100:
         return temp
 
     def resistance(self,calib,m):
+        if m[1] == m[0]: return 0.0
         resistance = calib*(m[3]-m[2])/(m[1]-m[0])/1000000.0
         return resistance
+
+    def logtemp_robust(self):
+        while True:
+            try: self.logtemp()
+            except: self.logger.exception("logtemp failed; retrying")
+            try: self.sock.close()
+            except: pass
+            time.sleep(20.0)
+            self.load_config()
 
     def logtemp(self):
         
@@ -77,6 +87,7 @@ class PT100:
         val = self.sock.recv(2048)
         if 'Lock Success' not in val:
             self.logger.error("Error locking the data logger to this computer: " + val)
+            return
 
         self.logger.info("Connecting to the data logger")
         self.sock.connect((self.ip,self.port))
@@ -104,8 +115,19 @@ class PT100:
             '\x0c': 3,
             }
             
+        lastupdate= datetime.datetime.utcnow()
+        verbose = False
         while True:
             try:
+
+                # the logger hangs every once in a while; this is a hack solution to restart it...
+                if (datetime.datetime.utcnow() - lastupdate).total_seconds() > 30:
+                    self.logger.error("Logging slowed down for unknown reasons, restarting (hopefully)...")
+                    self.sock.send("31".decode('hex') + "00".decode('hex'))
+                    self.sock.close()
+                    time.sleep(20.0) # wait for the connection to time out
+                    return
+
                 val = self.sock.recv(2048)
 
                 if "Alive" in val:
@@ -115,6 +137,9 @@ class PT100:
                 elif len(val) <> 20:
                     self.logger.error("Unexpected return string: " + val)
                 else:
+
+                    lastupdate = datetime.datetime.utcnow()
+
                     raw = struct.unpack('>cicicici',val)
                     meas = [float(raw[1]),float(raw[3]),float(raw[5]),float(raw[7])]
 
@@ -125,11 +150,11 @@ class PT100:
                     filename = '%s/log/%s/temp.%s.%s.log'%(self.base_directory,self.night,self.controller,str(ndx[raw[0]] + 1))
                     self.logger.info("Ohm=" + str(ohm) + ',temp=' + str(temp) + ',filename=' + filename + ',description='+self.description[ndx[raw[0]]])
                     with open(filename,'a') as f:    
-                        f.write(str(datetime.datetime.utcnow()) + ',' + str(temp)+ ',' + self.description[ndx[raw[0]]] + '\n')
+                        f.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(temp)+ ',' + self.description[ndx[raw[0]]] + '\n')
 
                 # keep it alive
                 self.sock.send("34".decode('hex'))
-                time.sleep(0.1)
+                time.sleep(2.0)
             except:
                 self.logger.exception("error logging controller %s"%(self.controller))
     
@@ -146,7 +171,7 @@ if __name__ == "__main__":
         base = '/home/minerva/minerva-control/'
     for config in configs:
         pt100s.append(PT100(config=config, base=base))
-        threads.append(threading.Thread(target = pt100s[n].logtemp))
+        threads.append(threading.Thread(target = pt100s[n].logtemp_robust))
         threads[n].start()
         n += 1
 
