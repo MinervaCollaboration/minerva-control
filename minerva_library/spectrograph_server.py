@@ -19,6 +19,7 @@ import win32api
 import atexit
 import re
 import json
+import numpy as np
 
 # minerva library dependency
 #S Put copy of dynapwoer.py in spectrograph_modules for power stuff on expmeter
@@ -143,18 +144,13 @@ class server:
 
 	#S Create class objects
 	def create_class_objects(self):
-                ipdb.set_trace()
                 self.i2stage_connect()
                 self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
                 self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)              
                 self.gaugeController = com.com('gaugeController',self.base_directory,self.night)
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night)
-                #ipdb.set_trace()
-                #self.i2stage_connect()
-#                ipdb.set_trace()
-                print("*** REMOVE THIS RETURN AFTER TESTING***")
-                return
                 self.expmeter_com = com.com('expmeter',self.base_directory,self.night)
+                return
 
 
 
@@ -223,6 +219,10 @@ class server:
 			response = self.flat_turn_on()
 		elif tokens[0] == 'flat_turn_off':
 			response = self.flat_turn_off()
+		elif tokens[0] == 'led_turn_on':
+			response = self.led_turn_on()
+		elif tokens[0] == 'led_turn_off':
+			response = self.led_turn_off()
 		elif tokens[0] == 'time_tracker_check':
                         response = self.time_tracker_check(tokens[1])
                 elif tokens[0] == 'update_dynapower1':
@@ -289,6 +289,7 @@ class server:
 		self.logger.info('saving image to:' + self.file_name)
 
                 try:
+                        shutil.copy("C:/IMAGES/I","C:/minerva/data/n20151211/I10.fits")
                         shutil.move("C:/IMAGES/I",self.file_name)
                         return 'success'
 		except: return 'fail'
@@ -313,15 +314,15 @@ class server:
 		try:
 			header_info = self.header_buffer + param
 			self.header_buffer = ''
-			f = pyfits.open(self.file_name, uint16=True, mode='update')
+			f = pyfits.open(self.file_name, uint16=True, mode='update', ignore_missing_end=True)
 			for key,value in json.loads(header_info,object_pairs_hook=collections.OrderedDict).iteritems():
 				if isinstance(value, (str, unicode)):
 					f[0].header[key] = value
 				else:
 					f[0].header[key] = (value[0],value[1])
 
-                        f[0].header['SIMPLE'] = True
-			f[0].header['BITPIX'] = 16
+#                       f[0].header['SIMPLE'] = True
+#			f[0].header['BITPIX'] = 16
                         f[0].header['EXPTIME'] = float(f[0].header['PARAM24'])/1000.0
                         f[0].header['SET-TEMP'] = float(f[0].header.comments['PARAM62'].split('(')[1].split('C')[0].strip())
                         f[0].header['CCD-TEMP'] = float(f[0].header['PARAM0'])
@@ -358,11 +359,13 @@ class server:
                         del f[0].header['DATE']
                         del f[0].header['TIME']
                         for i in range(80): del f[0].header['PARAM' + str(i)]
+                        del f[0].header['NAXIS3']
 
                         # recast as 16 signed integer (2x smaller with no loss of information)
-                        # FITS standard uses "two's complement" => signed int = unsigned int
-#                       f[0].data = f[0].data.astype('int16') 
-#                       f[0].data = f[0].data.astype('uint16')
+#                        # FITS standard uses "two's complement" => signed int = unsigned int
+#                        f[0].data = np.invert(f[0].data) 
+#                        f[0].data = f[0].data.astype('uint16')
+#                        f[0].data = f[0].data.astype('int16')
 
 			f.flush()
 			f.close()
@@ -541,7 +544,7 @@ class server:
         def cell_heater_on(self):
                 #S Get the current status of the heater  
                 status = self.cell_heater_status()
-                #S If iy was off, we'll turn it on. Checked status due to toggle nature of heater power.
+                #S If it was off, we'll turn it on. Checked status due to toggle nature of heater power.
                 if not status['enabled']:
                         self.logger.info("Cell heater off; turning on")
                         self.cellheater_com.send("ens")
@@ -613,12 +616,26 @@ class server:
         
 	def get_spec_pressure(self):
                 response = str(self.gaugeController.send('#  RDCG2'))
-                if '*' in response: return 'success ' + str(float(response.split()[1]))
+
+                if '*' in response:
+                        try:
+                                pressure = float(response.split()[1])
+                        except:
+                                self.logger.exception("Unexpected response: " + response)
+                                return 'fail'
+                        return 'success ' + str(pressure)
                 return 'fail'
 
         def get_pump_pressure(self):
                 response = str(self.gaugeController.send('#  RDCG1'))
-                if '*' in response: return 'success ' + str(float(response.split()[1]))
+                
+                if '*' in response:
+                        try:
+                                pressure = float(response.split()[1])
+                        except:
+                                self.logger.exception("Unexpected response: " + response)
+                                return 'fail'
+                        return 'success ' + str(pressure)
                 return 'fail'
 
 	###
@@ -643,7 +660,15 @@ class server:
                 self.dynapower1.off('flatLamp')
                 self.time_tracker_off(self.flat_file)
                 return 'success'
-
+        def led_turn_on(self):
+                self.time_tracker_on(self.flat_file)
+                self.dynapower2.on('slitflat')
+                return 'success'
+        def led_turn_off(self):
+                self.dynapower2.off('slitflat')
+                self.time_tracker_off(self.flat_file)
+                return 'success'
+        
         #S Functions for tracking the time something has been on.
         #S Tested on my computer, so it should be fine. Definitely keep an eye
         #S on it though.
@@ -819,7 +844,7 @@ class server:
                 #S The maximum count threshold we are currently allowing.
                 #S Used as trigger level for shutdown.
                 #TODO Get a real number for this.
-                MAXSAFECOUNT = 150000.0
+                MAXSAFECOUNT = 500000.0
                 #S Number of measurements we want to read per second.
                 MEASUREMENTSPERSEC = 1.0
                 #S Turn expmeter on
@@ -866,8 +891,7 @@ class server:
                                 print 'WE HIT THE SPEC_SERV EXCEPTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
                                 #TODO Run this solution by Jason
                                 if not self.expmeter_com.ser.isOpen():
-                                        self.expmeter_com.open()
-                                
+                                        self.expmeter_com.open()                               
                         
                         #S This is the check against the maxsafecount.    
                         #S Tested to see if caught, passed.Utlimately just
@@ -876,7 +900,7 @@ class server:
                         if reading > MAXSAFECOUNT:
                                 self.expmeter_com.logger.error("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)+" > maxsafecount="+str(MAXSAFECOUNT))
                                 break
-                        #? Not sure if we need this guy, seems like we are already lgging?
+                        #? Not sure if we need this guy, seems like we are already logging?
                         with open(self.base_directory + "/log/" + self.night + "/expmeter.dat", "a") as fh:
                                 fh.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(reading) + "\n")
                         self.expmeter_com.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading))
@@ -895,34 +919,35 @@ class server:
         def log_pressures(self):
                 while True:
                         with open('%s\\log\\%s\\spec_pressure.log'%(self.base_directory,self.night),'a') as fh:
-                                now = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-                                pres = self.get_spec_pressure().split()[1]
-                                fh.write('%s\t%s\n'%(now,pres))
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+                                response = self.get_spec_pressure()
+                                if response <> 'fail':
+                                        pres = response.split()[1]
+                                        fh.write('%s,%s\n'%(now,pres))
+
+                        time.sleep(0.5)
 
                         with open('%s\\log\\%s\\pump_pressure.log'%(self.base_directory,self.night),'a') as fh:
-                                now = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-                                pres = self.get_pump_pressure().split()[1]
-                                fh.write('%s\t%s\n'%(now,pres))
-
-                        time.sleep(1)
-                
-                        
-
-
-
-
-                 
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+                                response = self.get_pump_pressure()
+                                if response <> 'fail':
+                                        pres = response.split()[1]
+                                        fh.write('%s,%s\n'%(now,pres))
+                        time.sleep(0.5)
+                     
         #S Used in the Console CTRL Handler, where we 
         #S can put all routines to be perfomred in here I think. It
         #S may also catch accidental shutdown, not sure about loss of
         #S power. INCLUDES:
-        #S Functino to ensure power is shut off to exposure meter
+        #S Function to ensure power is shut off to exposure meter
         def safe_close(self,signal):
-                print("***REMOVE THESE COMMENTS AFTER TESTING***")
                 self.dynapower1.off('expmeter')
 		#self.thar_turn_off()
 		#self.flat_turn_off()
+                self.led_turn_off()
 		self.i2stage_disconnect()
+                try: self.gaugeController.close()
+                except: pass
 		
 		#S Something fucky going on here, won't let me close browsers.
 		#TODO
@@ -938,14 +963,13 @@ if __name__ == '__main__':
 	test_server = server('spectrograph.ini',base_directory)
 
 #        ipdb.set_trace()
-	
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
-#        pressure_thread = threading.Thread(target=test_server.log_pressures)
-#        pressure_thread.start()
+        pressure_thread = threading.Thread(target=test_server.log_pressures)
+        pressure_thread.start()
 	
-	#thread = threading.Thread(target=test_server.logexpmeter)
-	#thread.start()
+	expmeter_thread = threading.Thread(target=test_server.logexpmeter)
+        expmeter_thread.start()
 	
 	#	test_server.logexpmeter()
 #	ipdb.set_trace()
