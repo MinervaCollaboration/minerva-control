@@ -56,6 +56,9 @@ class server:
                 #S Create all class objects
                 self.create_class_objects()
 
+                # turn on cell heater to maintain temperature stablility
+                self.cell_heater_on()
+
                 #S Set up closing procedures
                 win32api.SetConsoleCtrlHandler(self.safe_close,True)
                 atexit.register(self.safe_close,'signal_arguement')
@@ -442,9 +445,17 @@ class server:
 
 	def i2stage_home(self):
 		try:
+                        self.motorI2.mAbs(0)
+                except:
+                         #throw and log error on bad position
+                        self.logger.exception("ERROR: Iodine failed to move.")
+                        return 'fail'
+                try:
 			self.motorI2.go_home()
 		except ValueError as e:
 			pass
+		except:
+                        self.logger.exception('Failed to home, unexpected error')
 
         #S Get the position of the I2 stage
         def i2stage_get_pos(self):
@@ -951,7 +962,7 @@ if __name__ == '__main__':
         #ipdb.set_trace()
 	test_server = server('spectrograph.ini',base_directory)
 
-#        ipdb.set_trace()
+        ipdb.set_trace()
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
         pressure_thread = threading.Thread(target=test_server.log_pressures)
