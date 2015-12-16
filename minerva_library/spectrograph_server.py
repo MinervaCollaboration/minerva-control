@@ -13,7 +13,6 @@ import shutil
 import json
 import collections
 import struct
-import dynapower
 from PyAPT import APTMotor
 import win32api
 import atexit
@@ -69,6 +68,7 @@ class server:
 			self.port = int(config['PORT'])
 			self.ip = config['HOST']
                         self.logger_name = config['LOGNAME']
+			self.pdu_config = config['PDUCONFIG']
                         self.header_buffer = ''
                         self.thar_file = config['THARFILE']
                         self.flat_file = config['FLATFILE']
@@ -145,8 +145,9 @@ class server:
 	#S Create class objects
 	def create_class_objects(self):
                 self.i2stage_connect()
-                self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
-                self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)              
+                #self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
+                #self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)     
+		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
                 self.gaugeController = com.com('gaugeController',self.base_directory,self.night)
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night)
                 self.expmeter_com = com.com('expmeter',self.base_directory,self.night)
@@ -225,10 +226,10 @@ class server:
 			response = self.led_turn_off()
 		elif tokens[0] == 'time_tracker_check':
                         response = self.time_tracker_check(tokens[1])
-                elif tokens[0] == 'update_dynapower1':
-                        response = self.update_dynapower1()
-                elif tokens[0] == 'update_dynapower2':
-                        response = self.update_dynapower2()
+#                elif tokens[0] == 'update_dynapower1':
+#                        response = self.update_dynapower1()
+#                elif tokens[0] == 'update_dynapower2':
+#                        response = self.update_dynapower2()
 		
 		else:
 			response = 'fail'
@@ -638,34 +639,13 @@ class server:
                         return 'success ' + str(pressure)
                 return 'fail'
 
-	###
-	# THAT AND FLAT LAMP FUNCTIONS, turn_on, turn_off, time_tracker, time_tracker_check
-	###
-	#S these are obsolete from the NI block
-        #S Functions for toggling the ThAr lamp
-        def thar_turn_on(self):
-                self.dynapower1.on('tharLamp')
-                self.time_tracker_on(self.thar_file)
-                return 'success'
-        def thar_turn_off(self):
-                self.dynapower1.off('tharLamp')
-                self.time_tracker_off(self.thar_file)
-                return 'success'
-        #S Functions for toggling the Flat lamp
-        def flat_turn_on(self):
-                self.time_tracker_on(self.flat_file)
-                self.dynapower1.on('flatLamp')
-                return 'success'
-        def flat_turn_off(self):
-                self.dynapower1.off('flatLamp')
-                self.time_tracker_off(self.flat_file)
-                return 'success'
         def led_turn_on(self):
                 self.time_tracker_on(self.flat_file)
-                self.dynapower2.on('slitflat')
+                self.pdu.ledlamp.on()
                 return 'success'
+
         def led_turn_off(self):
-                self.dynapower2.off('slitflat')
+                self.pdu.ledlamp.off()
                 self.time_tracker_off(self.flat_file)
                 return 'success'
         
@@ -804,7 +784,7 @@ class server:
                 onTime = (now - start).total_seconds()
                 return 'success ' + str(onTime)
 
-        
+        """
         ###
         # DYNAPOWER STATUS QUERY for spectrograph.py
         ###
@@ -823,7 +803,7 @@ class server:
                 status_dict = self.dynapower2.updateStatus()
                 dict_str = json.dumps(status_dict)
                 return 'success '+dict_str
-                
+        """        
                 
 
 
@@ -848,7 +828,7 @@ class server:
                 #S Number of measurements we want to read per second.
                 MEASUREMENTSPERSEC = 1.0
                 #S Turn expmeter on
-                self.dynapower1.on('expmeter')
+                self.pdu.expmeter.on()
                 #S Give some time for command to be sent and the outlet to
                 #S power on. Empirical wait time from counting how long it
                 #S it took to turn on. Potentially shortened?
@@ -913,7 +893,7 @@ class server:
                 #S Close the comm port
                 self.expmeter_com.close() # close connection
                 #S Turn of power to exposure meter
-                self.dynapower1.off('expmeter')
+                self.pdu.expmeter.off()
 
         #S going to log the pressures of the chamber and the pump
         def log_pressures(self):
@@ -941,7 +921,7 @@ class server:
         #S power. INCLUDES:
         #S Function to ensure power is shut off to exposure meter
         def safe_close(self,signal):
-                self.dynapower1.off('expmeter')
+                self.pdu.expmeter.off()
 		#self.thar_turn_off()
 		#self.flat_turn_off()
                 self.led_turn_off()
@@ -951,8 +931,8 @@ class server:
 		
 		#S Something fucky going on here, won't let me close browsers.
 		#TODO
-		self.dynapower1.browser.close()
-		self.dynapower2.browser.close()
+#		self.dynapower1.browser.close()
+#		self.dynapower2.browser.close()
 
                 
                 

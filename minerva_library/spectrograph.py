@@ -581,6 +581,7 @@ class spectrograph:
                 response = self.send("time_tracker_check "+filename,10)
                 return float(response.split()[1].split('\\')[0])
         
+	"""
         #S Dynapowers are now objects for the spectrograph server to control,
         #S but we still need to communicate statuses from server to write
         #S headers in control.py. Made this weird attribute for spectrograph
@@ -608,7 +609,7 @@ class spectrograph:
                 for p in temp_response.split(' ')[1:]:
                         status_str = status_str + p + ' '
                 self.dynapower2_status = json.loads(status_str)
-        
+	"""
 
         
 	

@@ -247,23 +247,31 @@ class aqawan:
 		self.logger.info(anum + 'Shutter ' + str(shutter) + ' open')
 			
 	#open both shutters
-	def open_both(self):
+	def open_both(self, reverse=False):
 		anum = "A" + str(self.num) + ': '
+
+		if reverse:
+			first = 2
+			second = 1
+		else:
+			first = 1
+			second = 2
+			
 
 		self.logger.debug(anum + 'Shutting off lights')
 		response = self.send('LIGHTS_OFF')
 		if response == 'error':
 			self.logger.error(anum + 'Could not turn off lights')
 
-		self.logger.debug(anum + 'Opening shutter 1')
-		response = self.open_shutter(1)
+		self.logger.debug(anum + 'Opening shutter ' + str(first))
+		response = self.open_shutter(first)
 		if response == -1: return -1
-		self.logger.debug(anum + 'Shutter 1 open')
+		self.logger.debug(anum + 'Shutter ' + str(first) + ' open')
 
-		self.logger.debug(anum + 'Opening shutter 2')
-		response = self.open_shutter(2)
+		self.logger.debug(anum + 'Opening shutter ' + str(second))
+		response = self.open_shutter(second)
 		if response == -1: return -1
-		self.logger.debug(anum + 'Shutter 2 open')
+		self.logger.debug(anum + 'Shutter ' + str(second) + ' open')
 
 	#close both shutter
 	def close_both(self):

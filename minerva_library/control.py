@@ -84,10 +84,10 @@ class control:
 			try: 
 				self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
 				self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
-				self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
 			except:
 				self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
-
+		for i in range(5):
+			self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
 
 	def load_config(self):
 
@@ -219,7 +219,11 @@ class control:
 		else:
 			threads = [None]*len(self.domes)
 			for t in range(len(self.domes)):
-				threads[t] = threading.Thread(target = self.domes[t].open_both)
+				if t == 0:
+					kwargs={'reverse' : True}
+				elif t == 1:
+					kwargs={'reverse' : False}
+				threads[t] = threading.Thread(target = self.domes[t].open_both,kwargs=kwargs)
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
@@ -1754,7 +1758,13 @@ class control:
 
 		f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
                 f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+		
+		
+		f['EXPMETER'] = (self.pdus[4].expmeter.status(),'Exposure meter powered?')
+		f['LEDLAMP'] = (self.pdus[4].ledlamp.status(),'LED lamp powered?')
+		
 
+		"""
                 #S PDU Header info
                 self.spectrograph.update_dynapower1()
                 self.spectrograph.update_dynapower2()
@@ -1764,7 +1774,7 @@ class control:
                 dyna2keys = ['i2stage','slitflat']
                 for key in dyna2keys:
                         f[key] = (self.spectrograph.dynapower2_status[key],"Outlet for "+key)
-
+		"""	
                 
 		header = json.dumps(f)
 		self.logger.info('Waiting for spectrograph imaging thread')
