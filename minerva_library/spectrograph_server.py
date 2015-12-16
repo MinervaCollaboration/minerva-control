@@ -19,6 +19,7 @@ import atexit
 import re
 import json
 import numpy as np
+import pdu
 
 # minerva library dependency
 #S Put copy of dynapwoer.py in spectrograph_modules for power stuff on expmeter
