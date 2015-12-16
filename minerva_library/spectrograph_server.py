@@ -318,7 +318,8 @@ class server:
 		try:
 			header_info = self.header_buffer + param
 			self.header_buffer = ''
-			f = pyfits.open(self.file_name, uint16=True, mode='update', ignore_missing_end=True)
+#			f = pyfits.open(self.file_name, uint16=True, mode='update', ignore_missing_end=True)
+			f = pyfits.open(self.file_name, mode='update')
 			for key,value in json.loads(header_info,object_pairs_hook=collections.OrderedDict).iteritems():
 				if isinstance(value, (str, unicode)):
 					f[0].header[key] = value
