@@ -1011,6 +1011,9 @@ class control:
 				self.logger.debug("Building up statistics")
 
 			i=i+1
+
+		# The target is no longer acquired
+		camera.fau.acquired = False
 		return
 
 
@@ -1725,16 +1728,22 @@ class control:
 		with open('/Data/kiwilog/' + self.night + '/spec_pressure.log') as fh:
 			fh.seek(-1024,2)
 			line = fh.readlines()[-1].decode()
-			specpressure = line.split()[1]
+			specpressure = line.split(',')[-1]
 #		pumppressure = self.spectrograph.get_spec_pressure()
 		with open('/Data/kiwilog/' + self.night + '/pump_pressure.log') as fh:
 			fh.seek(-1024,2)
 			line = fh.readlines()[-1].decode()
-			pumppressure = line.split()[1]
+			pumppressure = line.split(',')[-1]
 
                 f['SPECPRES'] = (str(specpressure),"spectrograph pressure (mbars)")
                 f['PUMPPRES'] = (str(pumppressure),"vacuum pump pressure (mbars)")
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
+
+		## TODO -- add pump valves and pump from PDUs
+		f['PUMPVALV'] = ('UNKNOWN','Pump valve open?')
+		f['VENTVALV'] = ('UNKNOWN','Vent valve open?')
+		f['PUMPON'] = ('UNKNOWN','Vacuum pump on?')
+
 		temp_controllers = ['A','B','C','D']
 		for cont in temp_controllers:
 			for i in range(4):
@@ -1745,6 +1754,20 @@ class control:
 					if temps[1] == "None" : temp = 'UNKNOWN'
 					else: temp = float(temps[1])
 					f['TEMP'+cont+str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
+
+		# add the temperatures from the thermal enclosure log
+		filename = self.base_directory + '/config/thermal_enclosure.ini'
+		with open(filename,'rb') as fh:
+			header = fh.readlines()[0].strip().split(',')
+	
+		filename = '/Data/thermallog/Thermal Enclosure Log ' + \
+		    datetime.datetime.utcnow().strftime('%Y-%m-%d') + ' UTC.csv'
+		with open(filename,'rb') as fh:
+			temps = fh.readlines()[-1].strip().split(',')
+			for i in range(12):
+				f['TEMPE'+str(i+1).zfill(2)] = (temps[i+4], header[i] + ' Temperature (C)')
+			f['ENCSETP'] = (temps[3],'Thermal enclosure set point (C)')
+
                 f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
                 f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
 
@@ -2982,10 +3005,17 @@ class control:
 		if datetime.datetime.utcnow() < self.site.NautTwilBegin():
 			self.logger.info(telescope_name + 'Beginning autofocus')
 #			self.telescope_intiailize(telescope_num)
+
 			#S this is here just to make sure we aren't moving
-			self.telescopes[telescope_num-1].inPosition(m3port=self.telescopes[telescope_num-1].port['IMAGER'])
+#			# DON'T CHANGE PORTS (?)
+#			self.telescopes[telescope_num-1].inPosition(m3port=self.telescopes[telescope_num-1].port['IMAGER'])
+			self.telescopes[telescope_num-1].inPosition()#m3port=self.telescopes[telescope_num-1].port['IMAGER'])
+
+			if telescope_num == 3: spectroscopy=True
+			else: spectroscopy=False
+
 #			self.telescope_autoFocus(telescope_num)
-			self.autofocus(telescope_num)
+			self.autofocus(telescope_num, spectroscopy=spectroscopy)
 
 		# read the target list
 		with open(self.base_directory + '/schedule/' + self.site.night + '.T' + str(telescope_num) + '.txt', 'r') as targetfile:
@@ -3162,8 +3192,8 @@ class control:
 		for t in range(len(self.telescopes)):
 			threads[t] = threading.Thread(target = self.observingScript_catch,args = (t+1,))
 			threads[t].start()
-		threads.append(threading.Thread(target=self.specCalib_catch))
-		threads[-1].start()
+#		threads.append(threading.Thread(target=self.specCalib_catch))
+#		threads[-1].start()
 			       
 		for t in range(len(self.telescopes)+1):
 			threads[t].join()
@@ -3582,6 +3612,9 @@ class control:
 
 
 	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",spectroscopy=False):
+
+		if spectroscopy: return
+
 		#S get the telescope we plan on working with
 		telescope = self.telescopes[telescope_number-1]
 		

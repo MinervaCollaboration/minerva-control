@@ -503,6 +503,7 @@ class imager:
                 # try to re-connect
                 if self.connect_server():
                         self.logger.info(telescope_name + 'recovered by reconnecting') 
+#			time.sleep(1)
                         return True
 
                 self.logger.warning(telescope_name + 'Server failed to reconnect; restarting server') 

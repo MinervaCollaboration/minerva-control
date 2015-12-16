@@ -211,6 +211,8 @@ class server:
 			response = self.i2stage_disconnect()
 		elif tokens[0] == 'i2stage_get_pos':
 			response = self.i2stage_get_pos()
+		elif tokens[0] == 'i2stage_home':
+			response == self.i2stage_home()
 		elif tokens[0] == 'i2stage_move':
 			response = self.i2stage_move(tokens[1])
 		elif tokens[0] == 'thar_turn_on':
@@ -437,8 +439,13 @@ class server:
                         self.logger.error("ERROR: The Iodine stage was never connected, or something else went wrong")
                 return 'success'
 
-        #S Get the position of the I2 stage
+	def i2stage_home(self):
+		try:
+			self.motorI2.go_home()
+		except ValueError as e:
+			pass
 
+        #S Get the position of the I2 stage
         def i2stage_get_pos(self):
                 try:
                         #S Query position
