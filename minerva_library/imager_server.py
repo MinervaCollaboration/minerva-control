@@ -248,8 +248,7 @@ class server:
                 else:
 			self.logger.error('parameter mismatch')
 			return 'fail'
-                if True:
-#		try:
+		try:
                         if fau:
                                 self.logger.info('Saving guider image')
                                 while self.cam.GuiderRunning:
@@ -257,15 +256,17 @@ class server:
                                 self.logger.info('saving image to:' + file_name)
                                 self.file_name = self.data_path + '\\' + file_name
                                 self.maxim.CurrentDocument.SaveFile(self.file_name,3, False, 1)
+				return 'success'				
                         else:
-        			while not self.cam.ImageReady:
+        			while (not self.cam.ImageReady) and (self.cam.CameraStatus <> 2):
                 			time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)
         			self.file_name = self.data_path + '\\' + file_name
-                                self.cam.SaveImage(self.file_name)
-			return 'success'
-#		except:
-#			return 'fail'
+                                if self.cam.SaveImage(self.file_name):
+					return 'success'
+				return 'fail'
+		except:
+			return 'fail'
 
 	def write_header(self,param):
 		

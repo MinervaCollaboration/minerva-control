@@ -73,7 +73,7 @@ class PT100:
             except: self.logger.exception("logtemp failed; retrying")
             try: self.sock.close()
             except: pass
-            time.sleep(20.0)
+            time.sleep(1.0)
             self.load_config()
 
     def logtemp(self):
@@ -125,7 +125,7 @@ class PT100:
                     self.logger.error("Logging slowed down for unknown reasons, restarting (hopefully)...")
                     self.sock.send("31".decode('hex') + "00".decode('hex'))
                     self.sock.close()
-                    time.sleep(20.0) # wait for the connection to time out
+                    time.sleep(16.0) # wait for the connection to time out
                     return
 
                 val = self.sock.recv(2048)

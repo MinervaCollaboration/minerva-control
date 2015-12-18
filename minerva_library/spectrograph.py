@@ -520,6 +520,12 @@ class spectrograph:
         def i2stage_disconnect(self):
                 response = self.send('i2stage_disconnect None',10)
                 return response
+	
+	#S Home the iodine stage. This will return a certain ValueError(?), which
+	#S should be handled on the spectrograph server side. 
+	def i2stage_home(self):
+		respone = self.send('i2stage_home None',10)
+		return response
 
         #S Query the position of the i2stage. 
         #S response is 'success '+str(position)

@@ -138,10 +138,21 @@ class imager:
 		telescope_name = 'T' + self.telnum + ': '
 		try:
 			s = self.connect_server()
-			s.settimeout(3)
-			s.sendall(msg)
 		except:
 			self.logger.error(telescope_name + "connection lost")
+			if self.recover_server(): return self.send(msg,timeout) 
+			return 'fail'
+		try: 
+			s.settimeout(3)
+		except:
+			self.logger.error(telescope_name + "failed to set timeout")
+			if self.recover_server(): return self.send(msg,timeout) 
+			return 'fail'
+			
+		try:
+			s.sendall(msg)
+		except:
+			self.logger.error(telescope_name + "failed to send message (" + msg + ")")
 			if self.recover_server(): return self.send(msg,timeout) 
 			return 'fail'
 
@@ -362,6 +373,7 @@ class imager:
 
 	#start exposure
 	def expose(self, exptime=1, exptype=0, filterInd=1):
+		self.logger.info('Starting exposure')
 		if (self.send('expose ' + str(exptime) + ' ' + str(exptype) + ' ' + str(filterInd),30)).split()[0] == 'success': return True
 		else: return False
 
@@ -501,19 +513,23 @@ class imager:
 		self.logger.warning(telescope_name + 'Server failed, beginning recovery') 
 
                 # try to re-connect
-                if self.connect_server():
-                        self.logger.info(telescope_name + 'recovered by reconnecting') 
+#                if self.connect_server():
+#                        self.logger.info(telescope_name + 'recovered by reconnecting') 
 #			time.sleep(1)
-                        return True
+#                        return True
 
-                self.logger.warning(telescope_name + 'Server failed to reconnect; restarting server') 
+                self.logger.warning(telescope_name + 'Restarting server') 
                 if not self.kill_server(): ipdb.set_trace()
                 if not self.kill_maxim(): ipdb.set_trace()
 
 		# this should be a level above -- need to try a graceful shutdown first
-                if not self.kill_PWI(): ipdb.set_trace()
+#                if not self.kill_PWI(): ipdb.set_trace()
 		time.sleep(10)
-                if not self.start_server(): ipdb.set_trace()
+                if not self.start_server(): 
+			self.logger.error(telescope_name + "failed to start server")
+			return False
+
+		return True
 		
                 # try to re-connect again
                 if self.connect_server():
@@ -586,7 +602,7 @@ class imager:
                 self.disconnect_camera()
 		time.sleep(5.0)
                 self.kill_maxim()
-                self.kill_PWI()
+#                self.kill_PWI()
                 self.kill_server()
                 self.start_server()
 		time.sleep(5.0)
@@ -597,7 +613,7 @@ class imager:
                 self.logger.warning('T' + self.telnum + ': Camera failed to recover after restarting maxim; power cycling the camera') 
                 self.disconnect_camera()
                 self.kill_maxim()
-                self.kill_PWI()
+#                self.kill_PWI()
                 self.kill_server()
                 self.powercycle()
                 self.start_server()
@@ -609,7 +625,7 @@ class imager:
                 self.logger.warning('T' + self.telnum + ': Camera failed to recover after power cycling the camera; trying a longer down time') 
                 self.disconnect_camera()
                 self.kill_maxim()
-                self.kill_PWI()
+#                self.kill_PWI()
                 self.kill_server()
                 self.powercycle(downtime=300)
                 self.start_server()
@@ -620,7 +636,7 @@ class imager:
                 self.logger.warning('T' + self.telnum + ': Camera failed to recover after power cycling the camera; trying a 20 minute down time') 
                 self.disconnect_camera()
                 self.kill_maxim()
-                self.kill_PWI()
+#                self.kill_PWI()
                 self.kill_server()
                 self.powercycle(downtime=1200)
                 self.start_server()
@@ -642,7 +658,7 @@ class imager:
                 self.logger.warning('T' + self.telnum + 'Camera failed to recover after power cycling the camera; rebooting the machine') 
                 self.disconnect_camera()
                 self.kill_maxim()
-                self.kill_PWI()
+#                self.kill_PWI()
                 self.kill_server()
                 self.pdu.inst.off()
                 self.send_to_computer("shutdown -s")
