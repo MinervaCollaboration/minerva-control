@@ -20,6 +20,7 @@ import re
 import json
 import numpy as np
 import pdu
+import mail
 
 # minerva library dependency
 #S Put copy of dynapwoer.py in spectrograph_modules for power stuff on expmeter
@@ -899,6 +900,12 @@ class server:
                         #S to implement other actions?
                         if reading > MAXSAFECOUNT:
                                 self.expmeter_com.logger.error("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading)+" > maxsafecount="+str(MAXSAFECOUNT))
+                                mail.send("Exposure meter has shut down",
+                                          "Dear Benevolent Humans,\n\n"+
+                                          "My exposure meter was saturated and I shut it down to protect it. "+
+                                          "Can you please investigate and, if safe, restart the spectrograph server? "+
+                                          "No exposure meter data will be recorded until you do.\n\n"+
+                                          "Love,\nMINERVA",level="serious")
                                 break
                         #? Not sure if we need this guy, seems like we are already logging?
                         with open(self.base_directory + "/log/" + self.night + "/expmeter.dat", "a") as fh:
@@ -914,6 +921,7 @@ class server:
                 self.expmeter_com.close() # close connection
                 #S Turn of power to exposure meter
                 self.pdu.expmeter.off()
+                
 
         #S going to log the pressures of the chamber and the pump
         def log_pressures(self):
