@@ -561,18 +561,23 @@ class control:
 		self.observing = True
 		threading.Thread(target = self.domeControl_catch).start()
 
-	# this is untested!!!
-	def hourangle(self):
-		obs = self.site.obs
-#		ra = 
+	# calculate the parallactic angle (for guiding)
+	def parangle(self, ha, dec, latitude):
+		#stolen from parangle.pro written by Tim Robinshaw
+		return -180.0/math.pi*math.atan2(-math.sin(ha*math.pi/12.0),
+						  math.cos(dec*math.pi/180.0)*math.tan(latitude*math.pi/180.0)-
+						  math.sin(dec*math.pi/180.0)*math.cos(ha*math.pi/12.0))
 
-                c = coord.ICRSCoordinates(ra=ra, dec=dec, unit=(u.hour,u.deg))
-                t = coord.Angle(obs.sidereal_time(),u.radian)
-                t.lat = obs.lat
-                t.lon = obs.lon
-                ha = coor.angles.RA.hour_angle(c.ra,t)
-                return None
+	# calculate the Local Sidereal Time
+	# this is a bit of a hack...
+	def lst(self):
+		status = self.telescopes[0].getStatus()
+		return self.ten(status.status.lst)
 
+	# calculate the hour angle (RA should be in apparent hours)
+	def hourangle(self, ra):
+		lst = self.lst()
+		return lst - ra
 
 	def ten(self,string):
 		array = string.split()
@@ -842,6 +847,7 @@ class control:
                                 threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
                                 threads[t].start()
 
+		self.logger.info("Waiting for all telescopes to acquire")
 		# wait for all telescopes to put target on their fibers (or timeout)
 		acquired = False
 		timeout = 300.0 # is this long enough?
@@ -850,7 +856,7 @@ class control:
 		while not acquired and elapsedTime < timeout:
 			acquired = True
 			for i in range(len(tele_list)):
-				self.logger.info("T" + str(tele_list[i]) + ": acquired = " + str(self.cameras[tele_list[i]].fau.acquired))
+				self.logger.info("T" + str(tele_list[i]) + ": acquired = " + str(self.cameras[tele_list[i]-1].fau.acquired))
 				if not self.cameras[tele_list[i]-1].fau.acquired: 
 					self.logger.info("T" + str(tele_list[i]) + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
 					acquired = False
@@ -889,8 +895,6 @@ class control:
 
 		telescope = self.telescopes[tel_num-1]
 		camera = self.cameras[tel_num-1]
-
-
 		camera.fau.acquired = False
 		
 		if xfiber <> None:
@@ -933,82 +937,95 @@ class control:
 			filename = self.takeFauImage(target, telescope_num=tel_num)
 
 			dataPath = '/Data/t' + camera.telnum + '/' + self.night + '/'
-			imagedata = get_centroid(dataPath + filename, badpixelmask=camera.fau.badpix)
-
+#			imagedata = get_centroid(dataPath + filename, badpixelmask=camera.fau.badpix)
 			#derive position in pixels
-			curpos = np.array((imagedata['xcen'],
-					   imagedata['ycen']))
+#			curpos = np.array((imagedata['xcen'],imagedata['ycen']))
 
-			tvals = np.append(tvals,i)
-			xvals = np.append(xvals, curpos[0])
-			yvals = np.append(yvals, curpos[1])
+			stars = self.getstars(dataPath + filename)
 
-			filterx=camera.fau.filterdata(xvals, N=camera.fau.smoothing)
-			filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
-			filtercurpos=np.array([filterx, filtery])
-			separation = camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1])*camera.fau.platescale
-			self.logger.info("Target is " + str(separation) + '" away from the fiber -- tolerance is ' + str(camera.fau.acquisition_tolerance) + '"')
-			if separation < camera.fau.acquisition_tolerance:
-				self.logger.info("Target acquired")
-				camera.fau.acquired = True
-				if acquireonly: return
-#			else: camera.fau.acquired = False
-
-			if separation < camera.fau.bp:
-                                #note units are arc-seconds here in the "if"
-				updateval = p.update(filtercurpos)
-				self.logger.info("Using slow loop")
-				fast = False
+			if len(stars) < 1:#curpos[0] == -1 or curpos[1] == -1:
+				self.logger.info("T" + str(tel_num) + ": no stars in imaging; skipping guide correction")
 			else:
-				self.logger.info("Using fast loop")
-				updateval = pfast.update(filtercurpos)
-				fast = True
+				curpos = np.array([stars[0][0],stars[0][1]])
+				tvals = np.append(tvals,i)
+				xvals = np.append(xvals, curpos[0])
+				yvals = np.append(yvals, curpos[1])
 
-                        # Rotate the PID value by the negative of the rotation angle
-			updateval= np.dot(camera.fau.rotmatrix(-camera.fau.rotangle), updateval)
-			error[i,:] = np.array(p.error)
-                
-                        # Slew the telescope
-			telupdateval = updateval*camera.fau.platescale
+				filterx=camera.fau.filterdata(xvals, N=camera.fau.smoothing)
+				filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
+				filtercurpos=np.array([filterx, filtery])
+				separation = camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1])*camera.fau.platescale
+				self.logger.info("T" + str(tel_num) + ": Target is " + str(separation) + '" away from the fiber -- tolerance is ' + str(camera.fau.acquisition_tolerance) + '"')
+				if separation < camera.fau.acquisition_tolerance:
+					self.logger.info("T" + str(tel_num) + ": Target acquired")
+					camera.fau.acquired = True
+					if acquireonly: return
+				#else: camera.fau.acquired = False
 
-			if guiding == True:
-				#telescope.increment_alt_az_balanced(telupdateval[0],telupdateval[1])
-				telescope.mountOffsetRaDec(-telupdateval[0],-telupdateval[1])
-
-				if fast:
-					time.sleep(5)
+				if separation < camera.fau.bp:
+                                        #note units are arc-seconds here in the "if"
+					updateval = p.update(filtercurpos)
+					self.logger.info("T" + str(tel_num) + ": Using slow loop")
+					fast = False
 				else:
-					time.sleep(1)
+					self.logger.info("T" + str(tel_num) + ": Using fast loop")
+					updateval = pfast.update(filtercurpos)
+					fast = True
 
-			self.logger.debug("PID LOOP: " + 
-					 str(camera.fau.xfiber)+","+
-					 str(camera.fau.yfiber)+","+
-					 str(curpos[0])+","+
-					 str(curpos[1])+","+
-					 str(updateval[0])+","+
-					 str(updateval[1])+","+
-					 str(telupdateval[0])+","+
-					 str(telupdateval[1])+","+
-					 str(camera.fau.rotangle)+","+
-					 str(guiding))
+				# position angle on the sky
+				# PA = parallactic angle - mechanical rotator position + field rotation offset
+				ha = self.hourangle(target['ra'])
+				parangle = self.parangle(ha,target['dec'],float(self.site.latitude))
+				offset = camera.fau.field_rotation_offset
+				PA = parangle - float(telescope.getStatus().rotator.position) + offset
+				self.logger.info('T' + str(tel_num) + ': PA = '+str(PA))
+				camera.fau.rotangle = PA
 
-			self.logger.debug("Curpos " + str(curpos[0])+"   "+str(curpos[1]))
-#			self.logger.debug("Filtercurpos " +  filtercurpos)
-			self.logger.debug("distance from target: " +str(round(camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1]),2)))
-			self.logger.debug("Updatevalue: " + str(updateval[0])+" "+str(updateval[1]))
-			self.logger.debug("Commanding update: " + str(telupdateval[0])+" "+str(telupdateval[1]))
-			if i >50:
-				meanx = np.mean((xvals)[50:])
-				meany = np.mean((yvals)[50:])
-				stdx  = np.std( (xvals)[50:])
-				stdy  = np.std( (yvals)[50:])
+				# Rotate the PID value by the negative of the rotation angle
+				updateval= np.dot(camera.fau.rotmatrix(-camera.fau.rotangle), updateval)
+				error[i,:] = np.array(p.error)
+                
+				# Slew the telescope
+				telupdateval = updateval*camera.fau.platescale
 
-				self.logger.debug("Mean x position  " + str(meanx))
-				self.logger.debug("Std x position  " + str(stdx))
-				self.logger.debug("Mean y position  " + str(meany))
-				self.logger.debug("Std y position  " + str(stdy))
-			else:
-				self.logger.debug("Building up statistics")
+				if guiding == True:
+				#telescope.increment_alt_az_balanced(telupdateval[0],telupdateval[1])
+					telescope.mountOffsetRaDec(-telupdateval[0],-telupdateval[1])
+
+					if fast:
+						time.sleep(5)
+					else:
+						time.sleep(1)
+
+				self.logger.debug("T" + str(tel_num) + ": PID LOOP: " + 
+						  str(camera.fau.xfiber)+","+
+						  str(camera.fau.yfiber)+","+
+						  str(curpos[0])+","+
+						  str(curpos[1])+","+
+						  str(updateval[0])+","+
+						  str(updateval[1])+","+
+						  str(telupdateval[0])+","+
+						  str(telupdateval[1])+","+
+						  str(camera.fau.rotangle)+","+
+						  str(guiding))
+
+				self.logger.debug("T" + str(tel_num) + ": Curpos " + str(curpos[0])+"   "+str(curpos[1]))
+				#self.logger.debug("Filtercurpos " +  filtercurpos)
+				self.logger.debug("T" + str(tel_num) + ": distance from target: " +str(round(camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1]),2)))
+				self.logger.debug("T" + str(tel_num) + ": Updatevalue: " + str(updateval[0])+" "+str(updateval[1]))
+				self.logger.debug("T" + str(tel_num) + ": Commanding update: " + str(telupdateval[0])+" "+str(telupdateval[1]))
+				if i >50:
+					meanx = np.mean((xvals)[50:])
+					meany = np.mean((yvals)[50:])
+					stdx  = np.std( (xvals)[50:])
+					stdy  = np.std( (yvals)[50:])
+
+					self.logger.debug("T" + str(tel_num) + ": Mean x position  " + str(meanx))
+					self.logger.debug("T" + str(tel_num) + ": Std x position  " + str(stdx))
+					self.logger.debug("T" + str(tel_num) + ": Mean y position  " + str(meany))
+					self.logger.debug("T" + str(tel_num) + ": Std y position  " + str(stdy))
+				else:
+					self.logger.debug("T" + str(tel_num) + ": Building up statistics")
 
 			i=i+1
 
@@ -1023,7 +1040,7 @@ class control:
 
 		filename = self.fau.take_image(5)
 		self.logger.info(telescope_name + "Extracting stars for " + filename)
-		self.getstars(filename)
+		#self.getstars(filename)
 		stars = self.getstars(filename)
 		if len(stars[:,0]) ==  0:
 			self.logger.error(telescope_name + "No stars in frame")
@@ -1923,7 +1940,7 @@ class control:
 		f['ALT'] = (alt,'Telescope altitude (deg)')
 		f['AZ'] = (az,'Telescope azimuth (deg E of N)')
 
-		hourang = 'UNKNOWN'
+		hourang = self.hourangle(target['ra'])
 		f['HOURANG'] = (hourang,'Telescope hour angle (hours)')
 		f['AIRMASS'] = (airmass,"airmass (plane approximation)")
 
@@ -3192,11 +3209,13 @@ class control:
 		for t in range(len(self.telescopes)):
 			threads[t] = threading.Thread(target = self.observingScript_catch,args = (t+1,))
 			threads[t].start()
-#		threads.append(threading.Thread(target=self.specCalib_catch))
-#		threads[-1].start()
+
+#		speccalib_thread = threading.Thread(target=self.specCalib_catch)
+#		speccalib_thread.start()
 			       
-		for t in range(len(self.telescopes)+1):
+		for t in range(len(self.telescopes)):
 			threads[t].join()
+#		speccalib_thread.join()
 			
 	#TODO:set up http server to handle manual commands
 	def run_server(self):
@@ -3209,7 +3228,7 @@ class control:
                 #S Not really sure what prepNight does, but seems like it
                 #S takes care of some loggin stuff/names, and updates site info.
                 #S running it, but need explanation
-                #TODO I htink prepNight needs t o be run for each scope
+                #TODO I htink prepNight needs to be run for each scope
                 #XXX self.prepNight()
                 #S Initialize ALL telescopes
                 self.Telescope_initialize
@@ -3274,7 +3293,6 @@ class control:
                 #TODO Will having the calibration shutter closed be enough for darks, biases? We Think...
                 #TODO This could really help for warmup times, etc.
                         
-
                 #S Including a back up to ensure the I2heater is on. As if we are
                 #S running calibrations, we'll probably need to be taking spectra of targets.
                 self.spectrograph.cell_heater_on()
@@ -3292,7 +3310,7 @@ class control:
                                 #S Take it
                                 self.takeSpectrum(self.calib_dict['arc_times'][set_num],'arc')
                         
-                #S Turn ThAr off, but I think it would be caought by later exposure conditoins
+                #S Turn ThAr off, but I think it would be caught by later exposure conditions
                 self.spectrograph.thar_turn_off()
                 
                 #S Prepping flat lamp

@@ -366,7 +366,9 @@ class CDK700:
 
 	def rotatorStopDerotating(self, port=1):
 		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestop")
-
+	def gotoPA(self, target, latitiude):
+		pass
+		#
 	### MOUNT ###
 	def mountConnect(self):
 		status = self.pwiRequestAndParse(device="mount", cmd="connect")
@@ -726,8 +728,8 @@ class CDK700:
 			self.rotatorMove(pa)
 
 ### check on this; m3port not defined ####
-#		if self.inPosition(m3port=m3port):
-		if self.inPosition():
+		if self.inPosition(m3port=m3port):
+#		if self.inPosition():
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))

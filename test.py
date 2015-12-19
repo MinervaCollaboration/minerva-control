@@ -1,5 +1,3 @@
-#Minerva system main routine
-#create master control object and run one of the observing scripts
 import sys
 sys.dont_write_bytecode = True
 from minerva_library import control
@@ -22,12 +20,14 @@ if __name__ == '__main__':
 			"ra" : 3.15111666667, 
 			"dec" : 49.6132777778, 
 			"fauexptime" : 1,
+			"spectroscopy" : True
 			}
 
-		telnum = 3
+		telnum = 2
+#		minerva.telescopes[telnum-1].acquireTarget(target)
 		minerva.cameras[telnum-1].fau.guiding=True
 		minerva.cameras[telnum-1].fau.acquisition_tolerance=1.5
-		minerva.fauguide(target,3,acquireonly=True)
+		minerva.fauguide(target,telnum,acquireonly=False)
 		ipdb.set_trace()
 
 	target = {
@@ -53,6 +53,7 @@ if __name__ == '__main__':
 		"i2": False,
 		"comment":"RV standard star"}
 
+	'''
 	target = {
 		"name" : "HR398", 
 		"ra" : 1.42958611111,
@@ -74,9 +75,9 @@ if __name__ == '__main__':
 		"parallax" : 6.89, 
 		"template" : False, 
 		"i2": True}
+	'''
 
-
-#	minerva.doSpectra(target,[3])
+	minerva.doSpectra(target,[1,2,4])
 #	ipdb.set_trace()
 
 
@@ -84,10 +85,10 @@ if __name__ == '__main__':
 #	minerva.takeSpectrum(target)
 #	ipdb.set_trace()
 
-	minerva.specCalib(nbias=1,ndark=1,nflat=1)
+#	minerva.specCalib(nbias=1,ndark=1,nflat=1)
 
 
-	ipdb.set_trace()
+#	ipdb.set_trace()
 
 #	minerva.takeSpectrum(target)
 #	ipdb.set_trace()
