@@ -913,13 +913,19 @@ class server:
                         self.expmeter_com.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading))
                         
                 #S If the loop is broken, these are shutdown procedures.
+		# Shut the shutter
+                self.expmeter_com.send('O' + chr(0))
+
                 #S Stop measurements
                 self.expmeter_com.send("\r")
                 #S High voltage off.
                 self.expmeter_com.send('V'+ chr(0) + chr(0) + self.expmeter_com.termstr) # turn off voltage
+
+	
+
                 #S Close the comm port
                 self.expmeter_com.close() # close connection
-                #S Turn of power to exposure meter
+                #S Turn off power to exposure meter
                 self.pdu.expmeter.off()
                 
 

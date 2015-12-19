@@ -88,7 +88,7 @@ class CDK700:
 		self.num = self.logger_name[-1]
 			
 	#additional higher level routines
-	def isInitialized(self,tracking=False):
+	def isInitialized(self,tracking=False, derotate=False):
 		# check to see if it's properly initialized
 		telescopeStatus = self.getStatus()
 		if telescopeStatus.mount.encoders_have_been_set <> 'True':
@@ -120,13 +120,14 @@ class CDK700:
 			if telescopeStatus.mount.tracking <> 'True': 
 				self.logger.warning('T' + self.num + ': mount not tracking (' + telescopeStatus.mount.tracking + '), telescope not initialized')
 				return False
+		if derotate:
 			if telescopeStatus.rotator.altaz_derotate <> 'True': 
 				self.logger.warning('T' + self.num + ': rotator not tracking (' + telescopeStatus.altaz_derotate + '), telescope not initialized')
 				return False
 		
 		return True
 
-	def initialize(self,tracking=False):
+	def initialize(self,tracking=False, derotate=False):
 
 		# turning on mount tracking
 		self.logger.info('T' + self.num + ': Connecting to mount')
@@ -150,10 +151,11 @@ class CDK700:
 		if tracking:
 			self.logger.info('T' + self.num + ': Turning mount tracking on')
 			self.mountTrackingOn()
+		if derotate:
 			self.logger.info('T' + self.num + ': Turning rotator tracking on')
 			self.rotatorStartDerotating()
 
-		return self.isInitialized(tracking=tracking)
+		return self.isInitialized(tracking=tracking,derotate=derotate)
 		
 	def load_config(self):
 		
@@ -167,11 +169,14 @@ class CDK700:
 			self.logger_name = config['Setup']['LOGNAME']
 			self.pdu_config = config['Setup']['PDU']
 			self.telcom_client_config = config['Setup']['TELCOM']
+			self.latitude = float(config['Setup']['LATITUDE'])
+			self.longitude = float(config['Setup']['LONGITUDE'])
+			self.elevation = float(config['Setup']['ELEVATION'])
 			self.nfailed = 0
 			self.port = config['PORT']
 			self.modeldir = config['Setup']['MODELDIR']
 			self.model = config['MODEL']
-			self.settingsxml = config['SETTINGSXML']
+			self.rotatoroffset = config['ROTATOROFFSET']
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
@@ -366,8 +371,60 @@ class CDK700:
 
 	def rotatorStopDerotating(self, port=1):
 		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestop")
-	def gotoPA(self, target, latitiude):
-		pass
+	
+	#S i think we should make targets classes for functions like this, not in telescope.
+	#S i did that in scheduler sim, but could be a bit of an overhaul here....
+	def hourangle(self,target):
+		#S calculate the current hour angle of the target
+		#TODO need to incorporate the updated RA, will be off by a few degrees
+		#TODO similar to caluclating the angle from target set check in observing script
+		lst = self.lst()
+		return lst - target['ra']
+
+	# calculate the Local Sidereal Time                                                   
+	# this is a bit of a hack...
+        def lst(self):
+                status = self.telescopes[0].getStatus()
+                return self.ten(status.status.lst)
+
+
+        def ten(self,string):
+                array = string.split()
+                if "-" in array[0]:
+                        return float(array[0]) - float(array[1])/60.0 - float(array[2])/3600.0
+                return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
+	
+        # calculate the parallactic angle (for guiding)
+        def parangle(self, target):
+		ha = self.hourangle(target)
+		dec = target['dec']
+                #stolen from parangle.pro written by Tim Robinshaw
+                return -180.0/math.pi*math.atan2(-math.sin(ha*math.pi/12.0),
+                                                  math.cos(dec*math.pi/180.0)*math.tan(self.latitude*math.pi/180.0)-
+                                                  math.sin(dec*math.pi/180.0)*math.cos(ha*math.pi/12.0))
+
+	def solveRotatorPosition(self, target):
+		if 'pa' in target.keys():
+			desiredPA = float(target['pa'])
+		else:
+			desiredPA = 0.0
+
+		parangle = self.parangle(target)
+
+		if target['spectroscopy'] == True :
+			offset = self.rotatoroffset[self.port['FAU']]
+		else:
+			offset = self.rotatoroffset[self.port['IMAGER']]
+
+		rotator_pos = parangle + offset - desiredPA
+		
+		# make sure the angle is positive
+		while rotator_pos < 0.0: rotator_pos += 360.0
+
+		rotator_pos = math.fmod(rotator_pos,360.0)
+		self.logger.info('Calculated a mech position of ' + str(rotator_pos) + ' for PA of ' + str(desiredPA))
+		return rotator_pos
+
 		#
 	### MOUNT ###
 	def mountConnect(self):
@@ -711,21 +768,30 @@ class CDK700:
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
 				m3port = self.port['FAU']
+				#S Initialize the telescope
+				self.initialize(tracking=True,derotate=False)
 			else: 
 				m3port = self.port['IMAGER']
+				#S Initialize the telescope
+				self.initialize(tracking=True,derotate=True)
+				rotator_angle = self.solveRotatorPosition(target)
+				self.rotatorMove(rotator_angle,port=m3port)
+
 		else:
 			m3port = self.port['IMAGER']
-		self.m3port_switch(m3port)
+			self.initialize(tracking=True,derotate=True)
+			rotator_angle = self.solveRotatorPosition(target)
+			self.rotatorMove(rotator_angle,port=m3port)
+
+
+
                 	
-		#S Initialize the telescope
-                self.initialize(tracking=True)
+		self.m3port_switch(m3port)
 
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
-		if pa <> None:
-			self.logger.info('T' + self.num + ': Slewing rotator to PA=' + str(pa) + ' deg')
-			self.rotatorMove(pa)
+
 
 ### check on this; m3port not defined ####
 		if self.inPosition(m3port=m3port):
@@ -746,22 +812,16 @@ class CDK700:
 			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
 			telescopeStatus = self.getStatus()
 			if telescopeStatus.m3.port != str(m3port):
-				self.logger.info('T%s: Port changed, loading pointing model and restarting PWI'%(self.num))
+				self.logger.info('T%s: Port changed, loading pointing model'%(self.num))
 				# load the pointing model and settingsxml
 				modelfile = self.modeldir + self.model[m3port]
-				xmlfile = self.modeldir + self.settingsxml[m3port]
-				
 				if os.path.isfile(modelfile):
-					shutil.copyfile(modelfile,self.modeldir + 'Default_Mount_Model.PXP')
+					self.logger.info('changing model file')
+					self.mountSetPointingModel(self.model[m3port])
+
 				else:
 					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
-
-				if os.path.isfile(xmlfile):
-					shutil.copyfile(xmlfile,self.modeldir + 'settingsMount.xml')
-				else:
-					self.logger.error('T%s: xml file (%s) does not exist; using current xml'%(self.num, xmlfile))
-					
-				self.restartPWI()
+					mail.send('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile),'',level='serious')
 
 				telescopeStatus = self.m3SelectPort(port=m3port)
 				

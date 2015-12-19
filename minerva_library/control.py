@@ -974,15 +974,14 @@ class control:
 
 				# position angle on the sky
 				# PA = parallactic angle - mechanical rotator position + field rotation offset
-				ha = self.hourangle(target['ra'])
-				parangle = self.parangle(ha,target['dec'],float(self.site.latitude))
-				offset = camera.fau.field_rotation_offset
+				parangle = telescope.parangle(target)
+				offset = telescope.rotatoroffset[telscope.port['FAU']]
 				PA = parangle - float(telescope.getStatus().rotator.position) + offset
 				self.logger.info('T' + str(tel_num) + ': PA = '+str(PA))
-				camera.fau.rotangle = PA
+
 
 				# Rotate the PID value by the negative of the rotation angle
-				updateval= np.dot(camera.fau.rotmatrix(-camera.fau.rotangle), updateval)
+				updateval= np.dot(camera.fau.rotmatrix(-PA), updateval)
 				error[i,:] = np.array(p.error)
                 
 				# Slew the telescope
