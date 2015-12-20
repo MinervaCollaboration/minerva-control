@@ -80,6 +80,7 @@ class server:
                         self.i2serial = int(config['I2SERIAL'])
                         self.i2hwtype = int(config['I2HWTYPE'])
                         self.i2positions = config['I2POSITIONS']
+                        self.log_exposure_meter = True
                         for key in self.i2positions.keys():
                                 self.i2positions[key] = float(self.i2positions[key])
 		except:
@@ -155,6 +156,7 @@ class server:
 		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
                 self.gaugeController = com.com('gaugeController',self.base_directory,self.night)
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night)
+                
                 self.expmeter_com = com.com('expmeter',self.base_directory,self.night)
                 return
 
@@ -845,7 +847,8 @@ class server:
                 #S The maximum count threshold we are currently allowing.
                 #S Used as trigger level for shutdown.
                 #TODO Get a real number for this.
-                MAXSAFECOUNT = 500000.0
+                MAXSAFECOUNT = 30000000#500000.0
+
                 #S Number of measurements we want to read per second.
                 MEASUREMENTSPERSEC = 1.0
                 #S Turn expmeter on
@@ -869,7 +872,7 @@ class server:
                 #S Open up connection for reading, remains open.
                 self.expmeter_com.ser.open()
                 #S Loop for catching exposures.
-                while self.expmeter_com.ser.isOpen():
+                while self.expmeter_com.ser.isOpen() and self.log_exposure_meter:
                         try:
                                 #ipdb.set_trace()
                                 #S While the register is empty, wait
@@ -911,20 +914,20 @@ class server:
                         with open(self.base_directory + "/log/" + self.night + "/expmeter.dat", "a") as fh:
                                 fh.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(reading) + "\n")
                         self.expmeter_com.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading))
-                        
-                #S If the loop is broken, these are shutdown procedures.
-		# Shut the shutter
-                self.expmeter_com.send('O' + chr(0))
-
-                #S Stop measurements
-                self.expmeter_com.send("\r")
-                #S High voltage off.
-                self.expmeter_com.send('V'+ chr(0) + chr(0) + self.expmeter_com.termstr) # turn off voltage
-
-	
 
                 #S Close the comm port
                 self.expmeter_com.close() # close connection
+                
+                #S If the loop is broken, these are shutdown procedures.
+		# Shut the shutter
+                self.expmeter_com.send('O' + chr(0))
+                self.logger.info('Closed expmeter shutter')
+                #S Stop measurements
+                self.expmeter_com.send("\r")
+                self.logger.info('stopped expmeter measurements')
+                #S High voltage off.
+                self.expmeter_com.send('V'+ chr(0) + chr(0) + self.expmeter_com.termstr) # turn off voltage
+                self.logger.info('turned off exposure meter high voltage')
                 #S Turn off power to exposure meter
                 self.pdu.expmeter.off()
                 
@@ -955,21 +958,13 @@ class server:
         #S power. INCLUDES:
         #S Function to ensure power is shut off to exposure meter
         def safe_close(self,signal):
-		
-		# Shut the shutter
-                self.expmeter_com.send('O' + chr(0))
-                #S Stop measurements
-                self.expmeter_com.send("\r")
-                #S High voltage off.
-                self.expmeter_com.send('V'+ chr(0) + chr(0) + self.expmeter_com.termstr) # turn off voltage
-                #S Close the comm port
-                self.expmeter_com.close() # close connection
-                #S Turn off power to exposure meter
-                self.pdu.expmeter.off()
+		self.log_exposure_meter = False
                 self.led_turn_off()
 		self.i2stage_disconnect()
                 try: self.gaugeController.close()
                 except: pass
+                while self.expmeter_com.ser.isOpen():
+                        time.sleep(0.1)
 		
 		#S Something fucky going on here, won't let me close browsers.
 		#TODO
