@@ -561,29 +561,6 @@ class control:
 		self.observing = True
 		threading.Thread(target = self.domeControl_catch).start()
 
-	# calculate the parallactic angle (for guiding)
-	def parangle(self, ha, dec, latitude):
-		#stolen from parangle.pro written by Tim Robinshaw
-		return -180.0/math.pi*math.atan2(-math.sin(ha*math.pi/12.0),
-						  math.cos(dec*math.pi/180.0)*math.tan(latitude*math.pi/180.0)-
-						  math.sin(dec*math.pi/180.0)*math.cos(ha*math.pi/12.0))
-
-	# calculate the Local Sidereal Time
-	# this is a bit of a hack...
-	def lst(self):
-		status = self.telescopes[0].getStatus()
-		return self.ten(status.status.lst)
-
-	# calculate the hour angle (RA should be in apparent hours)
-	def hourangle(self, ra):
-		lst = self.lst()
-		return lst - ra
-
-	def ten(self,string):
-		array = string.split()
-		if "-" in array[0]:
-			return float(array[0]) - float(array[1])/60.0 - float(array[2])/3600.0
-		return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
 
 	def astrometry(self,imageName):
 
@@ -1939,7 +1916,7 @@ class control:
 		f['ALT'] = (alt,'Telescope altitude (deg)')
 		f['AZ'] = (az,'Telescope azimuth (deg E of N)')
 
-		hourang = self.hourangle(target['ra'])
+		hourang = telescope.hourangle(target)
 		f['HOURANG'] = (hourang,'Telescope hour angle (hours)')
 		f['AIRMASS'] = (airmass,"airmass (plane approximation)")
 

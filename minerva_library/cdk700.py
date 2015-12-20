@@ -384,7 +384,7 @@ class CDK700:
 	# calculate the Local Sidereal Time                                                   
 	# this is a bit of a hack...
         def lst(self):
-                status = self.telescopes[0].getStatus()
+                status = self.getStatus()
                 return self.ten(status.status.lst)
 
 
@@ -411,10 +411,15 @@ class CDK700:
 
 		parangle = self.parangle(target)
 
-		if target['spectroscopy'] == True :
-			offset = self.rotatoroffset[self.port['FAU']]
+		if 'spectroscopy' in target.keys():
+			if target['spectroscopy'] == True :
+				offset = self.rotatoroffset[self.port['FAU']]
+			else:
+				offset = self.rotatoroffset[self.port['IMAGER']]
 		else:
 			offset = self.rotatoroffset[self.port['IMAGER']]
+
+
 
 		rotator_pos = parangle + offset - desiredPA
 		
@@ -504,13 +509,13 @@ class CDK700:
 		return self.pwiRequestAndParse(device="mount", cmd="trackingrates", rarate=raArcsecPerSec, decrate=decArcsecPerSec)
 
 	# this is untested!!!
-	def hourangle(self,obs,ra,dec):
-		c = coord.ICRSCoordinates(ra=ra, dec=dec, unit=(u.hour,u.deg))
-		t = coord.Angle(obs.sidereal_time(),u.radian)
-		t.lat = obs.lat
-		t.lon = obs.lon
-		ha = coor.angles.RA.hour_angle(c.ra,t)
-		return None
+#	def hourangle(self,obs,ra,dec):
+#		c = coord.ICRSCoordinates(ra=ra, dec=dec, unit=(u.hour,u.deg))
+#		t = coord.Angle(obs.sidereal_time(),u.radian)
+#		t.lat = obs.lat
+#		t.lon = obs.lon
+#		ha = coor.angles.RA.hour_angle(c.ra,t)
+#		return None
 
 	def mountSetPointingModel(self, filename):
 		return self.pwiRequestAndParse(device="mount", cmd="setmodel", filename=filename)

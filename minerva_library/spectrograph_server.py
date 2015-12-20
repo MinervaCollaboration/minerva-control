@@ -955,9 +955,17 @@ class server:
         #S power. INCLUDES:
         #S Function to ensure power is shut off to exposure meter
         def safe_close(self,signal):
+		
+		# Shut the shutter
+                self.expmeter_com.send('O' + chr(0))
+                #S Stop measurements
+                self.expmeter_com.send("\r")
+                #S High voltage off.
+                self.expmeter_com.send('V'+ chr(0) + chr(0) + self.expmeter_com.termstr) # turn off voltage
+                #S Close the comm port
+                self.expmeter_com.close() # close connection
+                #S Turn off power to exposure meter
                 self.pdu.expmeter.off()
-		#self.thar_turn_off()
-		#self.flat_turn_off()
                 self.led_turn_off()
 		self.i2stage_disconnect()
                 try: self.gaugeController.close()
