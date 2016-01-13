@@ -147,7 +147,11 @@ class PT100:
                     temp = self.ohm2temp(ohm)
 
                     # log the temperature
-                    filename = '%s/log/%s/temp.%s.%s.log'%(self.base_directory,self.night,self.controller,str(ndx[raw[0]] + 1))
+                    night = 'n' + datetime.datetime.strftime(datetime.datetime.utcnow(),"%Y%m%d")
+                    logdir = self.base_directory + '/log/' + night + '/' 
+                    if not os.path.isdir(logdir):
+                        os.mkdir(logdir)
+                    filename = '%stemp.%s.%s.log'%(logdir,self.controller,str(ndx[raw[0]] + 1))
                     self.logger.info("Ohm=" + str(ohm) + ',temp=' + str(temp) + ',filename=' + filename + ',description='+self.description[ndx[raw[0]]])
                     with open(filename,'a') as f:    
                         f.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(temp)+ ',' + self.description[ndx[raw[0]]] + '\n')

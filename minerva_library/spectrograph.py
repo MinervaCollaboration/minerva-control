@@ -531,7 +531,7 @@ class spectrograph:
         #S response is 'success '+str(position)
         def i2stage_get_pos(self):
                 response = self.send('i2stage_get_pos None',10)
-		if response == 'fail': return False
+		if response == 'fail': return 'fail -999'
 		return [float(response.split()[1].split('\\')[0]),response.split()[2]]
 
         #S Send a command to move the i2stage to one of the set positions.

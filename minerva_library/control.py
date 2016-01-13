@@ -518,7 +518,7 @@ class control:
 		while self.observing:
 			t0 = datetime.datetime.utcnow()
 
-			if not self.site.oktoopen(open=self.domes[0].isOpen):
+			if not self.site.oktoopen(domeopen=self.domes[0].isOpen):
 				if self.site.sunalt() < 0.0:
 					self.logger.info('Weather not ok to open; resetting timeout')
 					self.site.lastClose = datetime.datetime.utcnow()
@@ -543,11 +543,11 @@ class control:
 
 				response = self.domes[i].send('CLEAR_FAULTS')
 				if 'Estop' in response:
-					if not self.estopmailsent:
-						mail.send("Aqawan " + str(i+1) + " Estop has been pressed!",self.estopmail,level='serious')
-						self.estopmailsent = True
+					if not self.domes[i].estopmailsent:
+						mail.send("Aqawan " + str(i+1) + " Estop has been pressed!",self.domes[i].estopmail,level='serious')
+						self.domes[i].estopmailsent = True
 				else:
-					self.estopmailsent = False
+					self.domes[i].estopmailsent = False
 
 
 			# ensure 4 hearbeats before timeout
@@ -1627,7 +1627,6 @@ class control:
                     #TODO Obviously it's in status, but where does status get it? Is it just
                     #TODO not on this computer?
                     f['PMODEL' + telnum] = (telescope.model[telescopeStatus.m3.port],"Pointing Model File")
-                    f['XMLFILE' + telnum] = (telescope.settingsxml[telescopeStatus.m3.port],"Pointing Model File")
                     #S Focus stuff
                     f['FOCPOS' + telnum] = (telescopeStatus.focuser.position,"Focus Position (microns)")
                     #S Rotator stuff, only needed for photometry?
@@ -3333,6 +3332,12 @@ class control:
         #S 'name','ra','dec','propermotion','parallax',weight stuff,
         def take_rv_spec(self,target):
                 pass
+
+	def ten(self,string):
+                array = string.split()
+                if "-" in array[0]:
+                        return float(array[0]) - float(array[1])/60.0 - float(array[2])/3600.0
+                return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
                                 
 
 	#S started outline for autofocus, pursuing different route.

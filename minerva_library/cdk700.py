@@ -413,15 +413,15 @@ class CDK700:
 
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy'] == True :
-				offset = self.rotatoroffset[self.port['FAU']]
+				offset = float(self.rotatoroffset[self.port['FAU']])
 			else:
-				offset = self.rotatoroffset[self.port['IMAGER']]
+				offset = float(self.rotatoroffset[self.port['IMAGER']])
 		else:
-			offset = self.rotatoroffset[self.port['IMAGER']]
+			offset = float(self.rotatoroffset[self.port['IMAGER']])
 
 
 
-		rotator_pos = parangle + offset - desiredPA
+		rotator_pos = parangle + offset - float(desiredPA)
 		
 		# make sure the angle is positive
 		while rotator_pos < 0.0: rotator_pos += 360.0

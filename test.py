@@ -53,6 +53,12 @@ if __name__ == '__main__':
 		"i2": False,
 		"comment":"RV standard star"}
 
+
+	target['name'] = 'ThAr_T1'
+	target['exptime'] = [60]
+	minerva.takeSpectrum(target)
+	ipdb.set_trace()
+
 	'''
 	target = {
 		"name" : "HR398", 

@@ -8,6 +8,8 @@ import sys
 import urllib2
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
+import ipdb
+import mail
 
 class site:
 
@@ -38,6 +40,8 @@ class site:
 		self.weather = -1
 		self.rainChangeDate = datetime.datetime.utcnow() - datetime.timedelta(hours=1.0)
 		self.lastRain = 0.
+		self.mailSent = False
+		self.coldestTemp = 100.0
 
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
@@ -245,16 +249,47 @@ class site:
 		# if everything checks out, store the weather
 		if not pageError: self.weather = weather
 
+		# record the coldest temp for snow/ice detection
+		try:
+			if self.weather['outsideTemp'] < self.coldestTemp:
+				self.coldestTemp = weather['outsideTemp']
+		except: pass
+
 		# write the weather to the log for nightly summaries
 		for key in weather.keys():
 			self.logger.debug(key + '=' + str(weather[key]))
 
-	def oktoopen(self, open=False):
+	def oktoopen(self, domeopen=False):
 		
 		retval = True
+		decisionFile = 'manualDecision.txt'
+
+		# conditions have necessitated a manual decision to open the domes
+		if os.path.exists(decisionFile):
+			f = open(decisionFile,'r')
+			date = datetime.datetime.strptime(f.readline().strip(),'%Y-%m-%d %H:%M:%S.%f')
+			if (datetime.datetime.utcnow() - date).total_seconds() > 86400.0:
+				if not self.mailSent:
+					mail.send("Possible snow/ice on enclosures; manual inspection required",
+						  "Dear benevolent humans,\n\n"+
+						  "Recent conditions have been wet and cold (" + str(self.coldestTemp) + " C), which means ice and/or snow is likely."+ 
+						  "I have disabled operations until someone can check the camera (http://minervacam.sao.arizona.edu) "+ 
+						  "to ensure there is no snow or ice on the roof and the snow is not deep enough (< 6 in) for the roof "+
+						  "to dig into it. If the snow on the ground is too deep, please email the site staff to ask them to shovel. "+ 
+						  "If everything looks good, either delete the '/home/minerva/minerva-control/manualDecision.txt' file "+
+						  "(if current conditions will not trip this warning again) or edit the date in that file to UTC now (" +
+						  str(datetime.datetime.utcnow()) + "). Note that this warning will be tripped again 24 hours after the "+
+						  "date in that file.\n\n"
+						  "Love,\nMINERVA",level='serious')
+					self.mailSent = True
+				return False
+		if self.mailSent:
+			mail.send("Snow/ice conditions have been manually checked and OK'ed",
+				  "Resuming normal operations",level='serious')
+			self.mailSent = False
 
 		# if it's open, use the limits to close
-		if open:
+		if domeopen:
 			self.logger.debug("Enclosure open; using the close limits")
 			weatherLimits = self.closeLimits
 		else:
@@ -288,6 +323,17 @@ class site:
 		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 3600.0:
 			self.logger.info('Not OK to open: it last rained at ' + str(self.rainChangeDate) + ", which is less than 1 hour ago")
 			retval = False
+
+		# if it has (or might have) snowed in the last 24 hours, we need manual approval to open
+		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 86400.0 and self.coldestTemp < 1.0:
+			if os.path.exists(decisionFile):
+				f = open(decisionFile,'r')
+				date = datetime.datetime.strptime(f.readline().strip(),'%Y-%m-%d %H:%M:%S.%f')
+				if (datetime.datetime.utcnow() - date).total_seconds() > 86400.0:
+					with open(decisionFile,"w") as fh:
+						fh.write(str(datetime.datetime.utcnow() - datetime.timedelta(days=1)))
+						self.logger.info('Not OK to open: there has been precipitation in the last 24 hours and it has been freezing. Manual inspection for snow/ice required')
+						return False
 
 		#S External temperature check, want to use Mearth, then Aurora if Mearth not available, and then 
 		#S HAT if niether of those two are found. Currently, we are assuming a value of 0 means disconnected
