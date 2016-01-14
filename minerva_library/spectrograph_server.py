@@ -911,7 +911,11 @@ class server:
                                           "Love,\nMINERVA",level="serious")
                                 break
                         #? Not sure if we need this guy, seems like we are already logging?
-                        with open(self.base_directory + "/log/" + self.night + "/expmeter.dat", "a") as fh:
+                        night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+                        path = self.base_directory + "/log/" + night + "/"
+                        if not os.path.exists(path): os.mkdir(path)
+                        
+                        with open(path + "expmeter.dat", "a") as fh:
                                 fh.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(reading) + "\n")
                         self.expmeter_com.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading))
 
@@ -934,8 +938,13 @@ class server:
 
         #S going to log the pressures of the chamber and the pump
         def log_pressures(self):
+		
                 while True:
-                        with open('%s\\log\\%s\\spec_pressure.log'%(self.base_directory,self.night),'a') as fh:
+                        night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+                        path = self.base_directory + "/log/" + night + "/"
+                        if not os.path.exists(path): os.mkdir(path)
+                        
+                        with open(path + 'spec_pressure.log','a') as fh:
                                 now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
                                 response = self.get_spec_pressure()
                                 if response <> 'fail':
@@ -944,7 +953,7 @@ class server:
 
                         time.sleep(0.5)
 
-                        with open('%s\\log\\%s\\pump_pressure.log'%(self.base_directory,self.night),'a') as fh:
+                        with open(path + 'pump_pressure.log','a') as fh:
                                 now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
                                 response = self.get_pump_pressure()
                                 if response <> 'fail':
@@ -976,10 +985,9 @@ class server:
 if __name__ == '__main__':
 
 	base_directory = 'C:\\minerva-control'
-        #ipdb.set_trace()
 	test_server = server('spectrograph.ini',base_directory)
 
-        ipdb.set_trace()
+#        ipdb.set_trace()
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
         pressure_thread = threading.Thread(target=test_server.log_pressures)
