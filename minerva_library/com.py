@@ -3,6 +3,7 @@ from configobj import ConfigObj
 import logging, ipdb
 import sys
 import time, struct, datetime
+import threading
 
 class com:
     
@@ -10,6 +11,8 @@ class com:
     def __init__(self, id, base, night, configfile='C:/minerva-control/config/com.ini'):
         #ipdb.set_trace()
         #S set the id of self to the memory addresss, unique identifier
+
+        self.lock = threading.lock()
         self.id = id
         self.base_directory = base
         
@@ -109,44 +112,46 @@ class com:
 
     #S Functino for sending a command, makes sense. 
     def send(self,cmd):
-        #? Checks to see if cmd is in self.allowedCmds? Not sure what that
-        #? comment means. Need to check logic of True to confirm, my guess is
-        #? it needs to be string matched some how.
-        if True:#cmd in self.allowedCmds:
-            #ipdb.set_trace()
-            #S Opens serial comm
-            self.open()
+
+        with self.lock:
+            #? Checks to see if cmd is in self.allowedCmds? Not sure what that
+            #? comment means. Need to check logic of True to confirm, my guess is
+            #? it needs to be string matched some how.
+            if True:#cmd in self.allowedCmds:
+                #S Opens serial comm
+                self.open()
             
-            if self.ser.isOpen():
-                #S Sends command with termination string.
-                self.ser.write(cmd + self.termstr)
+                if self.ser.isOpen():
+                    #S Sends command with termination string.
+                    self.ser.write(cmd + self.termstr)
 
-                # let's wait one second before reading output (give device time to answer)
-                time.sleep(1)
-                #S Empty string for getting output. What happens is that
-                #S self.ser.read(1) grabs the next byte in register, and clears that
-                #S byte (I think, not sure on exact logistics yet). Anyways,
-                #S ends up concatenating strings onto 'out' from read bytes.
-                #S Returns out.
-                out = ''
+                    # let's wait one second before reading output (give device time to answer)
+                    time.sleep(1)
+                    #S Empty string for getting output. What happens is that
+                    #S self.ser.read(1) grabs the next byte in register, and clears that
+                    #S byte (I think, not sure on exact logistics yet). Anyways,
+                    #S ends up concatenating strings onto 'out' from read bytes.
+                    #S Returns out.
+                    out = ''
 
-                #S .inWaiting condition checks to see if register is not empty.
-                while self.ser.inWaiting() > 0:
-                    byte = self.ser.read(1)
-                    out = out + byte
-                #S So we do have to close it after each command?
-                #? Could we keep open somehow?
-                self.close()
-                return out
-            #S If serial port couldn't open, should be caught earlier though?
+                    #S .inWaiting condition checks to see if register is not empty.
+                    while self.ser.inWaiting() > 0:
+                        byte = self.ser.read(1)
+                        out = out + byte
+                    #S So we do have to close it after each command?
+                    #? Could we keep open somehow?
+                    self.close()
+                    return out
+                #S If serial port couldn't open, should be caught earlier though?
+                else:
+                    self.logger.error("Serial port not open")
+            #S Doesn't actually check right now, I think it depends on if the
+            #S allowable commands lists in com.ini are complete??
             else:
-                self.logger.error("Serial port not open")
-        #S Doesn't actually chekc right now, I think it depends on if the
-        #S allowable commands lists in com.ini are complete??
-        else:
-            self.logger.error("Command " + cmd + " not in allowed commands")
-        self.close()
+                self.logger.error("Command " + cmd + " not in allowed commands")
+            self.close()
 
+        
 
 #S Looks like some testing code, will mess around with later though. 
 if __name__ == "__main__":
