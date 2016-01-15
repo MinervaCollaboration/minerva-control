@@ -4,6 +4,7 @@ import subprocess
 import logging
 import os
 import datetime
+import threading
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
 
@@ -11,6 +12,7 @@ class telcom_client:
 	
 	def __init__(self,config,base):
 		
+		self.lock = threading.Lock()
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
@@ -59,28 +61,29 @@ class telcom_client:
 		return s
 	#send commands to server
 	def send(self,msg,timeout):
-		try:
-			s = self.connect_server()
-			s.settimeout(3)
-			s.sendall(msg)
-		except:
-			self.logger.error("connection lost")
-			return 'fail'
-		try:
-			s.settimeout(timeout)
-			data = s.recv(1024)
-		except:
-			self.logger.error("connection timed out")
-			return 'fail'
-		try:
-			command = msg.split()[0]
-			data = repr(data).strip("'")
-			data_ret = data.split()[0]
-		except:
-			self.logger.error("error processing server response")
-			return 'fail'
-		if data_ret == 'fail':self.logger.error("command failed("+command+')')
-		return data
+		with self.lock:
+			try:
+				s = self.connect_server()
+				s.settimeout(3)
+				s.sendall(msg)
+			except:
+				self.logger.error("connection lost")
+				return 'fail'
+			try:
+				s.settimeout(timeout)
+				data = s.recv(1024)
+			except:
+				self.logger.error("connection timed out")
+				return 'fail'
+			try:
+				command = msg.split()[0]
+				data = repr(data).strip("'")
+				data_ret = data.split()[0]
+			except:
+				self.logger.error("error processing server response")
+				return 'fail'
+			if data_ret == 'fail':self.logger.error("command failed("+command+')')
+			return data
 
 	def home(self):
 		if (self.send('home none',15)).split()[0] == 'success':
