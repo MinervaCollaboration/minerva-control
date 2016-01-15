@@ -109,39 +109,36 @@ class aqawan:
 	def send(self,message):
 
 		anum = "A" + str(self.num) + ': '
+		
 
-		self.lock.acquire()
 		# not an allowed message
 		if not message in self.messages:
 			self.logger.error(anum + 'Message not recognized: ' + message)
-			self.lock.release()
 			return 'error'
 
-		try:
-			tn = telnetlib.Telnet(self.IP,self.PORT,1)
-		except:
-			self.logger.error(anum + 'Error attempting to connect to the aqawan')
-			self.lock.release()
-			#S Needed to change to return a string response, will this mess anything up?
-			#TODO THIS NEEDS TESTING
-			#S aqawan.hearbeat relies on this returning a boolean I believe. Also 
-			#S required in control.create_class_objects as bool. Can't find anywhere else. 
-#			return 'False'
-			return 'error'
+		with self.lock:
 
-		tn.write("vt100\r\n")
+			# connect to the aqawan
+			try:
+				tn = telnetlib.Telnet(self.IP,self.PORT,1)
+			except:
+				self.logger.error(anum + 'Error connecting to the aqawan')
+				return 'error'
 
-		# why is this necessary!? this is quite unsettling
-		response = ''
-		while response == '':
-			tn.write(message + "\r\n")
-			response = tn.read_until(b"/r/n/r/n#>",0.5)
+			# configure the telnet terminal type
+			tn.write("vt100\r\n")
+
+			# send the message
+			# repeatedly?! why is this necessary? this is quite unsettling...
+			response = ''
+			while response == '':
+				tn.write(message + "\r\n")
+				response = tn.read_until(b"/r/n/r/n#>",0.5)
 			
-		tn.close()
-		self.logger.debug(anum + 'command(' + message +') sent')
-		self.lock.release()
-
-		return response
+			# close the connection
+			tn.close()
+			self.logger.debug(anum + 'command(' + message +') sent')
+			return response
 		
 	def heartbeat(self):
 		return self.send('HEARTBEAT')
