@@ -20,6 +20,7 @@ class imager:
 
 	def __init__(self,config, base =''):
 
+		self.lock = threading.Lock()
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
@@ -135,49 +136,52 @@ class imager:
 		return s
 	#send commands to camera server
 	def send(self,msg,timeout):
-		telescope_name = 'T' + self.telnum + ': '
-		try:
-			s = self.connect_server()
-		except:
-			self.logger.error(telescope_name + "connection lost")
-			if self.recover_server(): return self.send(msg,timeout) 
-			return 'fail'
-		try: 
-			s.settimeout(3)
-		except:
-			self.logger.error(telescope_name + "failed to set timeout")
-			if self.recover_server(): return self.send(msg,timeout) 
-			return 'fail'
+
+		with self.lock:
+
+			telescope_name = 'T' + self.telnum + ': '
+			try:
+				s = self.connect_server()
+			except:
+				self.logger.error(telescope_name + "connection lost")
+				if self.recover_server(): return self.send(msg,timeout) 
+				return 'fail'
+			try: 
+				s.settimeout(3)
+			except:
+				self.logger.error(telescope_name + "failed to set timeout")
+				if self.recover_server(): return self.send(msg,timeout) 
+				return 'fail'
 			
-		try:
-			s.sendall(msg)
-		except:
-			self.logger.error(telescope_name + "failed to send message (" + msg + ")")
-			if self.recover_server(): return self.send(msg,timeout) 
-			return 'fail'
+			try:
+				s.sendall(msg)
+			except:
+				self.logger.error(telescope_name + "failed to send message (" + msg + ")")
+				if self.recover_server(): return self.send(msg,timeout) 
+				return 'fail'
 
-		try:
-			s.settimeout(timeout)
-			data = s.recv(1024)
-		except:
-			self.logger.error(telescope_name + "connection timed out")
-			if self.recover_server(): return self.send(msg,timeout)
-			return 'fail'
+			try:
+				s.settimeout(timeout)
+				data = s.recv(1024)
+			except:
+				self.logger.error(telescope_name + "connection timed out")
+				if self.recover_server(): return self.send(msg,timeout)
+				return 'fail'
 
-		try:
-			command = msg.split()[0]
-			data = repr(data).strip("'")
-			data_ret = data.split()[0]
-		except:
-			self.logger.error(telescope_name + "error processing server response")
-			if self.recover_server(): return self.send(msg,timeout)
-			return 'fail'
+			try:
+				command = msg.split()[0]
+				data = repr(data).strip("'")
+				data_ret = data.split()[0]
+			except:
+				self.logger.error(telescope_name + "error processing server response")
+				if self.recover_server(): return self.send(msg,timeout)
+				return 'fail'
 
-		if data_ret == 'fail': 
-			self.logger.error(telescope_name + "command failed("+command+')')
-			return 'fail'
+			if data_ret == 'fail': 
+				self.logger.error(telescope_name + "command failed("+command+')')
+				return 'fail'
 
-		return data
+			return data
 		
 	def cool(self):
 		telescope_name = 'T' + self.telnum + ': '
