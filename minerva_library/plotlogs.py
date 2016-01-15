@@ -20,9 +20,9 @@ filename = ['/Data/kiwilog/n20151215/spec_pressure.log']
 filename = ['/Data/kiwilog/n20151215/pump_pressure.log']
 #filename = ['/home/minerva/minerva-control/log/n20151215/temp.A.1.log']
 
-night = 'n20151227'
+night = 'n20160103'
 expmeter = False
-pressure =True
+pressure =False
 ymin = None
 ymax = None
 smoothwidth = 20
@@ -31,6 +31,7 @@ xtitle = "Time (UTC)"
 fig = plt.figure()
 ax = fig.add_subplot(121)
 #plt.subplot(121)
+
 
 if expmeter:
     filenames = glob.glob('/Data/kiwilog/' + night + '/expmeter.dat')
@@ -95,7 +96,6 @@ for filename in filenames:
             if len(entries) == 3:
                 label = entries[2].strip()
             else: label = os.path.basename(filename).strip()
-
 
         values = np.array(values)
         valuesf = values.astype(np.float)

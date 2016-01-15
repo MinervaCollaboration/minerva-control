@@ -17,11 +17,13 @@ from si.imager import Imager
 import dynapower
 import ipdb
 
+
 # spectrograph control class, control all spectrograph hardware
 class spectrograph:
 
 	def __init__(self,config, base =''):
 
+		self.lock = threading.Lock()
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
@@ -111,33 +113,38 @@ class spectrograph:
 			self.logger.info('successfully connected to spectrograph server')
 		except:
 			self.logger.error('failed to connect to spectrograph server')
+			ipdb.set_trace()
 		return s
 	#send commands to camera server running on telcom that has direct control over instrument
 	def send(self,msg,timeout):
-		try:
-			s = self.connect_server()
-			s.settimeout(3)
-			s.sendall(msg)
-		except:
-			self.logger.error("connection lost")
-			self.logger.exception("connection lost")
-			return 'fail'
-		try:
-			s.settimeout(timeout)
-			data = s.recv(1024)
-		except:
-			self.logger.error("connection timed out")
-			self.logger.exception("connection timed out")
-			return 'fail'
-		data = repr(data).strip("'")
+		with self.lock:
 
-		if data.split() == '': ipdb.set_trace()
-		if data.split()[0] == 'success':
-			self.logger.info(msg.split()[0] + " command completed")
-		else:
+			try:
+				s = self.connect_server()
+				s.settimeout(3)
+				s.sendall(msg)
+			except:
+				self.logger.error("connection lost")
+				self.logger.exception("connection lost")
+				return 'fail'
+			try:
+				s.settimeout(timeout)
+				data = s.recv(1024)
+				s.close()
+			except:
+				self.logger.error("connection timed out")
+				self.logger.exception("connection timed out")
+				return 'fail'
+			data = repr(data).strip("'")
+
+			if data.split() == '': ipdb.set_trace()
+			if data.split()[0] == 'success':
+				self.logger.info(msg.split()[0] + " command completed")
+			else:
                         #ipdb.set_trace()
-			self.logger.error(msg.split()[0] + " command failed")
-		return data
+				self.logger.error(msg.split()[0] + " command failed")
+			return data
+
 	#get camera status and write into a json file with name == (self.logger_name + '.json')
 	def write_status(self):
 		res = self.send('get_status none',5).split(None,1)

@@ -88,6 +88,8 @@ class control:
 				self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
 		for i in range(5):
 			self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
+		self.pdus.append(pdu.pdu('apc_bench.ini',self.base_directory))
+
 
 	def load_config(self):
 
@@ -213,9 +215,10 @@ class control:
 			for t in range(len(self.domes)):
 				threads[t].join()
 				
-	def dome_open(self,num=0):
+	def dome_open(self,num=0,day=False):
 		if num >= 1 and num <= len(self.domes):
-			self.domes[num-1].open_both()
+			if day: self.domes[num-1].open_shutter(1)
+			else: self.domes[num-1].open_both()
 		else:
 			threads = [None]*len(self.domes)
 			for t in range(len(self.domes)):
@@ -223,7 +226,10 @@ class control:
 					kwargs={'reverse' : True}
 				elif t == 1:
 					kwargs={'reverse' : False}
-				threads[t] = threading.Thread(target = self.domes[t].open_both,kwargs=kwargs)
+				if day:
+					threads[t] = threading.Thread(target = self.domes[t].open_shutter,args=[1,])
+				else:
+					threads[t] = threading.Thread(target = self.domes[t].open_both,kwargs=kwargs)
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
@@ -514,7 +520,7 @@ class control:
 			sys.exit()
 		
 	# check weather condition; close if bad, open and send heartbeat if good; update dome status
-	def domeControl(self):
+	def domeControl(self,day=False):
 		while self.observing:
 			t0 = datetime.datetime.utcnow()
 
@@ -528,7 +534,9 @@ class control:
 				self.dome_close() # should already be closed, but for good measure...
 			else:
 				self.logger.debug('Weather is good; opening dome')				
-				openthread = threading.Thread(target=self.dome_open)
+
+				kwargs={'day' : day}
+				openthread = threading.Thread(target=self.dome_open,kwargs=kwargs)
 				openthread.start()
 
 				# only send heartbeats when it's ok to open
@@ -557,10 +565,10 @@ class control:
 
 		self.dome_close()
 		
-	def domeControlThread(self):
+	def domeControlThread(self,day=False):
+		kwargs={'day' : day}
 		self.observing = True
-		threading.Thread(target = self.domeControl_catch).start()
-
+		threading.Thread(target = self.domeControl_catch,kwargs=kwargs).start()
 
 	def astrometry(self,imageName):
 
@@ -1415,6 +1423,9 @@ class control:
 			elapsedTime = 0.0
 			timeout = 10
 			i2temp = self.spectrograph.cell_heater_temp()
+			
+			if not i2temp: ipdb.set_trace()
+
 			while (abs(self.spectrograph.i2settemp - i2temp) > self.spectrograph.i2temptol) and elapsedTime<timeout:
                                 #S Give it some time to get there.
 				self.logger.info("Waiting for the Iodine cell temperature (" + str(i2temp) + ") to reach its setpoint (" + str(self.spectrograph.i2settemp) + ")")
@@ -1711,35 +1722,43 @@ class control:
                 DETECTOR= 'SI850'              / Detector Name                                  
                 '''
 
-                f['CCDMODE'] = (0,'CCD Readout Mode')
-                f['FIBER'] = ('','Fiber Bundle Used')
+                f['CCDMODE'] = ('UNKNOWN','CCD Readout Mode')
+                f['FIBER'] = ('4-legged, T4 Broken','Fiber Bundle Used')
                 f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
                 #TODOTDOTDO
                 #S TESTING trying to isolate errors, need to remove
 #		specpressure = self.spectrograph.get_spec_pressure()
-		with open('/Data/kiwilog/' + self.night + '/spec_pressure.log') as fh:
+		specpressure = -999.0
+		night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+		with open('/Data/kiwilog/' + night + '/spec_pressure.log') as fh:
 			fh.seek(-1024,2)
 			line = fh.readlines()[-1].decode()
-			specpressure = line.split(',')[-1]
+			specpressure = float(line.split(',')[-1].strip())
 #		pumppressure = self.spectrograph.get_spec_pressure()
-		with open('/Data/kiwilog/' + self.night + '/pump_pressure.log') as fh:
+
+		pumppressure = -999.0
+		with open('/Data/kiwilog/' + night + '/pump_pressure.log') as fh:
 			fh.seek(-1024,2)
 			line = fh.readlines()[-1].decode()
-			pumppressure = line.split(',')[-1]
+			pumppressure = float(line.split(',')[-1].strip())
 
                 f['SPECPRES'] = (str(specpressure),"spectrograph pressure (mbars)")
                 f['PUMPPRES'] = (str(pumppressure),"vacuum pump pressure (mbars)")
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
 
 		## TODO -- add pump valves and pump from PDUs
-		f['PUMPVALV'] = ('UNKNOWN','Pump valve open?')
-		f['VENTVALV'] = ('UNKNOWN','Vent valve open?')
-		f['PUMPON'] = ('UNKNOWN','Vacuum pump on?')
+		pumpvalve = self.pdus[5].pumpvalve.status()
+		ventvalve = self.pdus[5].ventvalve.status()
+		pump = self.pdus[4].pump.status()
+
+		f['PUMPVALV'] = (pumpvalve,'Pump valve open?')
+		f['VENTVALV'] = (ventvalve,'Vent valve open?')
+		f['PUMPON'] = (pump,'Vacuum pump on?')
 
 		temp_controllers = ['A','B','C','D']
 		for cont in temp_controllers:
 			for i in range(4):
-				filename = '%s/log/%s/temp.%s.%s.log'%(self.base_directory,self.night,cont,str(i+1))
+				filename = '%s/log/%s/temp.%s.%s.log'%(self.base_directory,night,cont,str(i+1))
 				with open(filename,'r') as fh:
 					lineList = fh.readlines()
 					temps = lineList[-1].split(',')
@@ -1757,8 +1776,8 @@ class control:
 		with open(filename,'rb') as fh:
 			temps = fh.readlines()[-1].strip().split(',')
 			for i in range(12):
-				f['TEMPE'+str(i+1).zfill(2)] = (temps[i+4], header[i] + ' Temperature (C)')
-			f['ENCSETP'] = (temps[3],'Thermal enclosure set point (C)')
+				f['TEMPE'+str(i+1).zfill(2)] = (float(temps[i+4]), header[i] + ' Temperature (C)')
+			f['ENCSETP'] = (float(temps[3]),'Thermal enclosure set point (C)')
 
                 f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
                 f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
@@ -3140,9 +3159,9 @@ class control:
 			mail.send("T" + str(telescope_num) + " thread died",body,level='serious')
 			sys.exit()
 	
-	def domeControl_catch(self):
+	def domeControl_catch(self,day=False):
 		try:
-			self.domeControl()
+			self.domeControl(day=day)
 		except Exception as e:
 			self.logger.exception('DomeControl thread died: ' + str(e.message) )
 			body = "Dear benevolent humans,\n\n" + \
@@ -3154,7 +3173,7 @@ class control:
 			mail.send("DomeControl thread died",body,level='serious')
 			sys.exit()
 
-	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=5):
+	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=4):
 		self.takeSpecBias(nbias)
 		self.takeSpecDark(ndark, darkexptime)
 		self.takeSlitFlat(nflat, flatexptime)
