@@ -20,7 +20,7 @@ filename = ['/Data/kiwilog/n20151215/spec_pressure.log']
 filename = ['/Data/kiwilog/n20151215/pump_pressure.log']
 #filename = ['/home/minerva/minerva-control/log/n20151215/temp.A.1.log']
 
-night = 'n20160103'
+night = 'n20160119'
 expmeter = False
 pressure =False
 ymin = None
@@ -49,8 +49,8 @@ else:
     ytitle = 'Temperature (C)'
     ymin = 22.9
     ymax = 23.3
-#    ymin = 17.5
-#    ymax = 23.5
+    ymin = 17.5
+    ymax = 23.5
     imname = night + '.temperature.png'
     filename = '/Data/thermallog/Thermal Enclosure Log ' + night[1:5] + '-' + night[5:7] + '-' + night[7:9] + ' UTC.csv'
     with open(filename,'rb') as csvfile:

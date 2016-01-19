@@ -137,19 +137,23 @@ class imager:
 	#send commands to camera server
 	def send(self,msg,timeout):
 
-		with self.lock:
+		self.logger.info("Beginning serial communications with the imager server")
+#		with self.lock:
+		if True:
 
 			telescope_name = 'T' + self.telnum + ': '
 			try:
 				s = self.connect_server()
 			except:
 				self.logger.error(telescope_name + "connection lost")
+#				self.lock.release()
 				if self.recover_server(): return self.send(msg,timeout) 
 				return 'fail'
 			try: 
 				s.settimeout(3)
 			except:
 				self.logger.error(telescope_name + "failed to set timeout")
+#				self.lock.release()
 				if self.recover_server(): return self.send(msg,timeout) 
 				return 'fail'
 			
@@ -165,6 +169,7 @@ class imager:
 				data = s.recv(1024)
 			except:
 				self.logger.error(telescope_name + "connection timed out")
+#				self.lock.release()
 				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
 
@@ -174,6 +179,7 @@ class imager:
 				data_ret = data.split()[0]
 			except:
 				self.logger.error(telescope_name + "error processing server response")
+#				self.lock.release()
 				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
 

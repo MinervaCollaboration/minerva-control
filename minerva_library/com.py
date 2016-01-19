@@ -113,6 +113,7 @@ class com:
     #S Functino for sending a command, makes sense. 
     def send(self,cmd):
 
+        self.logger.info("Beginning serial communications with the com port")
         with self.lock:
             #? Checks to see if cmd is in self.allowedCmds? Not sure what that
             #? comment means. Need to check logic of True to confirm, my guess is

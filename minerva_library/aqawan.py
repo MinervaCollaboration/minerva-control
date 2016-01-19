@@ -116,6 +116,7 @@ class aqawan:
 			self.logger.error(anum + 'Message not recognized: ' + message)
 			return 'error'
 
+		self.logger.info("Beginning serial communications with the aqawan")
 		with self.lock:
 
 			# connect to the aqawan

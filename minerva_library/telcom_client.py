@@ -61,6 +61,7 @@ class telcom_client:
 		return s
 	#send commands to server
 	def send(self,msg,timeout):
+		self.logger.info("Beginning serial communications with the telcom server")
 		with self.lock:
 			try:
 				s = self.connect_server()
@@ -82,7 +83,8 @@ class telcom_client:
 			except:
 				self.logger.error("error processing server response")
 				return 'fail'
-			if data_ret == 'fail':self.logger.error("command failed("+command+')')
+			if data_ret == 'fail':
+				self.logger.error("command failed("+command+')')
 			return data
 
 	def home(self):

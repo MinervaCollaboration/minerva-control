@@ -334,6 +334,12 @@ class server:
 
 #                       f[0].header['SIMPLE'] = True
 #			f[0].header['BITPIX'] = 16
+
+			# convert DATE-OBS from local time to UTC
+			fmt = '%Y-%m-%dT%H:%M:%S.%f'
+			dateobs = (datetime.datetime.strptime(f[0].header['DATE-OBS'],fmt) + datetime.timedelta(hours=7)).strftime(fmt)[:-3]
+
+			f[0].header['DATE-OBS'] = (dateobs,"UTC at exposure start")
                         f[0].header['EXPTIME'] = float(f[0].header['PARAM24'])/1000.0
                         f[0].header['SET-TEMP'] = float(f[0].header.comments['PARAM62'].split('(')[1].split('C')[0].strip())
                         f[0].header['CCD-TEMP'] = float(f[0].header['PARAM0'])

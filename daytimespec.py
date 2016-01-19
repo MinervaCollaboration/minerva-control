@@ -17,13 +17,11 @@ if __name__ == '__main__':
 	# ***not in danger of pointing at the Sun***
 	minerva.telescope_park()
 
-	'''
+#	'''
 	# change to the imaging port for calibrations
 	for telescope in minerva.telescopes:
 		telescope.m3port_switch(telescope.port['IMAGER'])
-	minerva.specCalib()
-
-	ipdb.set_trace()
+	minerva.specCalib(darkexptime=150.0)
 
 	# change to the spectrograph port
 	for telescope in minerva.telescopes:
@@ -49,7 +47,7 @@ if __name__ == '__main__':
 				sys.exit()
 			time.sleep(30)
 			status = dome.status()
-	'''
+#	'''
        	target = {
 		"name" : "daytimeSky",
 		"ra" : 0.0, 
@@ -99,7 +97,7 @@ if __name__ == '__main__':
 	# change to the spectrograph imaging port for calibrations
 	for telescope in minerva.telescopes:
 		telescope.m3port_switch(telescope.port['IMAGER'])
-	minerva.specCalib()
+	minerva.specCalib(darkexptime=150.0)
 
 	# remove the sun override
 	if os.path.exists('sunOverride.txt'): os.remove('sunOverride.txt')

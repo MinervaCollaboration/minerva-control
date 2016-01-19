@@ -117,6 +117,7 @@ class spectrograph:
 		return s
 	#send commands to camera server running on telcom that has direct control over instrument
 	def send(self,msg,timeout):
+		self.logger.info("Beginning serial communications with the spectrograph server")
 		with self.lock:
 
 			try:
@@ -141,7 +142,6 @@ class spectrograph:
 			if data.split()[0] == 'success':
 				self.logger.info(msg.split()[0] + " command completed")
 			else:
-                        #ipdb.set_trace()
 				self.logger.error(msg.split()[0] + " command failed")
 			return data
 
