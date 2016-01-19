@@ -40,15 +40,6 @@ class server:
 		#S Defined later
                 self.load_config()
 
-		# reset the night at 10 am local
-		#S today gets current time in utc
-		today = datetime.datetime.utcnow()
-		#S Checks if the hour is between 10 and 16 (local time in Arizona?)
-		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
-                        #? If true, add a day? But why? 
-                        today = today + datetime.timedelta(days=1)
-                #S Just file name string.
-		self.night = 'n' + today.strftime('%Y%m%d')
                 #S Defined later.
                 self.setup_logger()
                 #S Defined later.
@@ -87,11 +78,14 @@ class server:
 			print('ERROR accessing ', self.name, ".", 
 				   self.name, " was not found in the configuration file", configfile)
 			return 
-		
+
+        def night(self):
+		return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+	
 	#create logger object and link to log file
 	def setup_logger(self):
                 #S Looks for existing log path, and creates one if none exist.
-		log_path = self.base_directory + '\\log\\' + self.night
+		log_path = self.base_directory + '\\log\\' + self.night()
 		
                 if os.path.exists(log_path) == False:
                         os.mkdir(log_path)
@@ -143,7 +137,7 @@ class server:
 	#S night arguement though? Doesn;t go into self., as that's defined
 	#S earlier. 
 	def set_data_path(self):
-		self.data_path = self.data_path_base + '\\' + self.night
+		self.data_path = self.data_path_base + '\\' + self.night()
 		if not os.path.exists(self.data_path):
 			os.makedirs(self.data_path)
 		return 'success'
@@ -151,13 +145,10 @@ class server:
 	#S Create class objects
 	def create_class_objects(self):
                 self.i2stage_connect()
-                #self.dynapower1 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_1.ini',browser=True)
-                #self.dynapower2 = dynapower.dynapower(self.night,base=self.base_directory,configfile='dynapower_2.ini',browser=True)     
 		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
-                self.gaugeController = com.com('gaugeController',self.base_directory,self.night)
-                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night)
-                
-                self.expmeter_com = com.com('expmeter',self.base_directory,self.night)
+                self.gaugeController = com.com('gaugeController',self.base_directory,self.night())
+                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night())                
+                self.expmeter_com = com.com('expmeter',self.base_directory,self.night())
                 return
 
 
@@ -917,8 +908,7 @@ class server:
                                           "Love,\nMINERVA",level="serious")
                                 break
                         #? Not sure if we need this guy, seems like we are already logging?
-                        night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
-                        path = self.base_directory + "/log/" + night + "/"
+                        path = self.base_directory + "/log/" + self.night() + "/"
                         if not os.path.exists(path): os.mkdir(path)
                         
                         with open(path + "expmeter.dat", "a") as fh:
@@ -946,8 +936,7 @@ class server:
         def log_pressures(self):
 		
                 while True:
-                        night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
-                        path = self.base_directory + "/log/" + night + "/"
+                        path = self.base_directory + "/log/" + self.night() + "/"
                         if not os.path.exists(path): os.mkdir(path)
                         
                         with open(path + 'spec_pressure.log','a') as fh:
