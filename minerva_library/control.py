@@ -825,6 +825,18 @@ class control:
 
 	def doSpectra(self, target, tele_list):
 
+		# if after end time, return
+		if datetime.datetime.utcnow() > target['endtime']:
+			self.logger.info(telescope_name + "Target " + target['name'] + " past its endtime (" + str(target['endtime']) + "); skipping")
+			return
+
+		# if before start time, wait
+		if datetime.datetime.utcnow() < target['starttime']:
+			waittime = (target['starttime']-datetime.datetime.utcnow()).total_seconds()
+			self.logger.info(telescope_name + "Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
+			time.sleep(waittime)
+
+
 		# acquire the target and begin guiding on each telescope
                 if type(tele_list) is int:
                         if (tele_list < 1) or (tele_list > len(self.telescopes)):
@@ -1356,7 +1368,7 @@ class control:
                             
                 #S Flat exposures require the flat lamp to be on for ten minutes too.
                 #S Same questions as for thar specs.
-                elif (objname == 'slitflat'):
+		elif (objname == 'slitflat'):
                         #S Move the LED in place with the Iodine stage
 			kwargs['locationstr'] = 'flat'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
@@ -1918,11 +1930,13 @@ class control:
 		try:
 			telra = str(target['ra']*15.0)
 			teldec = str(target['dec'])
+			useCurrent=False
 		except:
 			#S get current ra and dec from telescope mount. this is reported in the status as radians, which we use for the 
 			#S conversion from jnow to j2000 coords. has been tested and checked for a few cases. see our bastarized functinos from
 			#S Kevin at PlaneWave for the conversion using pyephem.
 			telra, teldec = self.jnow_to_j2000_pyephem(float(telescopeStatus.mount.ra_radian),float(telescopeStatus.mount.dec_radian))
+			useCurrent=True
 
 		ra = telra 
 		dec = teldec
@@ -1986,7 +2000,7 @@ class control:
 		f['ALT'] = (alt,'Telescope altitude (deg)')
 		f['AZ'] = (az,'Telescope azimuth (deg E of N)')
 
-		hourang = telescope.hourangle(target)
+		hourang = telescope.hourangle(target,useCurrent=useCurrent)
 		f['HOURANG'] = (hourang,'Telescope hour angle (hours)')
 		f['AIRMASS'] = (airmass,"airmass (plane approximation)")
 
@@ -3239,6 +3253,7 @@ class control:
 	#TODO:set up http server to handle manual commands
 	def run_server(self):
 		pass
+
         #S Big batch of psuedo code starting up, trying to get a framework for the RV observing
 	#S script written down. 
         def rv_observing(self):
@@ -3252,10 +3267,12 @@ class control:
                 #S Initialize ALL telescopes
                 self.Telescope_initialize
                 #S Spec CCD calibration process
-                self.spec_calib_time()
-                self.spec_calibration()
+#                self.spec_calib_time()
+#                self.spec_calibration()
+              
 
-                
+		
+
 
                 #S Use a scheduler to determine the best target
                 #TODO I think we'll load in the data as a dictionary containing dictionaries for
@@ -3280,8 +3297,9 @@ class control:
         #S This returns the time in seconds so, so be aware of that. Could return
         #S a time_diff or something though, which might be a but more useful.
         def spec_calib_time(self):
+		return
                 #S Readout time for the spec CCD, seconds
-                READOUTTIME = 40.
+                READOUTTIME = 21.6
                 #S Warm up time for lamps,seconds * minutes, which should be ten.
                 #TODO Make self.WARMUPTIME
                 WARMUPTIME = 60.*0.5#10.

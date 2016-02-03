@@ -3,13 +3,21 @@
 import sys
 sys.dont_write_bytecode = True
 from minerva_library import control
+from minerva_library import rv_control
+
 
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
+
 	minerva = control.control('control.ini',base_directory)
-	#run observing script on all telescopes with their own schedule file
-	minerva.observingScript_all()
+
+	# if a file for kiwispec exists, use that. If not, observe with all four telescopes
+	if os.path.exists(minerva.base_directory + '/schedule/' + minerva.site.night + '.kiwispec.txt'):
+		rv_control.rv_observing_catch(minerva.logger)
+	else:
+		#run observing script on all telescopes with their own schedule file
+		minerva.observingScript_all()
 	sys.exit()
 	
 	# minerva.telcom_enable()
