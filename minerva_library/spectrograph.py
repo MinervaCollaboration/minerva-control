@@ -55,7 +55,7 @@ class spectrograph:
 			today = datetime.datetime.utcnow()
                         if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                                 today = today + datetime.timedelta(days=1)
-                        self.night = 'n' + today.strftime('%Y%m%d')
+                        #self.night = 'n' + today.strftime('%Y%m%d')
                         self.i2positions = config['I2POSITIONS']
                         for key in self.i2positions.keys():
                                 self.i2positions[key] = float(self.i2positions[key])
@@ -68,10 +68,14 @@ class spectrograph:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
 
+
+	def night(self):
+		return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+
 	#set up logger object
 	def setup_logger(self):
 		
-		log_path = self.base_directory + '/log/' + self.night
+		log_path = self.base_directory + '/log/' + self.night()
                 if os.path.exists(log_path) == False:os.mkdir(log_path)
 
                 fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
@@ -117,7 +121,7 @@ class spectrograph:
 		return s
 	#send commands to camera server running on telcom that has direct control over instrument
 	def send(self,msg,timeout):
-		self.logger.info("Beginning serial communications with the spectrograph server")
+		self.logger.debug("Beginning serial communications with the spectrograph server")
 		with self.lock:
 
 			try:
@@ -213,7 +217,7 @@ class spectrograph:
 
         def getexpflux(self, t0):
                 flux = 0.0
-                with open(self.base_directory + '/log/' + self.night + '/expmeter.dat', 'r') as fh:
+                with open(self.base_directory + '/log/' + self.night() + '/expmeter.dat', 'r') as fh:
                         f = fh.read()
                         lines = f.split('\n')
                         for line in lines:
@@ -322,7 +326,7 @@ class spectrograph:
 			self.recover()
 			return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter)
 
-		self.file_name = self.night + "." + objname + "." + str(ndx).zfill(4) + ".fits"
+		self.file_name = self.night() + "." + objname + "." + str(ndx).zfill(4) + ".fits"
 		self.logger.info('Start taking image: ' + self.file_name)
 		#chose exposure type
 		if objname in self.exptypes.keys():
@@ -531,7 +535,7 @@ class spectrograph:
 	#S Home the iodine stage. This will return a certain ValueError(?), which
 	#S should be handled on the spectrograph server side. 
 	def i2stage_home(self):
-		respone = self.send('i2stage_home None',10)
+		response = self.send('i2stage_home None',10)
 		return response
 
         #S Query the position of the i2stage. 
@@ -550,6 +554,11 @@ class spectrograph:
                 #TODO Can and should be gone about in a better way
                 self.lastI2MotorLocation = locationstr
                 response = self.send('i2stage_move '+locationstr,10)
+                return response
+	# move the stage to an arbitrary position
+        def i2stage_movef(self,position):
+                self.lastI2MotorLocation = 'UNKNOWN'
+                response = self.send('i2stage_movef '+str(position),10)
                 return response
 
         ###

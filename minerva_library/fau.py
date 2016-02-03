@@ -103,7 +103,6 @@ class fau:
 			self.ybin = int(config['Setup']['YBIN'])
 			self.xfiber = float(config['Setup']['XFIBER'])
 			self.yfiber = float(config['Setup']['YFIBER'])
-			self.field_rotation_offset = float(config['Setup']['FIELDROTATIONOFFSET'])
 			self.acquisition_tolerance = float(config['Setup']['ACQUISITION_TOLERANCE'])
 			self.x1 = int(config['Setup']['X1'])
 			self.x2 = int(config['Setup']['X2'])

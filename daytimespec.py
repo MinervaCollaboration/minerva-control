@@ -3,9 +3,8 @@ import os
 sys.dont_write_bytecode = True
 from minerva_library import control
 import ipdb, datetime, time, socket
-#from si.client import SIClient
-#from si.imager import Imager
 import threading
+from minerva_library import mail
 
 if __name__ == '__main__':
 
@@ -17,7 +16,16 @@ if __name__ == '__main__':
 	# ***not in danger of pointing at the Sun***
 	minerva.telescope_park()
 
-#	'''
+	for telescope in minerva.telescopes:
+		if not telescope.inPosition(alt=45.0,az=0.0, pointingTolerance=3600.0, tracking=False):
+			mail.send("T" + telescope.num + " failed to home; skipping daytime sky spectra",
+				  "Dear Benevolent Humans,\n\n"
+				  "T" + telescope.num + " failed to home properly and I fear it could "
+				  "point at the Sun if I opened the dome. Can you please investigate "
+				  "and restart daytimespec.py when it's all clear?\n\n"
+				  "Love,\nMINERVA",level='serious')
+			sys.exit()
+
 	# change to the imaging port for calibrations
 	for telescope in minerva.telescopes:
 		telescope.m3port_switch(telescope.port['IMAGER'])
@@ -71,12 +79,45 @@ if __name__ == '__main__':
 		"i2": True,
 		"comment":"daytime sky spectrum"}
 	
+	# stop at 2:30 pm local (so calibrations can finish before daily reboot at 3:30 pm)
+	endtime = datetime.datetime(datetime.datetime.utcnow().year, datetime.datetime.utcnow().month, datetime.datetime.utcnow().day, 21, 30, 0)
 
-	target['exptime'] = [150]
-	for i in range(target['num'][0]): minerva.takeSpectrum(target)
+	# take several exposures with the iodine stage in various positions
+	while (datetime.datetime.utcnow() - endtime).total_seconds() < 0:
+		status = minerva.domes[0].status()
+		isOpen = status['Shutter1'] == 'OPEN'
+		while isOpen and (datetime.datetime.utcnow() - endtime).total_seconds() < 0:
+			target['exptime'] = [150]
+			for i in range(10):
+				target['i2manualpos'] = 140 + i
+				minerva.takeSpectrum(target)
+				if (datetime.datetime.utcnow() - endtime).total_seconds() > 0: break
+				
+	try: del target['i2manualpos']
+	except: pass
 
-	target['i2'] = False
-	for i in range(target['num'][0]): minerva.takeSpectrum(target)
+	while (datetime.datetime.utcnow() - endtime).total_seconds() < 0:
+
+		status = minerva.domes[0].status()
+		isOpen = status['Shutter1'] == 'OPEN'
+		while isOpen and (datetime.datetime.utcnow() - endtime).total_seconds() < 0:
+			target['exptime'] = [150]
+			target['i2'] = True
+			for i in range(target['num'][0]): 
+				if (datetime.datetime.utcnow() - endtime).total_seconds() > 0: break
+				minerva.takeSpectrum(target)
+			
+			target['i2'] = False
+			for i in range(target['num'][0]): 
+				if (datetime.datetime.utcnow() - endtime).total_seconds() > 0: break
+				minerva.takeSpectrum(target)
+
+			status = minerva.domes[0].status()
+			isOpen = status['Shutter1'] == 'OPEN'
+
+		if not minerva.domes[0].isOpen:
+			print "Dome not open, waiting for conditions to improve"
+			time.sleep(60)
 
 	# all done; close the dome
 	minerva.observing=False
@@ -94,13 +135,13 @@ if __name__ == '__main__':
 			time.sleep(30)
 			status = dome.status()
 
+	# remove the sun override
+	if os.path.exists('sunOverride.txt'): os.remove('sunOverride.txt')
+
 	# change to the spectrograph imaging port for calibrations
 	for telescope in minerva.telescopes:
 		telescope.m3port_switch(telescope.port['IMAGER'])
 	minerva.specCalib(darkexptime=150.0)
-
-	# remove the sun override
-	if os.path.exists('sunOverride.txt'): os.remove('sunOverride.txt')
 
 	sys.exit()
 

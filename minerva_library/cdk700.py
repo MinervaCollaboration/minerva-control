@@ -17,6 +17,7 @@ import numpy as np
 import socket
 import shutil
 import subprocess
+import ephem
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -88,7 +89,9 @@ class CDK700:
 		self.num = self.logger_name[-1]
 			
 	#additional higher level routines
-	def isInitialized(self,tracking=False, derotate=False):
+	#tracking and detrotating should be on by default
+	#much worse to be off when it should be on than vice versa
+	def isInitialized(self,tracking=True, derotate=True):
 		# check to see if it's properly initialized
 		telescopeStatus = self.getStatus()
 		if telescopeStatus.mount.encoders_have_been_set <> 'True':
@@ -127,23 +130,22 @@ class CDK700:
 		
 		return True
 
-	def initialize(self,tracking=False, derotate=False):
+	# by default, set tracking and derotating
+	# it's much worse to have it off when it should be on than vice versa
+	def initialize(self,tracking=True, derotate=True):
 
 		# turning on mount tracking
 		self.logger.info('T' + self.num + ': Connecting to mount')
-		if not self.mountConnect():
-			return False                #S Start yer engines
+		if not self.mountConnect(): return False #S Start yer engines
+
 		self.logger.info('T' + self.num + ': Enabling motors')
-		if not self.mountEnableMotors():
-			return False
+		if not self.mountEnableMotors(): return False
 
 		self.logger.info('T' + self.num + ': Connecting to focuser')
-		if not self.focuserConnect():
-			return False
+		if not self.focuserConnect(): return False
 		
 		self.logger.info('T' + self.num + ': Homing telescope')
-		if not self.home():
-			return False
+		if not self.home(): return False
 
 		# turning on mount tracking, rotator tracking
 		#S I'm defaulting this off, but including an argument in case we do want it
@@ -374,12 +376,17 @@ class CDK700:
 	
 	#S i think we should make targets classes for functions like this, not in telescope.
 	#S i did that in scheduler sim, but could be a bit of an overhaul here....
-	def hourangle(self,target):
+	def hourangle(self,target, useCurrent=False):
 		#S calculate the current hour angle of the target
 		#TODO need to incorporate the updated RA, will be off by a few degrees
 		#TODO similar to caluclating the angle from target set check in observing script
 		lst = self.lst()
-		return lst - target['ra']
+		if useCurrent:
+			status = self.getStatus()
+			ra = self.ten(status.mount.ra)
+		else:
+			ra = target['ra']
+		return lst - ra
 
 	# calculate the Local Sidereal Time                                                   
 	# this is a bit of a hack...
@@ -395,9 +402,15 @@ class CDK700:
                 return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
 	
         # calculate the parallactic angle (for guiding)
-        def parangle(self, target):
-		ha = self.hourangle(target)
-		dec = target['dec']
+        def parangle(self, target, useCurrent=False):
+
+		
+		ha = self.hourangle(target, useCurrent=useCurrent)
+		if useCurrent:
+			status = self.getStatus()
+			dec = self.ten(status.mount.dec)
+		else:
+			dec = target['dec']
                 #stolen from parangle.pro written by Tim Robinshaw
                 return -180.0/math.pi*math.atan2(-math.sin(ha*math.pi/12.0),
                                                   math.cos(dec*math.pi/180.0)*math.tan(self.latitude*math.pi/180.0)-
@@ -527,24 +540,25 @@ class CDK700:
 	def m3Stop(self):
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
-	def recover(self,tracking = True):
+	def recover(self,tracking = True, derotate=True):
 		#S need to make sure all these functinos don't call recover
 		#S shutdown looks clear, all basePWI functions
 
-		self.logger.warning('T' + self.num + ': failed; trying to reconnect')
-		try: self.shutdown()
-		except: pass
+		if self.nfailed <= 1:
+			self.logger.warning('T' + self.num + ': failed; trying to reconnect')
+			try: self.shutdown()
+			except: pass
 		
-		if self.initialize(tracking=tracking):
-			self.logger.info('T' + self.num + ': recovered after reconnecting')
-			return True
+			if self.initialize(tracking=tracking, derotate=derotate):
+				self.logger.info('T' + self.num + ': recovered after reconnecting')
+				return True
 
 		self.logger.warning('T' + self.num + ': reconnecting failed; restarting PWI')
 		try: self.shutdown()
 		except: pass
 		self.restartPWI()
 		
-		if self.initialize(tracking=tracking):
+		if self.initialize(tracking=tracking, derotate=derotate):
 			self.logger.info('T' + self.num + ': recovered after restarting PWI')
 			return True
 
@@ -565,7 +579,7 @@ class CDK700:
 		    "I have failed to recover automatially. Please recover me, then delete " + filename + " to restart operations.\n\n" + \
 		    "Love,\n" + \
 		    "MINERVA"			
-		while not self.initialize(tracking=tracking):
+		while not self.initialize(tracking=tracking, derotate=derotate):
 			self.logger.error('T' + self.num + ': Telescope has failed to automatically recover; intervention required')
 			mail.send('T' + self.num + " has failed",body,level='serious')
 			fh = open(filename,'w')
@@ -574,7 +588,7 @@ class CDK700:
 				time.sleep(1)
 		return True
 
-	def inPosition(self,m3port=None):
+	def inPosition(self,m3port=None, alt=None, az=None, ra=None, dec=None, pointingTolerance=60.0, tracking=True, derotate=True):
 
 		# Wait for telescope to complete motion
 		start = datetime.datetime.utcnow()
@@ -605,7 +619,7 @@ class CDK700:
 
 		self.logger.info('T' + self.num + ': Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving)
 		timeout = 60.0
-		while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout:
+		while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout and tracking:
 			time.sleep(0.1)
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 			telescopeStatus = self.getStatus()
@@ -635,12 +649,12 @@ class CDK700:
 				self.logger.info('T' + self.num + ': Error with azmimuth drive: ' + telescopeStatus.mount.azm_motor_error_message)
 				return False
 
-			#S Actually make sure tracking is on for both mount.
-			if telescopeStatus.mount.tracking == 'False':
-				#S or something like that.
-				self.mountTrackingOn()
-				self.logger.info('T%s: Tracking was off, turned tracking on.'%(self.num))
-#				self.logger.info('T%s: Moving, but because tracking is OFF. Assuming in position'%(self.num))
+		# Make sure tracking is on
+		if telescopeStatus.mount.tracking == 'False' and tracking:
+			self.mountTrackingOn()
+			self.logger.error('T%s: Tracking was off, turned tracking on.'%(self.num))
+			#self.logger.info('T%s: Moving, but because tracking is OFF. Assuming in position'%(self.num))
+
 		if elapsedTime > timeout or telescopeStatus.mount.on_target == False:
 			self.logger.error('T%s: Failed to slew within timeout (%s)'%(self.num,timeout))
 			return False
@@ -661,28 +675,67 @@ class CDK700:
 			self.logger.error('T%s: Failed to get to focus position within timeout (%s)'%(self.num,timeout))
 			return False
 
+		# if alt/az is specified, make sure we're close to the right position
+		if alt <> None and az <> None:
+			ActualAz = float(telescopeStatus.mount.azm_radian)
+			ActualAlt = float(telescopeStatus.mount.alt_radian)
+			DeltaPos = math.acos( math.sin(ActualAlt)*math.sin(alt*math.pi/180.0)+math.cos(ActualAlt)*math.cos(alt*math.pi/180.0)\
+						      *math.cos(ActualAz-az*math.pi/180.0) )*(180./math.pi)*3600.0
+			if DeltaPos > pointingTolerance:
+				self.logger.error('T' + self.num + ": Telescope reports it is " + str(DeltaPos)\
+							  + " arcsec away from the requested postion (ActualAlt="\
+							  + str(ActualAlt*180.0/math.pi) + " degrees, Requested Alt=" + str(alt) + ", ActualAz="\
+							  + str(ActualAz*180.0/math.pi) + " degrees, Requested Az=" + str(az))
+				self.nfailed += 1
+				return False
 
-		#S Make sure the derotating is on.
-		self.rotatorStartDerotating()
-		#S Let it finish derotating.
-		timeout = 360.0
-		self.logger.info('T' + self.num + ': Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
-		while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
-			time.sleep(0.5)
-			self.logger.debug('T%s: rotator moving (%s degrees)'%(self.num,telescopeStatus.rotator.position))
-			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-			telescopeStatus = self.getStatus()
-			if telescopeStatus.rotator.goto_complete == 'True':
-				time.sleep(1)
+		# if ra/dec is specified, make sure we're close to the right position
+		if ra <> None and dec <> None:
+			ActualRa = self.ten(telescopeStatus.mount.ra_2000)*math.pi/12.0
+			ActualDec = self.ten(telescopeStatus.mount.dec_2000)*math.pi/180.0
+			DeltaPos = math.acos( math.sin(ActualDec)*math.sin(dec*math.pi/180.0)+math.cos(ActualDec)*math.cos(dec*math.pi/180.0)\
+						      *math.cos(ActualRa-ra*math.pi/12.0) )*(180.0/math.pi)*3600.0
+			if DeltaPos > pointingTolerance:
+				self.logger.error('T' + self.num + ": Telescope reports it is " + str(DeltaPos)\
+							  + " arcsec away from the target postion (Dec="\
+							  + str(ActualDec*180.0/math.pi) + " degrees, Requested Dec=" + str(dec) + ", RA="\
+							  + str(ActualRa*12.0/math.pi) + " hours, Requested Ra=" + str(ra))
+				self.nfailed += 1
+				return False
+
+
+                #S Make sure the derotating is on.
+		if derotate:
+			self.rotatorStartDerotating()
+			timeout = 360.0
+			self.logger.info('T' + self.num + ': Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
+			while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
+				time.sleep(0.5)
+				self.logger.debug('T%s: rotator moving (%s degrees)'%(self.num,telescopeStatus.rotator.position))
+				elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 				telescopeStatus = self.getStatus()
-				if telescopeStatus.rotator.goto_complete == 'False':
-					self.logger.error('T' + self.num + ': Rotator moving after it said it was done')
+				if telescopeStatus.rotator.goto_complete == 'True':
+					time.sleep(1)
+					telescopeStatus = self.getStatus()
+					if telescopeStatus.rotator.goto_complete == 'False':
+						self.logger.error('T' + self.num + ': Rotator moving after it said it was done')
+
+			# Make sure derotating is on.
+			if telescopeStatus.rotator.altaz_derotate == 'False':
+				self.rotatorStartDerotating()
+				self.logger.error('T%s: Derotating was off, turned on.'%(self.num))
+		else:
+			if telescopeStatus.rotator.altaz_derotate == 'True':
+				self.rotatorStopDerotating()
+				self.logger.error('T%s: Derotating was on, turned off.'%(self.num))
+
 
 		if elapsedTime > timeout:
 			self.logger.error('T%s: Failed to get to rotator position within timeout (%s)'%(self.num,timeout))
 			return False
 
 		# if it gets here, we are in position
+		self.nfailed = 0
 		return True
 
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
@@ -769,6 +822,12 @@ class CDK700:
                 else:
                         ra_corrected = np.degrees(ra_intermed)/15.
 
+		# make sure the coordinates are within the telescope's limits
+		alt,az = self.radectoaltaz(ra,dec)
+		if alt < 20.5:
+			self.logger.error("Coordinates out of bounds; object not acquired! (Alt,Az) = (" + str(alt) + "," + str(az) + ")")
+			return False
+
 		#S make sure the m3 port is in the correct orientation
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
@@ -799,7 +858,7 @@ class CDK700:
 
 
 ### check on this; m3port not defined ####
-		if self.inPosition(m3port=m3port):
+		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected):
 #		if self.inPosition():
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
@@ -808,7 +867,21 @@ class CDK700:
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			self.acquireTarget(target,pa=pa)
 			return
-	
+
+	def radectoaltaz(self,ra,dec):
+		obs = ephem.Observer()
+		obs.lat = str(self.latitude)
+		obs.long = str(self.longitude)
+		obs.elevation = self.elevation
+		obs.date = str(datetime.datetime.utcnow())
+		star = ephem.FixedBody()
+		star._ra = ephem.hours(str(ra))
+		star._dec = ephem.degrees(str(dec))
+		star.compute(obs)
+		alt = self.ten(" ".join(str(star.alt).split(':')))
+		az = self.ten(" ".join(str(star.az).split(':')))
+		return alt,az
+
 	def m3port_switch(self,m3port):
 
 		#S want to make sure we are at the right port before mount, focuser, rotator slew.
@@ -875,7 +948,8 @@ class CDK700:
 
 		self.logger.info('T' + self.num + ': Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
 		self.mountGotoAltAz(parkAlt, parkAz)
-		self.inPosition()
+		if not self.inPosition(alt=parkAlt,az=parkAz, pointingTolerance=3600.0):
+			if self.recover(): self.park()
 
 		self.logger.info('T' + self.num + ': Turning mount tracking off')
 		self.mountTrackingOff()

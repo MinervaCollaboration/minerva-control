@@ -5,12 +5,58 @@ import ipdb, datetime, time, socket
 #from si.client import SIClient
 #from si.imager import Imager
 import threading
+import math
+import numpy as np
 
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+	ipdb.set_trace()
+#	minerva.spectrograph.i2stage_move('flat')
+#	ipdb.set_trace()
+
+#	'''
+#	ipdb.set_trace()
+#	target = {'name':'fiberflat_T3','ra':0,'dec':0,'i2':True,'exptime':[15]}
+#	minerva.takeSpectrum(target)
+#	target = {'name':'fiberflat_T3','ra':0,'dec':0,'i2':False,'exptime':[15]}
+#	minerva.takeSpectrum(target)
+#	ipdb.set_trace()
+	target = {'name':'thar_T4_i2test','ra':0,'dec':0,'i2':True,'exptime':[30]}
+	minerva.takeSpectrum(target)
+	target = {'name':'thar_T4_i2test','ra':0,'dec':0,'i2':False,'exptime':[30]}
+	minerva.takeSpectrum(target)
+
+	ipdb.set_trace()
+#	for i in np.arange(20):
+#		i2pos = 150 + i
+#		target = {'name':'i2test02_T3','ra':0,'dec':0,'i2manualpos':i2pos,'exptime':[30]}	
+	target = {'name':'thar_T3_i2test','ra':0,'dec':0,'i2':True,'exptime':[300]}
+#	target = {'name':'fiberflat_T1','ra':0,'dec':0,'i2':False,'exptime':[30]}
+	minerva.takeSpectrum(target)
+	
+	target = {'name':'thar_T3_i2test','ra':0,'dec':0,'i2':False,'exptime':[300]}
+	minerva.takeSpectrum(target)
+#	target = {'name':'fiberflat_T1','ra':0,'dec':0,'i2':True,'exptime':[30]}
+#	minerva.takeSpectrum(target)
+	ipdb.set_trace()
+
+
+	status = minerva.telescopes[3].getStatus()
+	ra = minerva.ten(status.mount.ra_2000)
+	dec = minerva.ten(status.mount.dec_2000)
+	telalt = float(status.mount.alt_radian)*180.0/math.pi
+	telaz = float(status.mount.azm_radian)*180.0/math.pi
+	alt,az = minerva.telescopes[3].radectoaltaz(ra,dec)
+	
+	sep = math.acos( math.sin(telalt*math.pi/180.0)*math.sin(alt*math.pi/180.0)+math.cos(telalt*math.pi/180.0)*math.cos(alt*math.pi/180.0)\
+				 *math.cos((telaz-az)*math.pi/180.0) )*(180.0/math.pi)*3600.0
+
+	print telalt, alt
+	print telaz, az
+	print sep
 
 	ipdb.set_trace()
 
@@ -29,7 +75,7 @@ if __name__ == '__main__':
 		minerva.cameras[telnum-1].fau.acquisition_tolerance=1.5
 		minerva.fauguide(target,telnum,acquireonly=False)
 		ipdb.set_trace()
-
+#	'''	
 	target = {
 		"name" : "HD19373", 
 		"ra" : 3.15111666667, 
@@ -38,7 +84,7 @@ if __name__ == '__main__':
 		"endtime" : "2018-01-01 00:00:00", 
 		"spectroscopy": True, 
 		"filter": ["rp"], 
-		"num": [1], 
+		"num": [10], 
 		"exptime": [300], 
 		"fauexptime": 1, 
 		"defocus": 0.0, 
@@ -52,12 +98,13 @@ if __name__ == '__main__':
 		"template" : False, 
 		"i2": False,
 		"comment":"RV standard star"}
-
-
-	target['name'] = 'ThAr_T1'
-	target['exptime'] = [60]
-	minerva.takeSpectrum(target)
+	minerva.doSpectra(target,[1,2,3,4])
 	ipdb.set_trace()
+
+#	target['name'] = 'ThAr_T1'
+#	target['exptime'] = [60]
+#	minerva.takeSpectrum(target)
+#	ipdb.set_trace()
 
 	'''
 	target = {
@@ -83,7 +130,7 @@ if __name__ == '__main__':
 		"i2": True}
 	'''
 
-	minerva.doSpectra(target,[1,2,4])
+
 #	ipdb.set_trace()
 
 

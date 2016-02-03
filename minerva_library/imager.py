@@ -137,7 +137,7 @@ class imager:
 	#send commands to camera server
 	def send(self,msg,timeout):
 
-		self.logger.info("Beginning serial communications with the imager server")
+		self.logger.debug("Beginning serial communications with the imager server")
 #		with self.lock:
 		if True:
 

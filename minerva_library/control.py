@@ -32,6 +32,8 @@ import mail
 from get_all_centroids import *
 import segments
 import newauto 
+from fix_fits import fix_fits
+
 
 # FAU guiding dependencies
 import PID_test as pid
@@ -63,6 +65,9 @@ class control:
 		#if socket.gethostname() == 'Kiwispec-PC':
                         #S Give some time for the spec_server to start up, get settled.
                #         time.sleep(20)
+
+
+		#S NEED TO UNCOMMENT THE LOGGER, SEARCH FOR XXXXXXX
 		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
 		#	#imager.imager('si_imager.ini',self.base_directory)
                 self.domes = []
@@ -171,6 +176,7 @@ class control:
 		for c in self.cameras:
 			c.setup_logger()
 		self.site.setup_logger()
+		#S NEED TO UNCOMMENT IF YOU PUT SPECTROGRAPH BACK IN XXXXX
 		self.spectrograph.setup_logger()
 		self.logger_lock.release()
 		
@@ -262,7 +268,7 @@ class control:
 #=====================================================#
 
 	#S New command format, which allows for incomplete lists of telescopes				
-	def telescope_initialize(self,tele_list = 0, tracking = False):
+	def telescope_initialize(self,tele_list = 0, tracking = True, derotate=True):
                 #S check if tele_list is only an int
                 if type(tele_list) is int:
                         #S Catch to default a zero arguement or outside array range tele_list
@@ -285,6 +291,7 @@ class control:
                         if self.telcom_enabled[tele_list[t]]:
                                 kwargs={}
 				kwargs['tracking']=tracking
+				kwargs['derotate']=derotate
 				threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].initialize,kwargs=kwargs)
                                 threads[t].start()
                 #S Join all the threads together
@@ -931,7 +938,13 @@ class control:
 			if len(stars) < 1:#curpos[0] == -1 or curpos[1] == -1:
 				self.logger.info("T" + str(tel_num) + ": no stars in imaging; skipping guide correction")
 			else:
-				curpos = np.array([stars[0][0],stars[0][1]])
+
+				ndx = np.argmax(stars[:,2])
+
+
+				self.logger.info("Found " + str(len(stars)) + " stars, using the star at (x,y)=(" + str(stars[ndx][0]) + "," + str(stars[ndx][1]) + ")")
+#				ipdb.set_trace()
+				curpos = np.array([stars[ndx][0],stars[ndx][1]])
 				tvals = np.append(tvals,i)
 				xvals = np.append(xvals, curpos[0])
 				yvals = np.append(yvals, curpos[1])
@@ -959,8 +972,8 @@ class control:
 
 				# position angle on the sky
 				# PA = parallactic angle - mechanical rotator position + field rotation offset
-				parangle = telescope.parangle(target)
-				offset = telescope.rotatoroffset[telscope.port['FAU']]
+				parangle = telescope.parangle(target, useCurrent=True)
+				offset = float(telescope.rotatoroffset[telescope.port['FAU']])
 				PA = parangle - float(telescope.getStatus().rotator.position) + offset
 				self.logger.info('T' + str(tel_num) + ': PA = '+str(PA))
 
@@ -1184,11 +1197,19 @@ class control:
 
         #S A function to put moving the i2stage in it's own thread, which will check status of the stage,
 	#S run trouble shooting, and ultimately handle the timeout.
-        def ctrl_i2stage_move(self,locationstr = 'out'):
+        def ctrl_i2stage_move(self,locationstr = 'out', position=None):
                 #S Sends command to begin i2stage movement, whcih will start
                 #S a thread in the spectrograph server to move the stage to the
                 #S corresponding location string.
-                self.spectrograph.i2stage_move(locationstr)
+		if position <> None:
+			ndx = 0
+			self.spectrograph.i2stage_movef(position)
+			location = position
+		else:
+			ndx = 1
+			self.spectrograph.i2stage_move(locationstr)
+			location = locationstr
+
                 #S Time out to wait for the stage to get to destination.
                 timeout  = 60
                 #S Start time to measure elapsed time of movement.
@@ -1197,33 +1218,40 @@ class control:
                 elapsed_time = 0
                 #S If we aren't at our target string AND elapsed time is less than the timeout.
                 #S Note that this queries the position string, and compares to the requested. 
-                while (self.spectrograph.i2stage_get_pos()[1] <> locationstr) and (elapsed_time < timeout):
+                while (self.spectrograph.i2stage_get_pos()[ndx] <> location) and (elapsed_time < timeout):
                         #S Giver her a second
                         time.sleep(1)
                         #S Update elapsed time
                         elapsed_time = (datetime.datetime.utcnow() - start).total_seconds()
                 #S We exited the 'while' above, meaning one of the conditions became false.
                 #S If the target string is our current string, we made it where we want to go. 
-                if self.spectrograph.i2stage_get_pos()[1] == locationstr:
+                if self.spectrograph.i2stage_get_pos()[ndx] == location:
                         #S Log some info dog
-                        self.logger.info('I2 stage successfully moved to '+locationstr+' after first attempt.')
+                        self.logger.info('I2 stage successfully moved to '+str(location)+' after first attempt.')
                         #S Returns nothing right now, and i think that's all we want.
                         return
+
+#		print self.spectrograph.i2stage_get_pos()[ndx],location,self.spectrograph.i2stage_get_pos()[ndx] == location,float(self.spectrograph.i2stage_get_pos()[ndx]) == location
+#		ipdb.set_trace()
+
                 #S If we get here, the timeout was surpassed, and we need to try some troubleshooting.
                 #S Our first action will be to send the move command again. no harm here.
                 #S First, we'l log an error saying we're trying again.
-                self.logger.error('I2 stage did not make it to destination, trying to move again')
+                self.logger.error('I2 stage did not make it to ' + str(location) + ', trying to move again')
                 #S Tell it to move
-                self.spectrograph.i2stage_move(locationstr)
+		if position <> None:
+			self.spectrograph.i2stage_movef(position)
+		else:
+			self.spectrograph.i2stage_move(locationstr)
                 #S Reset start and elapsed time. This uses same logic above.
                 start = datetime.datetime.utcnow()
                 elapsed_time = 0
-                while (self.spectrograph.i2stage_get_pos()[1] <> locationstr) and (elapsed_time < timeout):
+                while (self.spectrograph.i2stage_get_pos()[ndx] <> location) and (elapsed_time < timeout):
                         time.sleep(1)
                         elapsed_time = (datetime.datetime.utcnow() - start).total_seconds()
                         
-                if self.spectrograph.i2stage_get_pos()[1] == locationstr:
-                        self.logger.info('I2 stage successfully moved to '+locationstr+' after second attempt.')
+                if self.spectrograph.i2stage_get_pos()[ndx] == location:
+                        self.logger.info('I2 stage successfully moved to '+str(location)+' after second attempt.')
                         return
                 self.logger.error('I2 stage did not move to destination, cycling power then trying again')
                 #S This is a little unituitive. We first disconnect. Then we reconnect. The unintuitive part is
@@ -1234,14 +1262,17 @@ class control:
                 self.spectrograph.i2stage_disconnect()
                 self.spectrograph.i2stage_connect()
                 #S Same logic as above.
-                self.spectrograph.i2stage_move(locationstr)
+		if position <> None:
+			self.spectrograph.i2stage_movef(position)
+		else:
+			self.spectrograph.i2stage_move(locationstr)
                 start = datetime.datetime.utcnow()
                 elapsed_time = 0
-                while (self.spectrograph.i2stage_get_pos()[1] <> locationstr) and (elapsed_time < timeout):
+                while (self.spectrograph.i2stage_get_pos()[ndx] <> location) and (elapsed_time < timeout):
                         time.sleep(1)
                         elapsed_time = (datetime.datetime.utcnow() - start).total_seconds()
-                if self.spectrograph.i2stage_get_pos()[1] == locationstr:
-                        self.logger.info('I2 stage successfully moved to '+locationstr+' after third attempt.')
+                if self.spectrograph.i2stage_get_pos()[ndx] == location:
+                        self.logger.info('I2 stage successfully moved to '+str(location)+' after third attempt.')
                         return
                 #S Exhausted all known solutions so far, so let's send an email.
                 self.logger.error("I2 stage did not move to destination after three attempts, sending email.")
@@ -1259,9 +1290,12 @@ class control:
 	#TODO TODO
         def spec_equipment_check(self,target):#objname,filterwheel=None,template = False):
 
+		kwargs = {
+			'locationstr':'in',
+			}
                 #S Desired warmup time for lamps, in minutes
                 #? Do we want seperate times for each lamp, both need to warm for the same rightnow
-                WARMUPMINUTES = 0.5#10.
+                WARMUPMINUTES = 0.0#10.
                 #S Convert to lowercase, just in case.
                 objname = target['name'].lower()
                 #S Some logic to see what type of spectrum we'll be taking.
@@ -1291,11 +1325,10 @@ class control:
                 #S minutes prior. This init only checks whether the lamp has been on
                 #S for that long. We could have it default to turn on the lamp,
                 #S but for now it doesn't.
-                if (objname == 'arc'):
-			pass
-
+                if 'ThAr' in target['name']:
                         #S Move the I2 stage out of the way of the slit.
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
+			kwargs['locationstr'] = 'out'
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
                         i2stage_move_thread.start()
                         
                         #self.spectrograph.i2stage_move('out')
@@ -1310,14 +1343,14 @@ class control:
                         #S Make sure the calibration shutter is open
                         #TODO Calibrtoin shutter open.
                         #S Time left for warm up
-                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.thar_file)
-                        print '\t\t\t\tWARM TIME IS '+str(warm_time)
+#                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.thar_file)
+#                        print '\t\t\t\tWARM TIME IS '+str(warm_time)
                         #S Determine if the lamp has been on long enough, or sleep until it has.
-                        if (warm_time > 0.):
-                                time.sleep(warm_time)
-                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
-                        else:
-                                time.sleep(0)
+#                        if (warm_time > 0.):
+#                                time.sleep(warm_time)
+#                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
+#                        else:
+#                                time.sleep(0)
                         self.logger.info('Waiting on i2stage_move_thread')
                         i2stage_move_thread.join()
                             
@@ -1325,7 +1358,9 @@ class control:
                 #S Same questions as for thar specs.
                 elif (objname == 'slitflat'):
                         #S Move the LED in place with the Iodine stage
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('flat',))
+			kwargs['locationstr'] = 'flat'
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+
                         i2stage_move_thread.start()
 
                         # Configure the lamps
@@ -1349,12 +1384,15 @@ class control:
 #                                time.sleep(0)
                         self.logger.info('Waiting on i2stage_move_thread')
                         i2stage_move_thread.join()
-                elif (objname == 'fiberflat'):
-			pass
+                elif 'fiberflat' in target['name']:
                         #S Move the I2 stage out of the way of the slit.
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
+			if target['i2']:
+				kwargs['locationstr'] = 'in'
+			else:
+				kwargs['locationstr'] = 'out'
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
                         i2stage_move_thread.start()
-                        #self.spectrograph.i2stage_move('flat')
+
 
                         #Configure the lamps
 #                        self.spectrograph.thar_turn_off()
@@ -1367,14 +1405,14 @@ class control:
                         #TODO Calibrtoin shutter open.
 
                         #S Time left for warm up
-                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.flat_file)
-                        print '\t\t\t\t WARM TIME IS '+str(warm_time)
+#                        warm_time = WARMUPMINUTES*60. - self.spectrograph.time_tracker_check(self.spectrograph.flat_file)
+#                        print '\t\t\t\t WARM TIME IS '+str(warm_time)
                         #S Make sure the lamp has been on long enough, or sleep until it has.
-                        if (warm_time > 0):
-                                time.sleep(warm_time)
-                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
-                        else:
-                                time.sleep(0)
+#                        if (warm_time > 0):
+#                                time.sleep(warm_time)
+#                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
+#                        else:
+#                                time.sleep(0)
                         self.logger.info('Waiting on i2stage_move_thread')
                         i2stage_move_thread.join()
 
@@ -1391,7 +1429,8 @@ class control:
                         #S Not sure if we need to move it out necessarily, but I think
                         #S this is better than having it randomly in 'flat' or 'in',
                         #S and will at least make things orderly.
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
+			kwargs['locationstr'] = 'in'
+                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
                         i2stage_move_thread.start()
                         #TODO Calibration shutter closed
                         self.logger.info('Waiting on i2stage_move_thread')
@@ -1402,13 +1441,17 @@ class control:
                 #S it time to warm up. It should really be turned on at the beginning
                 #S of the night, but just a reminder.
                 else:
+
+			
                         #S Move the iodine either in or out, as requested
-			if target['i2']:
-				i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('in',))
-				i2stage_move_thread.start()
+			if 'i2manualpos' in target.keys():
+				kwargs['position'] = target['i2manualpos']
+			elif target['i2']:
+				kwargs['locationstr'] = 'in'
 			else:
-				i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,args=('out',))
-				i2stage_move_thread.start()
+				kwargs['locationstr'] = 'out'
+			i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.start()
 				
                         #Configure the lamps
 #                        self.spectrograph.thar_turn_off()
@@ -1477,6 +1520,7 @@ class control:
                 while self.site.getWeather() == -1: pass
 
                 #S Get facts about the moon, used for avoidance later I'm assuming.
+ 		# JDE 2016-01-21: Just for the header info
                 moonpos = self.site.moonpos()
                 moonra = moonpos[0]
                 moondec = moonpos[1]
@@ -1818,6 +1862,14 @@ class control:
 		# write header for image
 		if self.spectrograph.write_header(header):
 			self.logger.info('Finished writing spectrograph header')
+
+			# rewrite the image to make it standard
+			self.logger.info("Standardizing the FITS image")
+			night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+			dataPath = '/Data/kiwispec/' + night + '/'
+			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
+			fix_fits_thread.start()
+			
 			return self.spectrograph.file_name
                 #ipdb.set_trace()
 
@@ -2390,7 +2442,7 @@ class control:
 		self.logger.info(telescope_name + 'Beginning twilight flats')
 
 		# make sure the telescope/dome is ready for obs
-		if not telescope.initialize(tracking=True):
+		if not telescope.initialize(tracking=True, derotate=True):
 			telescope.recover()
 		
 		# start off with the extreme exposure times
@@ -2415,46 +2467,19 @@ class control:
 					Alt = 75.0 # degrees (somewhat site dependent)
 					Az = self.site.sunaz() + 180.0 # degrees
 					if Az > 360.0: Az = Az - 360.0
-					
-					#S set the target ra and dec
-					
-					# keep slewing to the optimally flat part of the sky (dithers too)
-					# DeltaPos is here to check if we're within DeltaPosLimit of the target pos.
-					DeltaPos = 90.0
-					DeltaPosLimit = 1.0
-					SlewRepeat = 0
-					while DeltaPos > DeltaPosLimit:
+
+					inPosition = False
+					while not inPosition and dome.isOpen:
+
 						self.logger.info(telescope_name + 'Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
 						telescope.mountGotoAltAz(Alt,Az)
 						# flats are only useful for imagers
 						telescope.m3port_switch(telescope.port['IMAGER'])
 
-						if not firstImage:
-							if telescope.inPosition(m3port=telescope.port['IMAGER']):
-								self.logger.info(telescope_name + "Finished slew to alt=" + str(Alt) + ', az=' + str(Az) + ')')
-								firstImage = False
-							else:
-								self.logger.error(telescope_name + "Slew failed to alt=" + str(Alt) + ', az=' + str(Az) + ')')
-								# now what?  
-						else:
-							time.sleep(10)
-
-						telescopeStatus = telescope.getStatus()
-						ActualAz = float(telescopeStatus.mount.azm_radian)
-						ActualAlt = float(telescopeStatus.mount.alt_radian)
-						DeltaPos = math.acos( math.sin(ActualAlt)*math.sin(Alt*math.pi/180.0)+math.cos(ActualAlt)*math.cos(Alt*math.pi/180.0)\
-									      *math.cos(ActualAz-Az*math.pi/180.0) )*(180./math.pi)
-						if DeltaPos > DeltaPosLimit:
-							self.logger.error(telescope_name + "Telescope reports it is " + str(DeltaPos)\
-										  + " degrees away from the target postion; beginning telescope recovery (ActualAlt="\
-										  + str(ActualAlt*180.0/math.pi) + ", Requested Alt=" + str(Alt) + ", (ActualAz="\
-										  + str(ActualAz*180.0/math.pi) + ", Requested Az=" + str(Az))
+						if not telescope.inPosition(alt=Alt,az=Az,m3port=telescope.port['IMAGER'],pointingTolerance=3600.0):
 							telescope.recover()
-							SlewRepeat += 1
-						if SlewRepeat>10:
-							self.logger.error(telescope_name + "Repeated slewing is not getting us to the flat-field target position; skipping.")
-							break
-								
+						else: inPosition=True
+
 					# Take flat fields
 					filename = 'error'
 					#S Set the filter name to the current filter
@@ -2463,7 +2488,7 @@ class control:
 					target['exptime'] = exptime
 					#while filename == 'error': filename = self.takeImage(exptime, filterInd, 'SkyFlat',telescope_num)
 					#S new target dict implementation
-					while filename == 'error': filename = self.takeImage(target,telescope_num)
+					while filename == 'error' and dome.isOpen: filename = self.takeImage(target,telescope_num)
 					
 					# determine the mode of the image (mode requires scipy, use mean for now...)
 					mode = imager.getMode()
@@ -2954,8 +2979,8 @@ class control:
 		self.prepNight(telescope_num)
 		self.scheduleIsValid(telescope_num)
 
-		if not self.telescopes[telescope_num-1].initialize(tracking=False):
-			self.telescopes[telescope_num-1].recover(tracking=False)
+		if not self.telescopes[telescope_num-1].initialize(tracking=False, derotate=False):
+			self.telescopes[telescope_num-1].recover(tracking=False, derotate=False)
 
 		#S Finally (re)park the telescope. 
 		self.telescopes[telescope_num-1].park()
@@ -2993,8 +3018,8 @@ class control:
 
 		# Take Evening Sky flats
 		#S Initialize again, but with tracking on.
-		if not self.telescopes[telescope_num-1].initialize(tracking=True):
-			self.telescopes[telescope_num-1].recover(tracking=True)
+		if not self.telescopes[telescope_num-1].initialize(tracking=True, derotate=True):
+			self.telescopes[telescope_num-1].recover(tracking=True, derotate=True)
 		flatFilters = CalibInfo['flatFilters']
 		self.doSkyFlat(flatFilters, False, CalibInfo['nflat'],telescope_num)
 		
@@ -3674,8 +3699,8 @@ class control:
 #		"""
 
 		#S Initialize telescope, we want tracking ON
-		if not telescope.initialize(tracking=True):
-			telescope.recover(tracking=True)
+		if not telescope.initialize(tracking=True, derotate=True):
+			telescope.recover(tracking=True, derotate=True)
 
 		#S make array of af_defocus_steps
 		defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)

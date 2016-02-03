@@ -32,11 +32,11 @@ class aqawan:
 		
 		self.estopmail = "The emergency stop is active in the Aqawan, which prevents us from remotely controlling it.\n\n" +\
 		"To reset the E-stop:\n\n" +\
-		"1) Find the E-stop that was pressed and turn it counter clockwise until it pops up. " +\
-		"There's one next to each door and another inside the aqawan.\n" + \
-		"2) Find the aqawan panel on the inside of the north wall.\n" +\
-		"3) A blue light, labeled 'E-stop reset' on the top left of the panel will be flashing. Push it. " +\
-		"The light should go off when pressed. If not, the E-Stop is probably still depressed.\n\n" +\
+		"1) Find the aqawan panel on center of the inside of the north wall. The code to get into the door is the same as the gate code.\n" +\
+		"2) A blue light, labeled 'E-stop reset' on the top left of the panel will be flashing. Push it. " +\
+		"The light should go off when pressed. If so, you're done. If not, continue to step 3.\n" +\
+		"3) One of the E-stops was physically pushed. There's one next to each door and another on the hand paddle to the left of the aqawan panel."+\
+		"Find the one that is depressed, turn it counter clockwise until it pops up, then repeat step 2.\n\n" + \
 		"Love,\nMINERVA"
 		
 		self.rainChangeDate = datetime.datetime.utcnow()
@@ -116,7 +116,7 @@ class aqawan:
 			self.logger.error(anum + 'Message not recognized: ' + message)
 			return 'error'
 
-		self.logger.info("Beginning serial communications with the aqawan")
+		self.logger.debug("Beginning serial communications with the aqawan")
 		with self.lock:
 
 			# connect to the aqawan

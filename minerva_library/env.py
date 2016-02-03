@@ -10,6 +10,7 @@ from configobj import ConfigObj
 sys.dont_write_bytecode = True
 import ipdb
 import mail
+import threading
 
 class site:
 
@@ -19,6 +20,7 @@ class site:
 		self.base_directory = base
 		self.load_config()
 		self.setup_logger()
+		self.lock = threading.Lock()
 		
 	def load_config(self):
 	
@@ -38,7 +40,7 @@ class site:
 		
 		self.observing = True
 		self.weather = -1
-		self.rainChangeDate = datetime.datetime.utcnow() - datetime.timedelta(hours=1.0)
+		self.rainChangeDate = datetime.datetime.utcnow() - datetime.timedelta(hours=2.0)
 		self.lastRain = 0.
 		self.mailSent = False
 		self.coldestTemp = 100.0
@@ -124,6 +126,9 @@ class site:
                 self.logger.addHandler(console)
 
 	def getWeather(self):
+
+           self.logger.debug("Beginning serial communications with the weather station")
+           with self.lock:
 
 		if self.logger_name == 'site_mtHopkins':
 			# the URL for the machine readable weather page for the Ridge
@@ -313,12 +318,16 @@ class site:
 			self.getWeather()
 
 
-		if self.weather['wxt510Rain'] > self.lastRain:
-			self.lastRain = self.weather['wxt510Rain']
+		# MearthCloud reports 998.0 when it's raining and is much more reliable than wxt510Rain 
+		if self.weather['MearthCloud'] == 998.0:
+			self.lastrain += 0.001
 			self.rainChangeDate = datetime.datetime.utcnow()
-		#S This is done to set the initial value of the rain at the beginning of the night to the current value of wxt510rain
-#		if self.weather['wxt510Rain'] < self.lastRain:
+
+		# wxt510Rain uses an impact sensor and can be triggered by wind (unreliable)
+#		if self.weather['wxt510Rain'] > self.lastRain:
 #			self.lastRain = self.weather['wxt510Rain']
+#			self.rainChangeDate = datetime.datetime.utcnow()
+
 		# if it has rained in the last hour, it's not ok to open
 		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 3600.0:
 			self.logger.info('Not OK to open: it last rained at ' + str(self.rainChangeDate) + ", which is less than 1 hour ago")
@@ -334,6 +343,14 @@ class site:
 						fh.write(str(datetime.datetime.utcnow() - datetime.timedelta(days=1)))
 						self.logger.info('Not OK to open: there has been precipitation in the last 24 hours and it has been freezing. Manual inspection for snow/ice required')
 						return False
+				else:
+					self.logger.info('There has been precipitation in the last 24 hours and it has been freezing, but it has been manually approved to open until ' + str(date))
+					
+			else:
+				with open(decisionFile,"w") as fh:
+					fh.write(str(datetime.datetime.utcnow() - datetime.timedelta(days=1)))
+					self.logger.info('Not OK to open: there has been precipitation in the last 24 hours and it has been freezing. Manual inspection for snow/ice required')
+					return False
 
 		#S External temperature check, want to use Mearth, then Aurora if Mearth not available, and then 
 		#S HAT if niether of those two are found. Currently, we are assuming a value of 0 means disconnected
