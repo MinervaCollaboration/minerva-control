@@ -258,14 +258,21 @@ class server:
                                 self.maxim.CurrentDocument.SaveFile(self.file_name,3, False, 1)
 				return 'success'				
                         else:
+                                time.sleep(0.1) # wait for the image to start
         			while (not self.cam.ImageReady) and (self.cam.CameraStatus <> 2):
                 			time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)
         			self.file_name = self.data_path + '\\' + file_name
-                                if self.cam.SaveImage(self.file_name):
-					return 'success'
-				return 'fail'
-		except:
+                                try:
+                                        if self.cam.SaveImage(self.file_name):
+                				return 'success'
+                                        self.logger.error("Error saving image")
+                                	return 'fail'
+                                except:
+                                        self.logger.exception("Error saving image")
+                                        return 'fail'
+                except:
+                        self.logger.exception("Error saving image")
 			return 'fail'
 
 	def write_header(self,param):
