@@ -63,6 +63,7 @@ class spectrograph:
                         self.flat_file = config['FLATFILE']
 			self.i2settemp = float(config['I2SETTEMP'])
 			self.i2temptol = float(config['I2TEMPTOL'])
+			self.lastI2MotorLocation = 'UNKNOWN'
 
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)

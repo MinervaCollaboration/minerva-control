@@ -1,10 +1,11 @@
 #Minerva system main routine
 #create master control object and run one of the observing scripts
-import sys
+
+import sys, os
 sys.dont_write_bytecode = True
 from minerva_library import control
 from minerva_library import rv_control
-
+import datetime
 
 if __name__ == '__main__':
 
@@ -14,7 +15,7 @@ if __name__ == '__main__':
 
 	# if a file for kiwispec exists, use that. If not, observe with all four telescopes
 	if os.path.exists(minerva.base_directory + '/schedule/' + minerva.site.night + '.kiwispec.txt'):
-		rv_control.rv_observing_catch(minerva.logger)
+		rv_control.rv_observing_catch(minerva)
 	else:
 		#run observing script on all telescopes with their own schedule file
 		minerva.observingScript_all()

@@ -147,6 +147,10 @@ class CDK700:
 		self.logger.info('T' + self.num + ': Homing telescope')
 		if not self.home(): return False
 
+		self.logger.info('T' + self.num + ': re-loading pointing model for the current port')
+		telescopeStatus = self.getStatus()
+		self.m3port_switch(int(telescopeStatus.m3.port),force=True)
+
 		# turning on mount tracking, rotator tracking
 		#S I'm defaulting this off, but including an argument in case we do want it
 		#S This could be for initializing at 4PM start, or for testing. 
@@ -376,7 +380,7 @@ class CDK700:
 	
 	#S i think we should make targets classes for functions like this, not in telescope.
 	#S i did that in scheduler sim, but could be a bit of an overhaul here....
-	def hourangle(self,target, useCurrent=False):
+	def hourangle(self,target=None, useCurrent=False):
 		#S calculate the current hour angle of the target
 		#TODO need to incorporate the updated RA, will be off by a few degrees
 		#TODO similar to caluclating the angle from target set check in observing script
@@ -402,10 +406,10 @@ class CDK700:
                 return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
 	
         # calculate the parallactic angle (for guiding)
-        def parangle(self, target, useCurrent=False):
+        def parangle(self, target=None, useCurrent=False):
 
 		
-		ha = self.hourangle(target, useCurrent=useCurrent)
+		ha = self.hourangle(target=target, useCurrent=useCurrent)
 		if useCurrent:
 			status = self.getStatus()
 			dec = self.ten(status.mount.dec)
@@ -422,7 +426,7 @@ class CDK700:
 		else:
 			desiredPA = 0.0
 
-		parangle = self.parangle(target)
+		parangle = self.parangle(target=target)
 
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy'] == True :
@@ -823,7 +827,7 @@ class CDK700:
                         ra_corrected = np.degrees(ra_intermed)/15.
 
 		# make sure the coordinates are within the telescope's limits
-		alt,az = self.radectoaltaz(ra,dec)
+		alt,az = self.radectoaltaz(ra_corrected,dec_corrected)
 		if alt < 20.5:
 			self.logger.error("Coordinates out of bounds; object not acquired! (Alt,Az) = (" + str(alt) + "," + str(az) + ")")
 			return False
@@ -882,15 +886,16 @@ class CDK700:
 		az = self.ten(" ".join(str(star.az).split(':')))
 		return alt,az
 
-	def m3port_switch(self,m3port):
+	def m3port_switch(self,m3port, force=False):
 
 		#S want to make sure we are at the right port before mount, focuser, rotator slew.
 		#S If an allowable port is specified
 		if (str(m3port)=='1') or (str(m3port)=='2'):
 			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
 			telescopeStatus = self.getStatus()
-			if telescopeStatus.m3.port != str(m3port):
-				self.logger.info('T%s: Port changed, loading pointing model'%(self.num))
+			if telescopeStatus.m3.port != str(m3port) or force:
+				if telescopeStatus.m3.port != str(m3port):
+					self.logger.info('T%s: Port changed, loading pointing model'%(self.num))
 				# load the pointing model and settingsxml
 				modelfile = self.modeldir + self.model[m3port]
 				if os.path.isfile(modelfile):

@@ -433,7 +433,7 @@ class imager:
 			if self.recover(): return self.take_fau_image(exptime=exptime, objname=objname)
 			return False
 
-		self.file_name = self.night + "." + self.telescope_name + "." + objname + ".FAU." + str(ndx).zfill(4) + ".fits"
+		self.file_name = self.night + "." + self.telescope_name + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
 
 		if self.exposeGuider(exptime):
 			self.write_status()
@@ -443,7 +443,6 @@ class imager:
 				self.nfailed = 0 # success; reset the failed counter
 				return self.file_name
 			else: 
-				ipdb.set_trace()
 				self.logger.error(telescope_name + 'failed to save image: ' + self.file_name)
 				self.file_name = ''
 				if self.recover(): return self.take_fau_image(exptime=exptime, objname=objname)

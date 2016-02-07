@@ -3,6 +3,7 @@ import glob
 import os
 import numpy
 import logging
+import ipdb
 
 # ask to use numpy
 os.environ["NUMERIX"] = "numpy"
@@ -30,11 +31,11 @@ class Imager (object):
 
 	def doSingleFrame (self):
 
-		print 'do single frame'
+#		print 'do single frame'
 
-                for t in dir(self.client): print t
-                print SetAcquisitionMode(0)
-                import ipdb
+#                for t in dir(self.client): print t
+#                print SetAcquisitionMode(0)
+                SetAcquisitionMode(0)
                 #ipdb.set_trace()
 		
 		self.client.executeCommand (SetAcquisitionMode (0)) # SINGLE FRAMES
@@ -111,7 +112,9 @@ class Imager (object):
 	def do (self):
 
 		if self.getpars:
-			print self.getCameraPars()
+#			print self.getCameraPars()
+			self.getCameraPars()
+
 		elif self.frametransfer:
 			return self.doFrameTransfer ()
 		else:
@@ -131,7 +134,7 @@ class Imager (object):
 		xcpars.write('%s'%cpars)
 		xcpars.seek(0)
 		a = np.loadtxt(xcpars,delimiter=',',dtype=[('group','S30'),('name','S30'),('value','int') ])
-		print '->',a
+#		print '->',a
 
 		return cpars
 
@@ -251,7 +254,7 @@ class Imager (object):
 		
 	def takeImage(self):
 
-		print 'taking image'
+#		print 'taking image'
 		
 		#use default parameters to save a temporary image named 'I' in si imager server folder
 		self.setAcquisitionMode()

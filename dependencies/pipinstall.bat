@@ -13,6 +13,9 @@ pip install SendKeys
 pip install selenium
 pip install pysnmp
 pip install matplotlib
+pip install oauth2client
+pip install gspread
+pip install unicodecsv
 cd pywinauto-0.4.2
 python setup.py install
 cd ..

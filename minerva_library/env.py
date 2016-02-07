@@ -277,7 +277,7 @@ class site:
 				if not self.mailSent:
 					mail.send("Possible snow/ice on enclosures; manual inspection required",
 						  "Dear benevolent humans,\n\n"+
-						  "Recent conditions have been wet and cold (" + str(self.coldestTemp) + " C), which means ice and/or snow is likely."+ 
+						  "Recent conditions have been wet and cold (" + str(self.coldestTemp) + " C), which means ice and/or snow is likely. "+ 
 						  "I have disabled operations until someone can check the camera (http://minervacam.sao.arizona.edu) "+ 
 						  "to ensure there is no snow or ice on the roof and the snow is not deep enough (< 6 in) for the roof "+
 						  "to dig into it. If the snow on the ground is too deep, please email the site staff to ask them to shovel. "+ 
