@@ -320,7 +320,7 @@ class site:
 
 		# MearthCloud reports 998.0 when it's raining and is much more reliable than wxt510Rain 
 		if self.weather['MearthCloud'] == 998.0:
-			self.lastrain += 0.001
+			self.lastRain += 0.001
 			self.rainChangeDate = datetime.datetime.utcnow()
 
 		# wxt510Rain uses an impact sensor and can be triggered by wind (unreliable)

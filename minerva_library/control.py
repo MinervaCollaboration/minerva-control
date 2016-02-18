@@ -27,6 +27,7 @@ import cdk700
 import imager
 import fau
 import spectrograph
+import utils
 import pdu
 import mail
 from get_all_centroids import *
@@ -584,10 +585,10 @@ class control:
 		except: pixscale = 0.61
 		
 		try: ra = float(hdr['RA'])
-		except: ra = self.ten(hdr['RA'])*15.0
+		except: ra = utils.ten(hdr['RA'])*15.0
     
 		try: dec = float(hdr['DEC'])
-		except: dec = self.ten(hdr['DEC'])
+		except: dec = utils.ten(hdr['DEC'])
 		if dec > 90.0: dec = dec - 360.0
 
 		radius = 3.0*pixscale*float(hdr['NAXIS1'])/3600.0
@@ -878,8 +879,26 @@ class control:
 
 		# begin exposure(s)
 		for i in range(target['num'][0]):
-			# should have dome checks
+			# make sure we're not past the end time
+			if datetime.datetime.utcnow() > target['endtime']: 
+				self.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
+				self.stopFAU(tele_list)
+				return
+			
+			while not self.domes[0].isOpen:
+				self.logger.info("Waiting for dome to open")
+				time.sleep(60.0)
+				if datetime.datetime.utcnow() > target['endtime']: 
+					self.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
+					self.stopFAU(tele_list)
+					return
+
 			self.takeSpectrum(target)
+
+		self.stopFAU(tele_list)
+		return
+
+	def stopFAU(self,tele_list):
 
 		# set camera.fau.guiding == False to stop guiders
 		for i in range(len(tele_list)):
@@ -1649,6 +1668,8 @@ class control:
                 f['PARDLY'] = ("","Parallel Shift Delay, ns")   # PARAM57
                 f['NPORTS'] = ("","Number of Ports")            # PARAM58
                 f['SHUTDLY'] = ("","Shutter Close Delay, ms")   # PARAM59
+                f['GAIN'] = ("1.30","Detector gain (e-/ADU)")
+                f['READNOISE'] = ("3.63","Detector read noise (e-)")
 
                                         
         #PARAM60 =                   74 / CCD Temp. Setpoint Offset,0.1 C               
@@ -1747,6 +1768,15 @@ class control:
 		f['EXPMETER'] = (self.pdus[4].expmeter.status(),'Exposure meter powered?')
 		f['LEDLAMP'] = (self.pdus[4].ledlamp.status(),'LED lamp powered?')
 		
+		f['XFIBER1'] = (self.cameras[0].fau.xfiber,'X position of fiber on FAU')
+		f['YFIBER1'] = (self.cameras[0].fau.yfiber,'Y position of fiber on FAU')
+		f['XFIBER2'] = (self.cameras[1].fau.xfiber,'X position of fiber on FAU')
+		f['YFIBER2'] = (self.cameras[1].fau.yfiber,'Y position of fiber on FAU')
+		f['XFIBER3'] = (self.cameras[2].fau.xfiber,'X position of fiber on FAU')
+		f['YFIBER3'] = (self.cameras[2].fau.yfiber,'Y position of fiber on FAU')
+		f['XFIBER4'] = (self.cameras[3].fau.xfiber,'X position of fiber on FAU')
+		f['YFIBER4'] = (self.cameras[3].fau.yfiber,'Y position of fiber on FAU')
+
 		return f
 
 
@@ -1846,8 +1876,8 @@ class control:
 
 
 			telescopeStatus = telescope.getStatus()
-			telra = self.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
-			teldec = self.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
+			telra = utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
+			teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
 			if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
 
 			az = str(float(telescopeStatus.mount.azm_radian)*180.0/math.pi)
@@ -1860,7 +1890,8 @@ class control:
 			rotpos = telescopeStatus.rotator.position
 			parang = str(telescope.parangle(useCurrent=True))
 			rotoff = telescope.rotatoroffset[m3port]
-			skypa = float(parang) + float(rotoff) - float(rotpos)
+			try: skypa = float(parang) + float(rotoff) - float(rotpos)
+			except: skypa = "UNKNOWN"
 			hourang = telescope.hourangle(useCurrent=True)
 			moonsep = str(ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi)
 
@@ -1964,12 +1995,12 @@ class control:
 		f['SITEALT'] = (str(self.site.obs.elevation),"Site Altitude (m)")
 		f['OBSERVER'] = ('MINERVA Robot',"Observer")
 
-		if len(tele_list) == 1:
-			if type(tele_list) is int:
-				tel = "T" + str(tele_list)
-			else:
+		if type(tele_list) is int:
+			tel = "T" + str(tele_list)
+		else: 
+			if len(tele_list) == 1:
 				tel = "T" + str(tele_list[0])
-		else: tel = 'ALL'
+			else: tel = 'ALL'
 
 		f['TELESCOP'] = (tel,"Telescope name")
 		f['APTDIA'] = ("700","Diameter of the telescope in mm")
@@ -2020,8 +2051,8 @@ class control:
 		f['CUNIT2'] = ("deg","Y pixel scale units")
 		
 		telescopeStatus = telescope.getStatus()
-		telra = self.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
-		teldec = self.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
+		telra = utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
+		teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
 		if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
 
 		f['CRVAL1'] = (telra,"RA of reference point")
@@ -2576,7 +2607,7 @@ class control:
 			shutil.copyfile(f, backupPath + os.path.basename(f))
 
 
-	def endNight(self, num=0, email=True, night=None):
+	def endNight(self, num=0, email=True, night=None, kiwispec=True):
 		
 		#S This implementation should allow you to specify a night you want to 'clean-up',
 		#S or just run end night on the current night. I'm not sure how it will act
@@ -2586,7 +2617,12 @@ class control:
 		if night == None:
 			night = self.site.night
 
-		dataPath = '/Data/t' + str(num) + '/' + night + '/'
+		if kiwispec: 
+			dataPath = '/Data/kiwispec/' + night + '/'
+			objndx = 1
+		else: 
+			dataPath = '/Data/t' + str(num) + '/' + night + '/'
+			objndx = 2
 
 		# park the scope
 		self.logger.info("Parking Telescope")
@@ -2595,20 +2631,27 @@ class control:
 
 		# Compress the data
 		self.logger.info("Compressing data")
-		self.imager_compressData(num,night=night)
+		if kiwispec: pass
+		else: self.imager_compressData(num,night=night)
 
 		# Turn off the camera cooler, disconnect
 #		self.logger.info("Disconnecting imager")
 # 		self.imager_disconnect()
 
                 #TODO: Back up the data
-		self.backup(num,night=night)
+		if kiwispec: pass
+		else: self.backup(num,night=night)
 
 		# copy schedule to data directory
-		schedulename = self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt"
+		if kiwispec: 
+			schedulename = self.base_directory + "/schedule/" + night + ".kiwispec.txt"
+			scheduleDest = dataPath + night + '.kiwispec.txt'
+		else: 
+			schedulename = self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt"
+			scheduleDest = dataPath + night + '.T' + str(num) + '.txt'
 		self.logger.info("Copying schedule file from " + schedulename + " to " + dataPath)
-		try: shutil.copyfile(schedulename, dataPath + night + ".T" + str(num) + ".txt")
-		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + dataPath)
+		try: shutil.copyfile(schedulename, scheduleDest)
+		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + scheduleDest)
 
 		# copy logs to data directory
 		logs = glob.glob(self.base_directory + "/log/" + night + "/*.log")
@@ -2623,8 +2666,8 @@ class control:
 		filenames = glob.glob(dataPath + '/*.fits*')
 		objects = {}
 		for filename in filenames:
-			obj = filename.split('.')[2]
-			if obj <> 'Bias' and obj <> 'Dark':
+			obj = filename.split('.')[objndx]
+			if not kiwispec and obj <> 'Bias' and obj <> 'Dark':
 				obj += ' ' + filename.split('.')[3]
 			if obj not in objects.keys():
 				objects[obj] = 1
@@ -2650,9 +2693,45 @@ class control:
 			#        'sunAltitude':[],
 			}
 #		ipdb.set_trace()
+
+		# these messages contain variables; trim them down so they can be consolidated
+		toospecific = [('The camera was unable to reach its setpoint ','in the elapsed time'),
+			       ('Slew failed to alt','az'),
+			       ('Slew failed to J2000',''),
+			       ('Telescope reports it is','away from the target postion'),
+			       ('Not a valid JSON line',''),
+			       ('malformed JSON',''),
+			       ('Required key (filter) not present',''),
+			       ('No schedule file',''),
+			       ('Aqawan failed to close after ','seconds'),
+			       ('The server has failed','times'),
+			       ('Camera failed','times'),
+			       ('taking image failed, image not saved',''),
+			       ('Failed to open shutter 1: Success=FALSE, Estop active',''),
+			       ('Required key (cycleFilter) not present',''),
+			       ('Required key (nflatEnd) not present',''),
+			       ('Required key (ndarkEnd) not present',''),
+			       ('Required key (nbiasEnd) not present',''),
+			       ('failed to save image',''),
+			       ('Required key (guide) not present',''),
+			       ('Required key (exptime) not present',''),
+			       ('Required key (num) not present',''),
+			       ('Failed to get hfr value',''),
+			       ('Failed to open shutter 1: Success=FALSE, Unknown command',''),
+			       ('Telescope reports it is','arcsec away from the requested postion'),
+			       ('Coordinates out of bounds; object not acquired!',''),
+			       ('File does not exist',''),
+			       ('takeImage failed',''),
+			       ('Failed to open shutter 2: Success=FALSE, Heartbeat timer expired',''),
+			       ('The process "PWI.exe" with PID ','could not be terminated.'),
+			       ('Could not copy schedule file',''),
+			       ('Failed to open shutter 1: Success=FALSE, Heartbeat timer expired',''),
+			       ('Failed to open shutter 2: Success=FALSE, Heartbeat timer expired','')]
+
 		for log in logs:
 			with open(log,'r') as f:
 				for line in f:
+					# search for WARNINGs or ERRORs
 					if re.search('WARNING: ',line) or re.search("ERROR: ",line):
 						if re.search('WARNING: ',line): errmsg = line.split('WARNING: ')[1].strip()
 						else: errmsg = line.split('ERROR: ')[1].strip()
@@ -2660,9 +2739,15 @@ class control:
 						if len(errmsg.split('active ')) > 1:
 							errmsg = errmsg.split('active')[0] + 'active'
 
+						# consolidate error messages with variables
+						for genmsg in toospecific:
+							if genmsg[0] in errmsg and genmsg[1] in errmsg:
+								errmsg = genmsg[0] + ' ' + genmsg[1]
+
 						if errmsg not in errors.keys():
 							errors[errmsg] = 1
 						else: errors[errmsg] += 1
+					# Search for weather lines
 					elif re.search('=',line):
 						try: key = line.split('=')[-2].split()[-1]
 						except: key = 'fail'
@@ -2698,7 +2783,13 @@ class control:
 		    "MINERVA"
 
 		# email observing report
-		if email: mail.send("T" + str(num) + ' done observing',body)
+		if email: 
+			if num == 0: subject="MINERVA done observing"
+			else: subject = "T" + str(num) + ' done observing'
+			mail.send(subject,body)
+
+		print body
+
 
 	def parseTarget(self,line):
 		try:

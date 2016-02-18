@@ -18,6 +18,7 @@ import socket
 import shutil
 import subprocess
 import ephem
+import utils
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -149,7 +150,7 @@ class CDK700:
 
 		self.logger.info('T' + self.num + ': re-loading pointing model for the current port')
 		telescopeStatus = self.getStatus()
-		self.m3port_switch(int(telescopeStatus.m3.port),force=True)
+		self.m3port_switch(telescopeStatus.m3.port,force=True)
 
 		# turning on mount tracking, rotator tracking
 		#S I'm defaulting this off, but including an argument in case we do want it
@@ -387,7 +388,7 @@ class CDK700:
 		lst = self.lst()
 		if useCurrent:
 			status = self.getStatus()
-			ra = self.ten(status.mount.ra)
+			ra = utils.ten(status.mount.ra)
 		else:
 			ra = target['ra']
 		return lst - ra
@@ -396,14 +397,7 @@ class CDK700:
 	# this is a bit of a hack...
         def lst(self):
                 status = self.getStatus()
-                return self.ten(status.status.lst)
-
-
-        def ten(self,string):
-                array = string.split()
-                if "-" in array[0]:
-                        return float(array[0]) - float(array[1])/60.0 - float(array[2])/3600.0
-                return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
+                return utils.ten(status.status.lst)
 	
         # calculate the parallactic angle (for guiding)
         def parangle(self, target=None, useCurrent=False):
@@ -412,7 +406,7 @@ class CDK700:
 		ha = self.hourangle(target=target, useCurrent=useCurrent)
 		if useCurrent:
 			status = self.getStatus()
-			dec = self.ten(status.mount.dec)
+			dec = utils.ten(status.mount.dec)
 		else:
 			dec = target['dec']
                 #stolen from parangle.pro written by Tim Robinshaw
@@ -695,8 +689,8 @@ class CDK700:
 
 		# if ra/dec is specified, make sure we're close to the right position
 		if ra <> None and dec <> None:
-			ActualRa = self.ten(telescopeStatus.mount.ra_2000)*math.pi/12.0
-			ActualDec = self.ten(telescopeStatus.mount.dec_2000)*math.pi/180.0
+			ActualRa = utils.ten(telescopeStatus.mount.ra_2000)*math.pi/12.0
+			ActualDec = utils.ten(telescopeStatus.mount.dec_2000)*math.pi/180.0
 			DeltaPos = math.acos( math.sin(ActualDec)*math.sin(dec*math.pi/180.0)+math.cos(ActualDec)*math.cos(dec*math.pi/180.0)\
 						      *math.cos(ActualRa-ra*math.pi/12.0) )*(180.0/math.pi)*3600.0
 			if DeltaPos > pointingTolerance:
@@ -882,8 +876,8 @@ class CDK700:
 		star._ra = ephem.hours(str(ra))
 		star._dec = ephem.degrees(str(dec))
 		star.compute(obs)
-		alt = self.ten(" ".join(str(star.alt).split(':')))
-		az = self.ten(" ".join(str(star.az).split(':')))
+		alt = utils.ten(star.alt)
+		az = utils.ten(star.az)
 		return alt,az
 
 	def m3port_switch(self,m3port, force=False):

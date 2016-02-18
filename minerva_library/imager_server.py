@@ -251,6 +251,7 @@ class server:
 		try:
                         if fau:
                                 self.logger.info('Saving guider image')
+                                time.sleep(0.1) # wait for the image to start
                                 while self.cam.GuiderRunning:
                                         time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)

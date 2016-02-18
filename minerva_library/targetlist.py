@@ -4,6 +4,8 @@ from oauth2client.client import SignedJwtAssertionCredentials
 import warnings # suppress SSL security warnings!
 from collections import OrderedDict
 import ipdb
+import copy
+import datetime
 
 def downloadList(bstar=False):
 
@@ -62,52 +64,58 @@ def rdlist(bstar=False, update=True):
                 targetlist[h.split('(')[0].strip()].append(v)
         return targetlist
 
-def mkdict(name, bstar=False):
+
+# make a list of target dictionaries for each (active) target based on the target spreadsheet
+def mkdict(name=None, bstar=False, includeInactive=False):
 
     targetlist = rdlist(bstar=bstar)
 
-    target = OrderedDict()
+    targets = []
     for i in range(len(targetlist['name'])):
-        if targetlist['name'][i] == name:
-            target['name'] = targetlist['name'][i]
-            target['ra'] = float(targetlist['ra'][i])
-            target['dec'] = float(targetlist['dec'][i])
-            target['starttime'] = "2015-01-01 00:00:00"
-            target['endime'] = "2018-01-01 00:00:00"
-            target['spectroscopy'] = True
-            target['filter'] = ["rp"]
-            target['num'] = [1]
-            target['exptime'] = [300.0]
-            target['fauexptime'] = 1
-            target['defocus'] = 0.0
-            target['selfguide'] = True
-            target['guide'] = False
-            target['cycleFilter'] = True
-            target['positionAngle'] = 0.0
-            target['pmra'] = float(targetlist['pmra'][i])
-            target['pmdec'] = float(targetlist['pmdec'][i])
-            target['parallax'] = float(targetlist['parallax'][i])
-            target['rv'] = float(targetlist['rv'][i])
-            target['i2'] = True
-            target['comment'] = targetlist['comment'][i]
+        target = OrderedDict()
+        target['name'] = targetlist['name'][i]
+        target['ra'] = float(targetlist['ra'][i])
+        target['dec'] = float(targetlist['dec'][i])
+        target['starttime'] = "2015-01-01 00:00:00"
+        target['endtime'] = "2115-01-01 00:00:00"
+        target['spectroscopy'] = True
+        target['filter'] = ["rp"]
+        target['num'] = [1]
+        target['exptime'] = [float(targetlist['exptime'][i])]
+        target['fauexptime'] = 1
+        target['defocus'] = 0.0
+        target['selfguide'] = True
+        target['guide'] = False
+        target['cycleFilter'] = True
+        target['positionAngle'] = 0.0
+        target['pmra'] = float(targetlist['pmra'][i])
+        target['pmdec'] = float(targetlist['pmdec'][i])
+        target['parallax'] = float(targetlist['parallax'][i])
+        target['rv'] = float(targetlist['rv'][i])
+        target['i2'] = True
+        target['comment'] = targetlist['comment'][i]
+        
+        if name <> None:
+            if targetlist['name'][i] == name:
+                return target
+        elif targetlist['active'][i] ==  '1' or includeInactive:
+            targets.append(target)
 
-    return target
+    if len(targets) == 0: return -1
+    return targets
     
-def mkjson(name, bstar=False):
+def target2json(target):
     
-    target = mkdict(name,bstar)
-    
-    if len(target) > 0:
-        return json.dumps(target)
+    tmptarget = copy.deepcopy(target)
 
-    else:
-        print "no match found for " + str(name)
-        return -1
+    tmptarget['starttime'] = datetime.datetime.strftime(target['starttime'],'%Y-%m-%d %H:%M:%S')
+    tmptarget['endtime'] = datetime.datetime.strftime(target['endtime'],'%Y-%m-%d %H:%M:%S')
+    return json.dumps(tmptarget)    
    
 if __name__ == '__main__':
 
     bstar = False
-    print mkjson('HD191408A')
+#    print target2json('HD191408A')
     ipdb.set_trace()
 
 

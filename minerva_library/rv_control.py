@@ -5,76 +5,97 @@ import ipdb
 import datetime
 import sys
 import ephem
+import targetlist
+import env
+import time
 
 def rv_observing(minerva):
 
     # python bug work around -- strptime not thread safe. Must call this once before starting threads    
     junk = datetime.datetime.strptime('2000-01-01 00:00:00','%Y-%m-%d %H:%M:%S')
 
+    mail.send("MINERVA starting observing","Love,\nMINERVA")
+    
     minerva.domeControlThread()
     minerva.telescope_initialize(tracking=False,derotate=False)
     minerva.telescope_park()
 
+    backlight(minerva)
+    minerva.specCalib()
 
     with open(minerva.base_directory + '/schedule/' + minerva.site.night + '.kiwispec.txt', 'r') as targetfile:
         for line in targetfile:
             target = minerva.parseTarget(line)
+            print target
             if target <> -1:
-                # check if the end is after morning twilight begins                                                                                                        
+                # check if the end is after morning twilight begins
                 if target['endtime'] > minerva.site.NautTwilBegin():
                     target['endtime'] = minerva.site.NautTwilBegin()
-                    # check if the start is after evening twilight ends                                                                                                        
-                    if target['starttime'] < minerva.site.NautTwilEnd():
-                        target['starttime'] = minerva.site.NautTwilEnd()
 
-                        # compute the rise/set times of the target
-                        #S I think something with coordinates is screwing us up here                                                                                               
-                        #S We are still going below 20 degrees.                                                                                                                    
-                        minerva.site.obs.horizon = '21.0'
-                        body = ephem.FixedBody()
-                        body._ra = str(target['ra'])
-                        body._dec = str(target['dec'])
-                        #S using UTC now for the epoch, shouldn't make a siginificant                                                                                              
-                        #S difference from using local time                                                                                                                        
-                        body._epoch = datetime.datetime.utcnow()
-                        body.compute()
+                # check if the start is after evening twilight ends
+                if target['starttime'] < minerva.site.NautTwilEnd():
+                    target['starttime'] = minerva.site.NautTwilEnd()
+
+                # compute the rise/set times of the target
+                #S I think something with coordinates is screwing us up here
+                #S We are still going below 20 degrees.                
+                minerva.site.obs.horizon = '21.0'
+                body = ephem.FixedBody()
+                body._ra = str(target['ra'])
+                body._dec = str(target['dec'])
+                    
+                #S using UTC now for the epoch, shouldn't make a significant
+                #S difference from using local time
+                body._epoch = datetime.datetime.utcnow()
+                body.compute()
                         
-                        try:
-                            risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()).datetime()
-                        except ephem.AlwaysUpError:
-                            # if it's always up, don't modify the start time                                                                                                   
-                            risetime = target['starttime']
-                        except ephem.NeverUpError:
-                            # if it's never up, skip the target                                                                                                                
-                            risetime = target['endtime']
-                        try:
-                            settime = minerva.site.obs.next_setting(body,start=minerva.site.NautTwilEnd()).datetime()
-                        except ephem.AlwaysUpError:
-                            # if it's always up, don't modify the end time                                                                                                     
-                            settime = target['endtime']
-                        except ephem.NeverUpError:
-                            # if it's never up, skip the target                                                                                                                
-                            settime = target['starttime']
+                try:
+                    risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()).datetime()
+                except ephem.AlwaysUpError:
+                    # if it's always up, don't modify the start time
+                    risetime = target['starttime']
+                except ephem.NeverUpError:
+                    # if it's never up, skip the target
+                    risetime = target['endtime']
+                try:
+                    settime = minerva.site.obs.next_setting(body,start=minerva.site.NautTwilEnd()).datetime()
+                except ephem.AlwaysUpError:
+                    # if it's always up, don't modify the end time
+                    settime = target['endtime']
+                except ephem.NeverUpError:
+                    # if it's never up, skip the target
+                    settime = target['starttime']
+                if risetime > settime:
+                    try:
+                        risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
+                    except ephem.AlwaysUpError:
+                        # if it's always up, don't modify the start time
+                        risetime = target['starttime']
+                    except ephem.NeverUpError:
+                        # if it's never up, skip the target
+                        risetime = target['endtime']
 
-                        if risetime > settime:
-                            try:
-                                risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
-                            except ephem.AlwaysUpError:
-                                # if it's always up, don't modify the start time
-                                risetime = target['starttime']
-                            except ephem.NeverUpError:
-                                # if it's never up, skip the target
-                                risetime = target['endtime']
+                # make sure the target is always above the horizon
+                if target['starttime'] < risetime:
+                    target['starttime'] = risetime
+                if target['endtime'] > settime:
+                    target['endtime'] = settime
 
-                        # make sure the target is always above the horizon
-                        if target['starttime'] < risetime:
-                            target['starttime'] = risetime
-                        if target['endtime'] > settime:
-                            target['endtime'] = settime
+                if target['starttime'] < target['endtime']:
+                    minerva.doSpectra(target,[1,2,3,4])
+                else: minerva.logger.info(target['name']+ ' not observable; skipping')
 
-                        if target['starttime'] < target['endtime']:
-                            minerva.doSpectra(target,[1,2,3,4])
-                            minerva.logger.info(target['name']+ ' not observable; skipping')
+    minerva.observing=False
+    minerva.endNight()
+    
+
+def endNight(minerva):
+
+    for telescope in minerva.telescopes:
+        minerva.endNight(num=int(telescope.num), email=False)
+    minerva.endNight(kiwispec=True)
+
+
 
 def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backlight'):
 
@@ -101,7 +122,6 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
         kwargs = {'position':stagepos}
         threads = [threading.Thread(target=minerva.ctrl_i2stage_move,kwargs=kwargs)]
         
-
     # turn on the slit flat LED
     minerva.spectrograph.led_turn_on()
 
@@ -133,10 +153,9 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
             }
         fau_threads.append(threading.Thread(target=minerva.takeFauImage,args=[target,],kwargs=kwargs)) 
 
-    print "starting all FAU images"
+    # start all the FAU images
     for fau_thread in fau_threads:
         fau_thread.start()
-    print "started all FAU images"
 
     # wait for all fau images to complete
     for fau_thread in fau_threads:
@@ -148,9 +167,13 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
     # turn off the slit flat LED
     minerva.spectrograph.led_turn_off()
 
-    print "done with backlit images"
+    minerva.logger.info("Done with backlit images")
     
     #minerva.takeFauImage({'name':'backlight','fauexptime':1},telescope_num=1)
+
+# given a backlit FAU image, locate the fiber
+def find_fiber(image):
+    pass
     
 def rv_observing_catch(minerva):
     try:
@@ -158,7 +181,7 @@ def rv_observing_catch(minerva):
     except Exception as e:
         minerva.logger.exception('rv_observing thread died: ' + str(e.message) )
         body = "Dear benevolent humans,\n\n" + \
-            'I have encountered an unhandled exception which has killed the specCalib control thread. The error message is:\n\n' + \
+            'I have encountered an unhandled exception which has killed the rv_observing control thread at ' + str(datetime.datetime.utcnow()) + '. The error message is:\n\n' + \
             str(e.message) + "\n\n" + \
             "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart 'main.py\n\n'" + \
             "Love,\n" + \
@@ -167,36 +190,178 @@ def rv_observing_catch(minerva):
         sys.exit()
 
 def fiber_stability(minerva):
+
+    timeout = 360.0
+
     # evaluate stability as a function of alt/az/rotation
     for rotang in range(0,360,10):
 
         threads = []
-        for telescope in minerva.telescopes():
+        for telescope in minerva.telescopes:
             threads.append(threading.Thread(target=telescope.rotatorMove,args=[rotang,]))
         for thread in threads:
             thread.start()
             
         # now slew in alt/az
-        for alt in range(21,84,15):
-            for az in range(0,270,90):
+        for az in range(0,270,90):
+            for alt in range(21,84,15):
                 
                 minerva.telescope_mountGotoAltAz(alt,az)
 
+                t0 = datetime.datetime.utcnow()
+                elapsedTime = 0.0
+
                 # wait for telescopes to get in position
-                for telescope in minerva.telescopes():
-                    while not telescope.inPosition(alt=alt,az=az):
+                for telescope in minerva.telescopes:
+                    while not telescope.inPosition(alt=alt,az=az,pointingTolerance=3600.0) and elapsedTime < timeout:
                         time.sleep(1)
+                        elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
                 
                 backlight(minerva)
+
+
+def get_rv_target(minerva, bstar=False):
+    targets = targetlist.mkdict(bstar=bstar)
+
+    # use astronomical twilight
+    sunset = minerva.site.sunset(horizon=-18)
+    sunrise = minerva.site.sunrise(horizon=-18)
+
+    goodtargets = []
+    for target in targets:
+
+        starttime = sunset
+        endtime = sunrise
+
+        minerva.site.obs.horizon = '21.0'
+        body = ephem.FixedBody()
+        body._ra = str(target['ra']*15.0)
+        body._dec = str(target['dec'])
+
+        #S UTC vs local time not right, but not significant
+        body._epoch = datetime.datetime.utcnow()
+        body.compute()
+                        
+        # calculate the object's rise time
+        try:
+            risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()).datetime()
+        except ephem.AlwaysUpError:
+            # if it's always up, don't modify the start time
+            risetime = starttime
+        except ephem.NeverUpError:
+            # if it's never up, skip the target     
+            risetime = endtime
+ 
+        # calculate the object's set time
+        try:
+            settime = minerva.site.obs.next_setting(body,start=minerva.site.NautTwilEnd()).datetime()
+        except ephem.AlwaysUpError:
+            # if it's always up, don't modify the end time
+            settime = endtime
+        except ephem.NeverUpError:
+            # if it's never up, skip the target
+            settime = starttime
+
+        # if it rises before it sets, redo with the previous day
+        if risetime > settime:
+            try:
+                risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
+            except ephem.AlwaysUpError:
+                # if it's always up, don't modify the start time
+                risetime = starttime
+            except ephem.NeverUpError:
+                # if it's never up, skip the target
+                risetime = endtime
+
+        # modify start time to ensure the target is always above the horizon
+        if starttime < risetime:
+            starttime = risetime
+        if endtime > settime:
+            endtime = settime
+
+        if starttime < endtime:
+            target['starttime'] = starttime
+            target['endtime'] = endtime
+            
+            goodtargets.append(target)
+
+    for target in goodtargets:
+        print target['name'] + ' ' + str(target['starttime']) + ' ' + str(target['endtime'])
+
+    return goodtargets
+        
+def mkschedule(minerva):
+#    night = datetime.datetime.utcnow().strftime('%Y%m%d')
+    scheduleFile = minerva.base_directory + '/schedule/' + minerva.night + '.kiwispec.txt' 
+
+
+    sunset = minerva.site.sunset(horizon=-18)
+    sunrise = minerva.site.sunrise(horizon=-18)
+
+
+    targets = get_rv_target(minerva)
+    bstars = get_rv_target(minerva,bstar=True)
+
+    acquisitionOverhead = 300.0
+    readTime = 21.7
+    bstarndx = 0
+    nbstars = len(bstars)
+    elapsedTime = 0.0
+
+    fh = open(scheduleFile,'w')
+    while ((sunrise-sunset).total_seconds() + 3600.0) > elapsedTime:
+        for target in targets:
+            num = 3
+            target['num'] = [num]
+
+            acquisitionTime = acquisitionOverhead + num*(readTime+target['exptime'][0])
+
+            starttime = sunset + datetime.timedelta(seconds=elapsedTime)
+            endtime = sunset + datetime.timedelta(seconds=elapsedTime+acquisitionTime)
+            if (endtime <= target['endtime'] and starttime >= target['starttime']) or (starttime >= target['starttime'] and target['endtime'] == sunrise):
+
+                target['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
+                target['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
+
+                                              
+
+                # add a target to the schedule
+                elapsedTime += acquisitionTime
+
+                jsonstr = targetlist.target2json(target)
+                fh.write(jsonstr + '\n')
+
+                # add a B star to the schedule
+
+                acquisitionTime = (acquisitionOverhead + num*(readTime+bstars[bstarndx]['exptime'][0]))
+
+                bstars[bstarndx]['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
+                bstars[bstarndx]['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
+
+                elapsedTime += acquisitionTime
+                jsonstr = targetlist.target2json(bstars[bstarndx])
+                fh.write(jsonstr + '\n')
+
+                bstarndx = (bstarndx + 1) % nbstars
+    fh.close()
+
+
 
 if __name__ == "__main__":
 
     minerva = control.control('control.ini','/home/minerva/minerva-control')
+
+#    endNight(minerva)
+#    sys.exit()
+    mkschedule(minerva)
+#    sys.exit()
+    
+     
     minerva.telescope_initialize(tracking=False,derotate=False)
     minerva.telescope_park()
 
 
-    ipdb.set_trace()
+#    ipdb.set_trace()
     fiber_stability(minerva)
 
 #    # figure out the optimal stage position for i2 stage during backlighting (81 mm)
