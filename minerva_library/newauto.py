@@ -5,10 +5,11 @@ import scipy
 import scipy.optimize
 import ipdb
 import warnings
+import utils
 
 #S A custom exception class, so we can catch the results of fits on a case by case basis.
 class afException(Exception):
-    def __init__(self,message,focus,coeffs):
+    def __init__(self,message='Autofocus Exception',focus=0.0,coeffs=0.0):
         self.message = message
         self.focus = focus
         self.coeffs = coeffs
@@ -16,8 +17,8 @@ class afException(Exception):
 
 #S Simple function for plotting results in a record file
 #S also does a fit, etc..
-#S Sort of carbon copy of fitquadfindmin, just beacuse we want all coeffs and don't
-#S want to force that out of 
+#S Sort of carbon copy of fitquadfindmin, just beacuse we want all coeffs and 
+#S don't want to force that out of 
 def recordplot(recordfile,step=1):
     raw_data = np.genfromtxt(recordfile,skip_header=2)
     poslist = raw_data[::step,1].astype(float)
@@ -29,7 +30,8 @@ def recordplot(recordfile,step=1):
     if len(goodind) == 0:
         print 'Nothing good in that record, try something better!'
         return
-    focus,coeffs = fitquadfindmin(poslist[goodind],hfrlist[goodind],stdlist[goodind]*np.sqrt(numlist[goodind]))
+    focus,coeffs = fitquadfindmin(poslist[goodind],hfrlist[goodind],
+                                  stdlist[goodind]*np.sqrt(numlist[goodind]))
     xplot = np.linspace(poslist.min(),poslist.max(),100)
     print 'Only plotting points with found hfradii'
     print 'Coeffs:' 
@@ -37,7 +39,8 @@ def recordplot(recordfile,step=1):
     print 'Focus:'
     print focus
     plt.plot(poslist[goodind],hfrlist[goodind],'b.')
-    plt.errorbar(poslist[goodind],hfrlist[goodind],stdlist[goodind],linestyle='None')
+    plt.errorbar(poslist[goodind],hfrlist[goodind],stdlist[goodind],\
+                     linestyle='None')
     plt.plot(xplot,quad(xplot,coeffs),'g')
     plt.show()
     ipdb.set_trace()
@@ -47,40 +50,53 @@ def recordplot(recordfile,step=1):
 def quad(x,c):
     return c[0]*x**2+c[1]*x+c[2]
     
-def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=None,catfile=None):
+#S Want to use new utils.readsexcat()
+#S want to look at multiple images of one focus for FAU focusing potentially
+def new_get_hfr(catfile,FAU=False,telescope=None,min_stars=10,ellip_lim=.8):
+    #S get a dictionary containg the columns of a sextracted image
+    cata = utils.readsexcat(catfile)
+    if not ('FLUX_RADIUS' in cata.keys()):
+        telescope.logger.exception('No hfr in '+catfile)
+        raise afException(message='No FLUX_RADIUS in keys')
 
-    #S Path on MinervaMAIN where all the .sex, .param, etc. files will be 
-    #S located
-    sexpath = '/usr/share/sextractor/'
-    #S This is the base command we be calling with sextractor. It has
-    #S the default sexfile of autofocus.sex, which will be given some pretty 
-    #S general values for now.
-    # We'll add on other parameters and arguements as they are specified
-    sexcommand = 'sextractor '+datapath+imagefile+' -c ' + sexpath+sexfile
-    #S If a paramfile was specfied, then we will use that instead of the 
-    #S default param file in autofocus.sex (which is autofocus.param)
-    if paramfile <> None:
-        sexcommand+= ' -PARAMETERS_NAME ' + sexpath+paramfile
-    #S Similar to above, but will be the vconvolution filter that were using.
-    if convfile <> None:
-        sexcommand+= ' -FILTER_NAME ' + sexpath+convfile
-    #S we're going to name the catalog after the image just by removing the 
-    #S fits and  adding cat. if a cat file is specified we'll use that. 
-    #S Datpath is the path where the image is (hopefully), but can be anywhere
-    #S you want it to go.
-    if catfile == None:
-        catfile = imagefile.split('.fits')[0] + '.cat'
-        sexcommand += ' -CATALOG_NAME ' + datapath+catfile
-    #S so we a have sexcommand, which has all of it's components split by 
-    #S spaces ideally, which will allow for just a .split to put in a list 
-    #S for subprocess.call
-    subprocess.call(sexcommand.split())
-    #S Just going to return the catalog file name for now, could return fwhm, 
-    #S whatever later
-    return catfile
+    if not ('A_IMAGE' in cata.keys() and 'B_IMAGE' in cata.keys()):
+        pass
+    else:
+        circ_ind = np.where((cata['A_IMAGE']/cata['B_IMAGE'])>ellip_lim)[0]
+
+    if len(circ_ind)!=0:
+        #S If we expect only one or two stars from the FAU guide camera
+        if FAU:
+            pass
+        #S if we expect an imager image with more than ten stars
+        elif len(circ_ind>min_stars):
+            try:
+                hfr_med = np.median(cata['FLUX_RADIUS'][circ_ind])
+            except:
+                raise afException(message='Could not get median value in '\
+                                    +catfile)
 
 
+            try:
+                numstars = len(circ_ind)
+                #S Get the Median Absolute Deviation, and we'll convert to 
+                #S stddev then stddev of the mean
+                hfr_mad = np.median(np.absolute(\
+                        cata['FLUX_RADIUS'][circ_ind]\
+                            -np.median(cata['FLUX_RADIUS'][circ_ind])))
+                #S We assume that our distribution is normal, and convert to 
+                #S stddev. May need to think more 
+                #S about this, as it isn't probably normal. 
+                #S Recall stddev of the mean = stddev/sqrt(N)
+                hfr_std = (hfr_mad*1.4862)/np.sqrt(numstars)
+            except: 
+                raise afException(message='Could not get HFR_STD')
 
+    return hfr_med, hfr_std, numstars
+    
+    
+                
+    
 def get_hfr_med(catfile):
     #S This is a powerful statement, and doesn't belong here. I think it 
     #S changes how warnings are handled in even scopes above, and I think I
@@ -88,7 +104,8 @@ def get_hfr_med(catfile):
     #S now or we will in the future.
 #    warnings.filterwarnings('error')
     #S need to find which column has the hfr, but it'll start as None
-    #S Same for ae_col and be_col, the 'lengths' of the the semi-major and semi-minor axis, see sextractor for the deets
+    #S Same for ae_col and be_col, the 'lengths' of the the semi-major and 
+    #S semi-minor axis, see sextractor for the deets
     hfr_col = None
     ae_col = None
     be_col = None
@@ -126,7 +143,7 @@ def get_hfr_med(catfile):
     #S if we found both, we can filter by the 'eccentricity', or minor-axis/major-axis
     #S 0.8 here is an empirical value, probably could be stricter, but testing in progress.
     else:
-        circ_ind = np.where(cat_array[:,be_col-1]/cat_array[:,ae_col-1] > 0.8)[0]
+        circ_ind = np.where(cat_array[:,be_col-1]/cat_array[:,ae_col-1] > 0.7)[0]
         #S If we found some indices where we weren't too elliptical
         if len(circ_ind) != 0:
             hfr_array = cat_array[circ_ind,hfr_col-1]
@@ -156,7 +173,8 @@ def get_hfr_med(catfile):
     return hfr_med, hfr_std, numstars
 
 
-def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,telescope_num=99):
+def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
+	telescope_num=99):
 
     
     #S if given a list of stadard deviations, we need to do the inverse of that for the wieght in np.polyfit
@@ -246,10 +264,281 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,telescope_num
             return best_focus, coeffs
     #S Return coeffs for extra output to any other function besides control
     return best_focus, coeffs
+
+
+def autofocus(control,telescope,num_steps=10,defocus_step=0.3,af_exptime=5,\
+                  af_filter="V",spectroscopy=False):
+    if spectroscopy: return
+    #S get the telescope we plan on working with
+    telescope = control.telescopes[telescope_number-1]
+    af_target = {}
+    #S define aftarget dict for takeImage
+    af_target['name'] = 'autofocus'
+    af_target['exptime'] = af_exptime
+    af_target['filter'] = af_filter
+    af_target['spectroscopy'] = spectroscopy
+
+    #select the appropriate port (default to imager)
+    if 'spectroscopy' in af_target.keys():
+        if af_target['spectroscopy']:
+            m3port = telescope.port['FAU']
+        else:
+            m3port = telescope.port['IMAGER']
+    else:
+        m3port = telescope.port['IMAGER']
+    #S our data path
+    datapath = '/Data/t' + str(telescope_number) + '/' + \
+        control.site.night + '/'
+
+    #wait for dome to be open
+    if telescope_number > 2:
+        dome = control.domes[1]
+    else:
+        dome = control.domes[0]
+    #S Get current time for measuring timeout
+    t0 = datetime.datetime.utcnow()
+    #S Loop to wait for dome to open, cancels afeter ten minutes
+    while dome.isOpen == False:
+        control.logger.info('T' + str(telescope_number) + ': Enclosure '+\
+                                'closed; waiting for dome to open')
+        timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
+        if timeelapsed > 600:
+            control.logger.info('T' + str(telescope_number) + \
+                                    ': Enclosure still closed after '+\
+                                    '10 minutes; skipping autofocus')
+            return
+        time.sleep(30)
+
+    #S Initialize telescope, we want tracking ON
+    if not telescope.initialize(tracking=True, derotate=True):
+        telescope.recover(tracking=True, derotate=True)
+
+    #S make array of af_defocus_steps
+    defsteps = np.linspace(-defocus_step*(num_steps/2),\
+                                defocus_step*(num_steps/2),num_steps)
+    #S Array of new positions for the focuser, using this rahter than step.
+    poslist = defsteps*1000 + telescope.focus
+
+    #S Just need an empty list for the fwhm/hfr and std to append to. made
+    #S FOCUSMEASure_LIST because we don't necessarily know which value we want
+    imagenum_list = []
+    focusmeas_list = []
+    stddev_list = []
+    numstar_list = []
+
+
+    for step in defsteps:
+        #S set the new focus, and move there if necessary
+        newfocus = telescope.focus + step*1000.0
+        status = telescope.getStatus()
+
+        #S ensure we have the correct port
+        telescope.m3port_switch(m3port)
+        #S move and wait for focuser
+        if newfocus <> status.focuser.position:
+            telescope.logger.info("Defocusing by " + str(step) + \
+                                 ' mm, to ' + str(newfocus))
+            telescope.focuserMove(newfocus)
+            #S Needed a bit longer to recognize focuser movement, changed
+            #S from 0.3
+            time.sleep(.5)
+
+            #S Take image, recall takeimage returns the filename of the image.
+            #S we have the datapath from earlier
+            imagename = control.takeImage(af_target,\
+                                           telescope_num=telescope_number)
+            imagenum_list.append(imagename.split('.')[4])
+
+            #S Sextract this guy, put in a try just in case. Defaults should
+            #S be fine, which are set in newauto. NOt sextrator defaults
+            try:
+                catalog = utils.sextract(datapath,imagename)
+                control.logger.debug('T' + str(telescope_number) + \
+                                      ': Sextractor success on '+catalog)
+            except:
+                control.logger.exception('T' + str(telescope_number) + \
+                                          ': Sextractor failed on '+catalog)  
+
+            #S get focus measure value, as well as standard deviation of the
+            #S mean
+            try:
+                median, stddev, numstar = newauto.get_hfr_med(catalog)
+                telescope.logger.info('Got hfr value from '+catalog)
+                focusmeas_list.append(median)
+                stddev_list.append(stddev)
+                numstar_list.append(numstar)
+            #S if the above fails, we set these obviously wrong numbers, and
+            #S move on. We'll identify these points later.
+            except:
+                telescope.logger.exception('Failed to get hfr value from '+\
+                                          catalog)
+                #S Set the default 'bad' value to 999. we want to maintain
+                #S the size/shape of arrays for later use, and will thus track 
+                #S these bad points for exclusion later.
+                focusmeas_list.append(-999)
+                stddev_list.append(999)
+                numstar_list.append(0)
+
+    #S define poslist from steps and the old best focus. this is an
+    #S nparray
+    poslist = defsteps*1000 + telescope.focus
+    #S Convert to array for ease of mind
+    focusmeas_list = np.array(focusmeas_list)
+    stddev_list = np.array(stddev_list)
+    #S find the indices where we didnt hit an error getting a measure
+    goodind = np.where(focusmeas_list <> -999)[0]
+
+
+    #S This try is here to catch any errors/exceptions raised out of
+    #S fitquad. I think we should include exceptions if we are too far
+    #S out of focus, etc to make this catch whenever we didn't find a
+    #S best focus.
+    try:
+        #S this is in place to catch us if all the images fail to get
+        #S sextracted or something else goes on.
+        #S probably a better way to do this, but we'll figure that out
+        #S later.
+        if len(goodind) == 0:
+            control.logger.exception('T'+str(telescope_number)+\
+                                          ' failed autofocus due to '+\
+                                          'no medians')
+            raise Exception()
+        #S find the best focus
+        control.logger.debug('T'+str(telescope_number) +': fitting '+\
+                                 'to '+str(len(goodind))+' points.')
+        new_best_focus,fitcoeffs = newauto.fitquadfindmin(\
+            poslist[goodind],focusmeas_list[goodind],\
+                weight_list=stddev_list[goodind],\
+                logger=self.logger,telescope_num=telescope_number)
+        control.logger.debug('T'+str(telescope_number)+': found a'+\
+                                     ' good fit.')
+    except:
+        #S if something went wrong, log and send email.
+        new_best_focus = None
+        self.logger.exception('T'+str(telescope_number)+' failed in '+\
+                                  'finding new focus, and could probably'+\
+                                  'use some help')
+        body = "Hey humans,\n\nI'm having trouble with autofocus, and "+\
+            "need your assitance. You have a few options:\n"\
+            +"-Try and figure what is going on with the newautofocus\n"\
+            +"-Revert to PWI autofocus\n"\
+            +"This may be tricky because a lot of this is worked into "+\
+            "the observingScript, "\
+            +"and you may be fighting with that for control of the "+\
+            "telescope."\
+            +" I would recommend stopping main.py, but it could be "+\
+            "situational.\n\n"\
+            +"I AM CONTINUING WITH NORMAL OPERATIONS USING OLD ''BEST'' "+\
+            "FOCUS.\n\n"\
+            +"Love,\nMINERVA\n\n"\
+            +"P.S. Tips and tricks (please add to this list):\n"\
+            +"-You could be too far off the nominal best focus, and the"+\
+            " routine can't find a clean fit.\n"\
+            +"-The aqawan could somehow be closed, and you're taking "+\
+            "pictures that it can't find stars in.\n"\
+            +"-You can now plot the results of any autofocus run, look "+\
+            "into newauto.recordplot(). Just "\
+            +"'python newauto.py' and enter the recordplot(path+"+\
+            "record_name).\n"
+        mail.send("Autofocus failed on T"+str(telescope_number),body,\
+                      level='serious')
+
+
+    #S Log the best focus.
+    control.logger.info('T' + str(telescope_number) + ': New best '+\
+                            'focus: ' + str(new_best_focus))
+
+    # if no sensible focus value measured, use the old value
+    if new_best_focus == None: new_best_focus = telescope.focus
+
+    # want to record old best focus
+    old_best_focus = telescope.focus
+    # update the telescope focus
+    telescope.focus = new_best_focus
+    # move to the best focus
+    status = telescope.getStatus()
+    if telescope.focus <> status.focuser.position:
+        control.logger.info('T'+str(telescope_number) + ": Moving focus to " +\
+                                str(telescope.focus))
+        telescope.focuserMove(telescope.focus)
+        # wait for focuser to finish moving
+        status = telescope.getStatus()
+        while status.focuser.moving == 'True':
+            self.logger.info('T' + str(telescope_number) + ': Focuser moving'+\
+                                 ' (' + str(status.focuser.position) + ')')
+            time.sleep(0.3)
+            status = telescope.getStatus()
+
+
+    # record values in the header
+    alt = str(float(status.mount.alt_radian)*180.0/math.pi)
+    try:    tm1 = str(status.temperature.primary)
+    except: tm1 = 'UNKNOWN'
+    try:    tm2 = str(status.temperature.secondary)
+    except: tm2 = 'UNKNOWN'
+    try:    tm3 = str(status.temperature.m3)
+    except: tm3 = 'UNKNOWN'
+    try:    tamb = str(status.temperature.ambient)
+    except: tamb = 'UNKNOWN'
+    try:    tback = str(status.temperature.backplate)
+    except: tback = 'UNKNOWN'
+
+    control.logger.info('T' + str(telescope_number) + ': Updating best focus'+\
+                            ' to ' + str(telescope.focus) + ' (TM1=' + tm1 +\
+                            ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + \
+                            tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
+    f = open('focus.' + telescope.logger_name + '.txt','w')
+    f.write(str(telescope.focus))
+    f.close()
+    self.logger.info('T' + str(telescope_number) + ': Finished autofocus')
+
+
+    #S Record all the data to it's own run unique file for potential use
+    #S later. Just don't want to be scraping through logs for it when we can
+    #S just record it now.
+    try:
+        #S Check to make sure all the arrays are the same length and not zero.
+        if len(imagenum_list)==len(poslist)==len(focusmeas_list)==\
+                len(stddev_list)==len(numstar_list):
+            #S Stack them all together, then transpose so we can write
+            #S them in columns
+            autodata = np.vstack([imagenum_list,poslist,focusmeas_list,\
+                                      stddev_list,numstar_list]).transpose()
+            #S Name the data file as:
+            #S 'nYYYYMMDD.T#.autorecord.filter.AAAA.BBBB.txt',
+            #S where AAAA is the image number on the first image of the
+            #S autofocus sequence, and BBBB the last image number.
+            datafile = self.site.night+'.T'+str(telescope_number)+\
+                '.autorecord.'+af_filter+'.'+imagenum_list[0]+'.'+\
+                imagenum_list[-1]+'.txt'
+            with open(datapath+datafile,'a') as fd:
+                #S Write all the environment temps, etc. also record old
+                #S and new best focii
+                fd.write('Old\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\n')
+                fd.write(str(old_best_focus)+'\t'+str(new_best_focus)+'\t'+tm1\
+                             +'\t'+tm2+'\t'+tm3+'\t'+tamb+'\t'+tback+'\t'+alt\
+                             +'\n')
+                #S Write a header with info on following columns
+                header = 'Column 1\tImage number\n'+\
+                    'Column 2\tFocuser position\n'+\
+                    'Column 3\tMedian focus measure\n'+\
+                    'Column 4\tSDOM\n'+\
+                    'Column 5\tNumber of stars'
+                #S save the array of good stuff
+                np.savetxt(fd,autodata,fmt='%s',header=header)
+        else:
+            control.logger.error('T'+str(telescope_number)+': Could not '+
+                                 'record autodata due to mismatch length in'+\
+                                     ' arrays')
+    except:
+        control.logger.exception('T'+str(telescope_number)+':unhandled error'+\
+                                  ' stopped record of autofocus results.')
+
     
 
 if __name__ == '__main__':
     import ipdb
     ipdb.set_trace()
-    print get_hfr_med('./sam_testing/autofocus/testdir/testringtophatbig.cat')
+    print new_get_hfr('/Data/t1/n20160128/n20160128.T1.autofocus.V.0472.cat')
+    print get_hfr_med('/Data/t1/n20160128/n20160128.T1.autofocus.V.0472.cat')
     ipdb.set_trace()
