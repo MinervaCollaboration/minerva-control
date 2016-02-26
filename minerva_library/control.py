@@ -35,6 +35,7 @@ import segments
 import newauto 
 from fix_fits import fix_fits
 import copy
+import rv_control
 
 # FAU guiding dependencies
 import PID_test as pid
@@ -578,17 +579,18 @@ class control:
 		self.observing = True
 		threading.Thread(target = self.domeControl_catch,kwargs=kwargs).start()
 
-	def astrometry(self,imageName):
-
+        # run astrometry.net on imageName, update solution in header                                             
+	def astrometry(self, imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None):
 		hdr = pyfits.getheader(imageName)
-		try: pixscale = float(hdr['PIXSCALE'])
-		except: pixscale = 0.61
-		
-		try: ra = float(hdr['RA'])
-		except: ra = utils.ten(hdr['RA'])*15.0
-    
-		try: dec = float(hdr['DEC'])
-		except: dec = utils.ten(hdr['DEC'])
+
+		if pixscale == None:
+			pixscale = float(hdr[pixscalekey])
+			
+		try: ra = float(hdr[rakey])
+		except: ra = ten(hdr[rakey])*15.0
+
+		try: dec = float(hdr[deckey])
+		except: dec = utils.ten(hdr[deckey])
 		if dec > 90.0: dec = dec - 360.0
 
 		radius = 3.0*pixscale*float(hdr['NAXIS1'])/3600.0
@@ -608,10 +610,9 @@ class control:
 		    ' --no-plots' + \
 		    ' --overwrite ' + \
 		    imageName
-#		' --use-sextractor' + \ #need to install sextractor
+#        ' --use-sextractor' + \ #need to install sextractor
 
-		cmd = r'/usr/local/astrometry/bin/' + cmd + ' >/dev/null 2>&1' 
-		self.logger.info("executing solve-field command: " + cmd)
+		cmd = r'/usr/local/astrometry/bin/' + cmd + ' >/dev/null 2>&1'
 		os.system(cmd)
 
 	def getPA(self,imageName, email=True):
@@ -772,6 +773,30 @@ class control:
 	def rads_to_degs(self,rads):
 		return rads*180./np.pi
 
+	def hourangle_calc(self,target,telnum=None):
+		#S update the site time to the current utc time
+		self.site.date = datetime.datetime.utcnow()
+		#S convert the radian sideral time from the site to hours
+		lst_hours = self.rads_to_hours(self.site.obs.sidereal_time())
+		#S i have no idea what this magic does
+		if 'ra' in target.keys():
+			ha = lst_hours - target['ra']
+		elif telnum <> None:
+			telescopeStatus = self.telescopes[telnum-1].getStatus()
+			ra = utils.ten(telescopeStatus.mount.ra_2000)
+			ha = lst_hours - ra
+		else:
+			self.logger.info(target['name']+' does not have an RA for Hour Angle calc; assuming HA=0')
+			ha = 0.
+		#S put HA in range (0,24)
+		if ha<0.:
+			ha+=24.
+		if ha>24.:
+			ha-=24.
+		#S put HA in range (-12,12)
+		if ha>12.:
+			ha = ha-24
+
 	def jnow_to_j2000_pyephem(self, ra_rads, dec_rads):
 		"""
 		A bastardized version from Kevin, edited by Sam. The telescope 
@@ -837,10 +862,13 @@ class control:
 			self.logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
 			time.sleep(waittime)
 
+		# if the dome isn't open, wait for it to open
 		for dome in self.domes:
 			while not dome.isOpen:
+				if datetime.datetime.utcnow() > target['endtime']:
+					self.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
+					return
 				time.sleep(60)
-
 
 		# acquire the target and begin guiding on each telescope
                 if type(tele_list) is int:
@@ -901,16 +929,32 @@ class control:
 	def stopFAU(self,tele_list):
 
 		# set camera.fau.guiding == False to stop guiders
+		self.logger.info("Stopping the guiding loop for all telescopes")
 		for i in range(len(tele_list)):
 			self.cameras[tele_list[i]-1].fau.guiding = False
 
 		return
 
 
-	def pointAndGuide(self, target, tel_num):
+	def pointAndGuide(self, target, tel_num, backlight=False):
 
 		self.logger.info("T" + str(tel_num) + ": pointing to target")
 		self.telescopes[tel_num-1].acquireTarget(target)
+
+
+
+		if backlight:
+			rv_control.backlight(self)
+			backlit = glob.glob('/Data/t' + str(tel_num) + '/' + self.night + '/*backlight*.fits')
+			if len(backlit) > 1:
+				xfiber, yfiber = rv_control.find_fiber(backlit[-1])
+				self.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ")")
+				camera.fau.xfiber = xfiber
+				camera.fau.yfiber = yfiber
+			else:
+				self.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+
+
 		self.logger.info("T" + str(tel_num) + ": beginning guiding")
 		self.cameras[tel_num-1].fau.guiding=True
 		self.fauguide(target,tel_num)
@@ -977,7 +1021,7 @@ class control:
 				ndx = np.argmax(stars[:,2])
 
 
-				self.logger.info("Found " + str(len(stars)) + " stars, using the star at (x,y)=(" + str(stars[ndx][0]) + "," + str(stars[ndx][1]) + ")")
+				self.logger.info("T" + str(tel_num) + ": Found " + str(len(stars)) + " stars, using the star at (x,y)=(" + str(stars[ndx][0]) + "," + str(stars[ndx][1]) + ")")
 #				ipdb.set_trace()
 				curpos = np.array([stars[ndx][0],stars[ndx][1]])
 				tvals = np.append(tvals,i)
@@ -988,8 +1032,8 @@ class control:
 				filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
 				filtercurpos=np.array([filterx, filtery])
 				separation = camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1])*camera.fau.platescale
-				self.logger.info("T" + str(tel_num) + ": Target is " + str(separation) + '" away from the fiber -- tolerance is ' + str(camera.fau.acquisition_tolerance) + '"')
-				if separation < camera.fau.acquisition_tolerance:
+				self.logger.info("T" + str(tel_num) + ": Target is at (" + str(curpos[0]) + ',' + str(curpos[1]) + "), " + str(separation) + '" away from the fiber (' + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) ") -- tolerance is " + str(camera.fau.acquisition_tolerance) + '"')
+ 				if separation < camera.fau.acquisition_tolerance:
 					self.logger.info("T" + str(tel_num) + ": Target acquired")
 					camera.fau.acquired = True
 					if acquireonly: return
@@ -1523,6 +1567,7 @@ class control:
 	def takeSpecDark(self, num, exptime):
 		target = {}
 		target['exptime'] = [exptime]
+		target['spectroscopy'] = True
 		if exptime == 0.0:
 			target['name'] = 'Bias' 
 		else: target['name'] = 'Dark'
@@ -1532,6 +1577,7 @@ class control:
 		target = {}
 		target['name'] = 'slitFlat'
 		target['exptime'] = [exptime]
+		target['spectroscopy'] = True
 		for i in range(num):
 			self.takeSpectrum(target, tele_list = [])
 
@@ -1699,17 +1745,24 @@ class control:
 		# pressure in the spectrograph
 		specpressure = -999.0
 		night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
-		with open('/Data/kiwilog/' + night + '/spec_pressure.log') as fh:
-			fh.seek(-1024,2)
-			line = fh.readlines()[-1].decode()
-			specpressure = float(line.split(',')[-1].strip())
+		try:
+			with open('/Data/kiwilog/' + night + '/spec_pressure.log') as fh:
+				fh.seek(-1024,2)
+				line = fh.readlines()[-1].decode()
+				specpressure = float(line.split(',')[-1].strip())
+		except:
+			self.logger.error("Error reading the spectrograph pressure")
 
 		# pressure at the pump
 		pumppressure = -999.0
-		with open('/Data/kiwilog/' + night + '/pump_pressure.log') as fh:
-			fh.seek(-1024,2)
-			line = fh.readlines()[-1].decode()
-			pumppressure = float(line.split(',')[-1].strip())
+		try:
+			with open('/Data/kiwilog/' + night + '/pump_pressure.log') as fh:
+				fh.seek(-1024,2)
+				line = fh.readlines()[-1].decode()
+				pumppressure = float(line.split(',')[-1].strip())
+		except:
+			self.logger.error("Error reading the pump pressure")
+			
 
                 f['SPECPRES'] = (str(specpressure),"spectrograph pressure (mbars)")
                 f['PUMPPRES'] = (str(pumppressure),"vacuum pump pressure (mbars)")
@@ -1796,6 +1849,7 @@ class control:
 		f['MCLOUD'] = (str(weather['MearthCloud']),"Mearth Cloud Sensor (C)")
 		f['HCLOUD'] = (str(weather['HATCloud']),"HAT Cloud Sensor (C)")
 		f['ACLOUD'] = (str(weather['AuroraCloud']),"Aurora Cloud Sensor (C)")
+		f['MINCLOUD'] = (str(weather['MINERVACloud']),"MINERVA Cloud Sensor (C)")
 		f['DEWPOINT'] = (str(weather['outsideDewPt']),"Dewpoint (C)")
 		f['WINDSPD'] = (str(weather['windSpeed']),"Wind Speed (mph)")
 		f['WINDGUST'] = (str(weather['windGustSpeed']),"Wind Gust Speed (mph)")
@@ -1874,7 +1928,6 @@ class control:
 			telescope = self.telescopes[int(telnum)-1]
 			imager = self.cameras[int(telnum)-1]
 
-
 			telescopeStatus = telescope.getStatus()
 			telra = utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
 			teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
@@ -1886,13 +1939,14 @@ class control:
 			moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
 
 			m3port = telescopeStatus.m3.port
-			defocus = (float(telescopeStatus.focuser.position) - telescope.focus)/1000.0
+			defocus = (float(telescopeStatus.focuser.position) - telescope.focus[m3port])/1000.0
 			rotpos = telescopeStatus.rotator.position
 			parang = str(telescope.parangle(useCurrent=True))
 			rotoff = telescope.rotatoroffset[m3port]
 			try: skypa = float(parang) + float(rotoff) - float(rotpos)
 			except: skypa = "UNKNOWN"
-			hourang = telescope.hourangle(useCurrent=True)
+			hourang = self.hourangle_calc(target,telnum=telnum)
+#			hourang = telescope.hourangle(useCurrent=True)
 			moonsep = str(ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi)
 
 			# target ra, J2000 degrees
@@ -2444,7 +2498,7 @@ class control:
 #		else: pa = None
 		pa = None
 
-      		if target['name'] == 'autofocus':
+      		if target['name'] == 'pwi_autofocus':
                         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 #			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			try: telescope.acquireTarget(target,pa=pa)
@@ -2453,23 +2507,31 @@ class control:
 			telescope.autoFocus()
 			return
 		
-		if target['name'] == 'newauto':
-                        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
-#			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
-			try: telescope.acquireTarget(target,pa=pa)
-			except: pass
+		if target['name'] == 'autofocus':
+#			try: telescope.acquireTarget(target,pa=pa)
+#			except: pass
+			if 'spectroscopy' in target.keys():
+				fau = True
+			else: 
+				fau = False
 			telescope.inPosition(m3port=telescope.port['IMAGER'])
 			try:
-				self.autofocus(telescope_num)
+				newauto.autofocus(self,telescope_num,fau=fau,target=target)
 			except:
-				self.logger.error('T'+str(telescope_num)+': failed autofocus')
+				self.telescopes[telscope_num-1].logger.exception('Failed in autofocus')
 			return
 		
                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 		# slew to the target
 #		telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 		telescope.acquireTarget(target,pa=pa)
-		newfocus = telescope.focus + target['defocus']*1000.0
+		if 'spectroscopy' in target.keys():
+			if target['spectroscopy']:
+				newfocus = telescope.focus['FAU'] + target['defocus']*1000.0
+			else:
+				newfocus = telescope.focus['IMAGER'] + target['defocus']*1000.0
+		else:
+			newfocus = telescope.focus['IMAGER'] + target['defocus']*1000.0
 		status = telescope.getStatus()
 		if newfocus <> status.focuser.position:
 			self.logger.info(telescope_name + "Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
@@ -2686,6 +2748,7 @@ class control:
 			'MearthCloud':[],
 			'HATCloud':[],
 			'AuroraCloud':[],
+			'MINERVACloud':[],
 			'outsideTemp':[],
 			'windSpeed':[],
 			'windDirectionDegrees':[],
@@ -2695,7 +2758,10 @@ class control:
 #		ipdb.set_trace()
 
 		# these messages contain variables; trim them down so they can be consolidated
-		toospecific = [('The camera was unable to reach its setpoint ','in the elapsed time'),
+		toospecific = [('The camera was unable to reach its setpoint','in the elapsed time'),
+			       ('The process "MaxIm_DL.exe" with PID','could not be terminated'),
+			       ("Stars are too elliptical, can't use",''),
+			       ('The process "python.exe" with PID','could not be terminated'),
 			       ('Slew failed to alt','az'),
 			       ('Slew failed to J2000',''),
 			       ('Telescope reports it is','away from the target postion'),
@@ -2888,7 +2954,7 @@ class control:
 			else: spectroscopy=False
 
 #			self.telescope_autoFocus(telescope_num)
-			self.autofocus(telescope_num, spectroscopy=spectroscopy)
+			newauto.autofocus(self,telescope_num,fau=spectroscopy)
 
 		# read the target list
 		with open(self.base_directory + '/schedule/' + self.site.night + '.T' + str(telescope_num) + '.txt', 'r') as targetfile:
@@ -2953,7 +3019,7 @@ class control:
 						if 'spectroscopy' in target.keys():
 							if target['spectroscopy']:
 								# only one telescope for now...
-								self.doSpectra(target,[telescope_num])
+								rv_control.doSpectra(self,target,[telescope_num])
 							else:
 								self.doScience(target,telescope_num)
 						else:
@@ -3035,7 +3101,7 @@ class control:
 			mail.send("DomeControl thread died",body,level='serious')
 			sys.exit()
 
-	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=4):
+	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1):
 		self.takeSpecBias(nbias)
 		self.takeSpecDark(ndark, darkexptime)
 		self.takeSlitFlat(nflat, flatexptime)
@@ -3261,12 +3327,12 @@ class control:
 		imagenum = (imagename.split('.')[4])
 		#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 		try: 
-			catalog = newauto.sextract(datapath,imagename)
+			catalog = utils.sextract(datapath,imagename)
 			self.logger.debug('T' + str(telescope_number) + ': Sextractor success on '+catalog)
 		except: 
 			self.logger.exception('T' + str(telescope_number) + ': Sextractor failed on '+catalog)
 		try:
-			median, stddev, numstar = newauto.get_hfr_med(datapath+catalog)
+			median, stddev, numstar = newauto.get_hfr_med(catalog)
 			self.logger.info('T'+str(telescope_number)+': Got hfr value from '+catalog)
 			return median, stddev, numstar, imagenum
 		except:
@@ -3495,8 +3561,16 @@ class control:
 
 
 
-	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",spectroscopy=False):
+	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",fau=False,target=None):
 
+		#XXX I think that this code is ready to removed. 
+
+
+		#S This is gonna look stupid, but I'm just going to place the call to newauto.autofocus in here
+		newauto.autofocus(self,telescope_number,num_steps=num_steps,defocus_step=defocus_step,\
+					  af_exptime=af_exptime,af_filter=af_filter,\
+					  fau=fau,target=target)
+		return
 		if spectroscopy: return
 
 		#S get the telescope we plan on working with
@@ -3507,7 +3581,7 @@ class control:
 		af_target['name'] = 'autofocus'
 		af_target['exptime'] = af_exptime
 		af_target['filter'] = af_filter
-		af_target['spectroscopy'] = spectroscopy
+		af_target['spectroscopy'] = fau
 
 		# select the appropriate port (default to imager)
 		if 'spectroscopy' in af_target.keys():
@@ -3585,14 +3659,14 @@ class control:
 
 			#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 			try: 
-				catalog = newauto.sextract(datapath,imagename)
+				catalog = utils.sextract(datapath,imagename)
 				self.logger.debug('T' + str(telescope_number) + ': Sextractor success on '+catalog)
 			except: 
 				self.logger.exception('T' + str(telescope_number) + ': Sextractor failed on '+catalog)
 
 			#S get focus measure value, as well as standard deviation of the mean
 			try:
-				median, stddev, numstar = newauto.get_hfr_med(datapath+catalog)
+				median, stddev, numstar = newauto.get_hfr_med(catalog,fau=fau,telescope=telescope)
 				self.logger.info('T'+str(telescope_number)+': Got hfr value from '+catalog)
 				focusmeas_list.append(median)
 				stddev_list.append(stddev)
