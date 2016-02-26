@@ -2,12 +2,18 @@
 ./credentials/
 ./status/
 ./schedule/
+./sam_testing/*
+./minerva_library/sam_testing/autofocus
+*#
 *.pyc
 *.txt
 *.log
 *.json
 *.dat
+#S my guess is we won't to track images
+*.png
 *.pyc
 *.pyc
 *.pyc
+*~
 *pywinauto*

@@ -77,16 +77,18 @@ class CDK700:
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
 		
+		self.focus = {'0':'UNKNOWN'}
 		# initialize to the most recent best focus
-		if os.path.isfile('focus.' + self.logger_name + '.txt'):
-			f = open('focus.' + self.logger_name + '.txt','r')
-			self.focus = float(f.readline())
-			f.close()
-		else:
-			# if no recent best focus exists, initialize to 25000. (old: current value)
-			status = self.getStatus()
-			self.focus = 25000.0  #status.focuser.position
-
+		for port in ['1','2']:
+			if os.path.isfile('focus.' + self.logger_name + '.port'+port+'.txt'):
+				f = open('focus.' + self.logger_name + '.port'+port+'.txt','r')
+				self.focus[port] = float(f.readline())
+				f.close()
+			else:
+				# if no recent best focus exists, initialize to 25000. (old: current value)
+				status = self.getStatus()
+				self.focus[port] = self.default_focus[port]  #status.focuser.position
+				
 		self.num = self.logger_name[-1]
 			
 	#additional higher level routines
@@ -126,7 +128,7 @@ class CDK700:
 				return False
 		if derotate:
 			if telescopeStatus.rotator.altaz_derotate <> 'True': 
-				self.logger.warning('T' + self.num + ': rotator not tracking (' + telescopeStatus.altaz_derotate + '), telescope not initialized')
+				self.logger.warning('T' + self.num + ': rotator not tracking (' + telescopeStatus.rotator.altaz_derotate + '), telescope not initialized')
 				return False
 		
 		return True
@@ -184,6 +186,7 @@ class CDK700:
 			self.modeldir = config['Setup']['MODELDIR']
 			self.model = config['MODEL']
 			self.rotatoroffset = config['ROTATOROFFSET']
+			self.default_focus = config['DEFAULT_FOCUS']
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
@@ -739,7 +742,7 @@ class CDK700:
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
-	def acquireTarget(self,target,pa=None):
+	def acquireTarget(self,target,pa=None, tracking=True, derotate=True, m3port=None):
 
 		telescopeStatus = self.getStatus()
 
@@ -829,34 +832,30 @@ class CDK700:
 		#S make sure the m3 port is in the correct orientation
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
-				m3port = self.port['FAU']
+				if m3port <> None: m3port = self.port['FAU']
 				#S Initialize the telescope
 				self.initialize(tracking=True,derotate=False)
 			else: 
-				m3port = self.port['IMAGER']
+				if m3port <> None: m3port = self.port['IMAGER']
 				#S Initialize the telescope
 				self.initialize(tracking=True,derotate=True)
 				rotator_angle = self.solveRotatorPosition(target)
 				self.rotatorMove(rotator_angle,port=m3port)
 
 		else:
-			m3port = self.port['IMAGER']
+			if m3port <> None: m3port = self.port['IMAGER']
 			self.initialize(tracking=True,derotate=True)
 			rotator_angle = self.solveRotatorPosition(target)
 			self.rotatorMove(rotator_angle,port=m3port)
 
-
-
-                	
 		self.m3port_switch(m3port)
-
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
 
 
 ### check on this; m3port not defined ####
-		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected):
+		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected, tracking=tracking, derotate=derotate):
 #		if self.inPosition():
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
@@ -876,17 +875,17 @@ class CDK700:
 		star._ra = ephem.hours(str(ra))
 		star._dec = ephem.degrees(str(dec))
 		star.compute(obs)
-		alt = utils.ten(star.alt)
-		az = utils.ten(star.az)
+		alt = utils.ten(str(star.alt))
+		az = utils.ten(str(star.az))
 		return alt,az
 
 	def m3port_switch(self,m3port, force=False):
 
 		#S want to make sure we are at the right port before mount, focuser, rotator slew.
-		#S If an allowable port is specified
+		#S If an allowable port is specified	
+		telescopeStatus = self.getStatus()
 		if (str(m3port)=='1') or (str(m3port)=='2'):
 			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
-			telescopeStatus = self.getStatus()
 			if telescopeStatus.m3.port != str(m3port) or force:
 				if telescopeStatus.m3.port != str(m3port):
 					self.logger.info('T%s: Port changed, loading pointing model'%(self.num))
@@ -895,7 +894,6 @@ class CDK700:
 				if os.path.isfile(modelfile):
 					self.logger.info('changing model file')
 					self.mountSetPointingModel(self.model[m3port])
-
 				else:
 					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
 					mail.send('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile),'',level='serious')

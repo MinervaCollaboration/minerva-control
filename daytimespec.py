@@ -82,6 +82,7 @@ if __name__ == '__main__':
 	# stop at 2:30 pm local (so calibrations can finish before daily reboot at 3:30 pm)
 	endtime = datetime.datetime(datetime.datetime.utcnow().year, datetime.datetime.utcnow().month, datetime.datetime.utcnow().day, 21, 30, 0)
 
+	'''
 	# take several exposures with the iodine stage in various positions
 	while (datetime.datetime.utcnow() - endtime).total_seconds() < 0:
 		status = minerva.domes[0].status()
@@ -95,6 +96,7 @@ if __name__ == '__main__':
 				
 	try: del target['i2manualpos']
 	except: pass
+	'''
 
 	while (datetime.datetime.utcnow() - endtime).total_seconds() < 0:
 

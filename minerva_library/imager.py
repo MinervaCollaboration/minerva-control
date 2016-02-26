@@ -133,6 +133,7 @@ class imager:
 			self.logger.exception(telescope_name + 'connection failed')
 			return False
 
+		self.nserver_failed = 0
 		return s
 	#send commands to camera server
 	def send(self,msg,timeout):
@@ -518,8 +519,25 @@ class imager:
 	def recover_server(self):
                 telescope_name = 'T' + self.telnum + ': '
 
+		self.nserver_failed += 1
+
 		# this requires winexe on linux and a registry key on each Windows (7?) machine (apply keys.reg in dependencies folder):
 		self.logger.warning(telescope_name + 'Server failed, beginning recovery') 
+	
+		if self.nserver_failed > 1:
+			self.logger.warning(telescope_name + 'Server failed more than once; try power cycling the camera')
+			if not self.kill_server(): ipdb.set_trace()
+			if not self.kill_maxim(): ipdb.set_trace()
+			self.powercycle()
+			time.sleep(10)
+			if not self.start_server(): 
+				self.logger.error(telescope_name + "failed to start server")
+				return False
+
+		if self.nserver_failed > 3:
+			mail.send(telescope_name + 'Server failed','',level='critical')
+			sys.exit()
+		
 
                 # try to re-connect
 #                if self.connect_server():

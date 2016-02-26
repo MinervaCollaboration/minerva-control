@@ -93,6 +93,7 @@ def mkdict(name=None, bstar=False, includeInactive=False):
         target['parallax'] = float(targetlist['parallax'][i])
         target['rv'] = float(targetlist['rv'][i])
         target['i2'] = True
+        target['vmag'] = float(targetlist['vmag'][i])
         target['comment'] = targetlist['comment'][i]
         
         if name <> None:

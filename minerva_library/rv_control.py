@@ -3,11 +3,14 @@ import control
 import mail
 import ipdb
 import datetime
-import sys
+import sys, os, glob
 import ephem
 import targetlist
 import env
 import time
+import utils
+import numpy as np
+
 
 def rv_observing(minerva):
 
@@ -20,8 +23,10 @@ def rv_observing(minerva):
     minerva.telescope_initialize(tracking=False,derotate=False)
     minerva.telescope_park()
 
-    backlight(minerva)
-    minerva.specCalib()
+    # if before the end of twilight, do calibrations
+    if datetime.datetime.utcnow() < minerva.site.NautTwilEnd():
+        backlight(minerva)
+        minerva.specCalib()
 
     with open(minerva.base_directory + '/schedule/' + minerva.site.night + '.kiwispec.txt', 'r') as targetfile:
         for line in targetfile:
@@ -82,12 +87,164 @@ def rv_observing(minerva):
                     target['endtime'] = settime
 
                 if target['starttime'] < target['endtime']:
-                    minerva.doSpectra(target,[1,2,3,4])
+                    doSpectra(minerva,target,[1,2,3,4])
+#                    minerva.doSpectra(target,[1,2,3,4])
                 else: minerva.logger.info(target['name']+ ' not observable; skipping')
 
     minerva.observing=False
     minerva.endNight()
     
+
+def doSpectra(minerva, target, tele_list):
+
+    # if after end time, return
+    if datetime.datetime.utcnow() > target['endtime']:
+        minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + "); skipping")
+        return
+
+    # if before start time, wait
+    if datetime.datetime.utcnow() < target['starttime']:
+        waittime = (target['starttime']-datetime.datetime.utcnow()).total_seconds()
+        minerva.logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
+        time.sleep(waittime)
+
+    # if the dome isn't open, wait for it to open
+    for dome in minerva.domes:
+        while not dome.isOpen:
+            minerva.logger.info("Waiting for dome to open")
+            if datetime.datetime.utcnow() > target['endtime']: 
+                minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
+                return
+            time.sleep(60)
+
+    # acquire the target for each telescope
+    if type(tele_list) is int:
+        if (tele_list < 1) or (tele_list > len(minerva.telescopes)):
+            tele_list = [x+1 for x in range(len(minerva.telescopes))]
+        else:
+            tele_list = [tele_list]
+    threads = [None] * len(tele_list)
+    for t in range(len(tele_list)):
+        if minerva.telcom_enabled[tele_list[t]-1]:
+            #TODOACQUIRETARGET Needs to be switched to take dictionary argument
+            #S i think this might act up due to being a dictionary, but well see.
+            # swap the m3port to the imager to locate the fiber
+            m3port = minerva.telescopes[tele_list[t]-1].port['IMAGER']
+            kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
+            threads[t] = threading.Thread(target = minerva.telescopes[tele_list[t]-1].acquireTarget,args=(target,),kwargs=kwargs)
+            threads[t].start()
+
+    # wait for all telescopes to get to the target
+    # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
+    minerva.logger.info("Waiting for all telescopes to slew")
+    t0 = datetime.datetime.utcnow()
+    slewTimeout = 360.0 # sometimes it needs to home as part of a recovery, let it do that
+    for thread in threads:
+        elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
+        thread.join(slewTimeout - elapsedTime)
+
+    # see if the thread timed out
+    for t in range(len(tele_list)):
+        if threads[t].isAlive():
+            minerva.logger.error("T" + str(tele_list[t]) + " thread timed out waiting for slew")
+            mail.send("T" + str(tele_list[t]) + " thread timed out waiting for slew",
+                      "Dear Benevolent Humans,\n\n"+
+                      "T" + str(tele_list[t]) + " thread timed out waiting for slew. "+
+                      "This shouldn't happen. Please fix me and note what was done."+
+                      "Love,\nMINERVA",level='critical')
+        
+    minerva.logger.info("Locating Fiber")
+    backlight(minerva)
+    for t in range(len(tele_list)):
+        tel_num = tele_list[t]
+        telescope = minerva.telescopes[tel_num-1]
+        camera = minerva.cameras[tel_num-1]
+        
+        backlit = glob.glob('/Data/t' + str(tel_num) + '/' + minerva.night + '/*backlight*.fits')
+        if len(backlit) > 0:
+            xfiber, yfiber = find_fiber(backlit[-1])
+            if xfiber <> None:
+                minerva.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + str(backlit[-1]))
+                camera.fau.xfiber = xfiber
+                camera.fau.yfiber = yfiber
+            else:
+                minerva.logger.error("T" + str(tel_num) + ": failed to find fiber in image " + str(backlit[-1]) + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+        else:
+            minerva.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+        camera.fau.guiding=True
+
+
+    threads = []
+    guideThreads = []
+    for t in range(len(tele_list)):
+        if minerva.telcom_enabled[tele_list[t]-1]:
+            #TODOACQUIRETARGET Needs to be switched to take dictionary argument
+            #S i think this might act up due to being a dictionary, but well see.
+            # swap the m3port to the imager to locate the fiber
+            telescope = minerva.telescopes[tele_list[t]-1]
+            
+            m3port = telescope.port['FAU']
+            thread = threading.Thread(target = telescope.m3port_switch, args=(m3port,))
+            thread.start()
+            threads.append(thread)
+            
+            thread = threading.Thread(target=minerva.fauguide,args=(target,tele_list[t],))
+            thread.start()
+            guideThreads.append(thread)
+
+    # wait for all m3 mirrors to finish
+    for thread in threads:
+        thread.join()
+
+    for t in range(len(tele_list)):
+        #TODOACQUIRETARGET Needs to be switched to take dictionary argument
+        #S i think this might act up due to being a dictionary, but well see.                
+        threads[t] = threading.Thread(target = minerva.pointAndGuide,args=(target,tele_list[t]))
+        threads[t].start()
+        
+    # wait for all telescopes to put target on their fibers (or timeout)
+    minerva.logger.info("Waiting for all telescopes to acquire")
+    acquired = False
+    timeout = 180.0 # is this long enough?
+    elapsedTime = 0.0
+    t0 = datetime.datetime.utcnow()
+    while not acquired and elapsedTime < timeout:
+        acquired = True
+        for i in range(len(tele_list)):
+            minerva.logger.info("T" + str(tele_list[i]) + ": acquired = " + str(minerva.cameras[tele_list[i]-1].fau.acquired))
+            if not minerva.cameras[tele_list[i]-1].fau.acquired:
+                minerva.logger.info("T" + str(tele_list[i]) + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
+                acquired = False
+        time.sleep(1.0)
+        elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+
+    # what's the right thing to do in a timeout?
+    # Try again?
+    # Go on anyway? (as long as one telescope succeeded?)
+    # We'll try going on anyway for now...
+        
+    # begin exposure(s)
+    for i in range(target['num'][0]):
+        # make sure we're not past the end time
+        if datetime.datetime.utcnow() > target['endtime']:
+            minerva.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
+            minerva.stopFAU(tele_list)
+            return
+
+        # if the dome isn't open, wait for it to open
+        for dome in minerva.domes:
+            while not dome.isOpen:
+                minerva.logger.info("Waiting for dome to open")
+                if datetime.datetime.utcnow() > target['endtime']: 
+                    minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
+                    minerva.stopFAU(tele_list)
+                    return
+                time.sleep(60)
+
+        minerva.takeSpectrum(target)
+
+    minerva.stopFAU(tele_list)
+    return
 
 def endNight(minerva):
 
@@ -95,23 +252,23 @@ def endNight(minerva):
         minerva.endNight(num=int(telescope.num), email=False)
     minerva.endNight(kiwispec=True)
 
-
-
 def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backlight'):
 
-    #S check if tele_list is only an int                                                                                                
+    #S check if tele_list is only an int
     if type(tele_list) is int:
-        #S Catch to default a zero arguement or outside array range tele_list                                                       
-        #S and if so make it default to controling all telescopes.                                                       
+        #S Catch to default a zero argument or outside array range tele_list 
+        #S and if so make it default to controling all telescopes.
         if (tele_list < 1) or (tele_list > len(minerva.telescopes)):
-            #S This is a list of numbers fron 1 to the number scopes                                                            
+            #S This is a list of numbers fron 1 to the number scopes
             tele_list = [x+1 for x in range(len(minerva.telescopes))]
-        #S If it is in the range of telescopes, we'll put in a list to                                                              
-        #S avoid accessing issues later on.                                                                                         
+        #S If it is in the range of telescopes, we'll put in a list to
+        # avoid issues later on
         else:
             tele_list = [tele_list]
 
-    #S Zero index the tele_list                                                                                                         
+    minerva.logger.info("Doing backlit images for telescopes " + ",".join([str(x) for x in tele_list]))
+
+    #S Zero index the tele_list
     tele_list = [x-1 for x in tele_list]
 
     # move the iodine stage to the best position for backlighting
@@ -139,7 +296,7 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
         thread.join()
 
     # take an exposure with the spectrograph (to trigger the LED)
-    kwargs = {'expmeter':None,"exptime":fauexptime+30,"objname":"backlight"}
+    kwargs = {'expmeter':None,"exptime":fauexptime+2,"objname":"backlight"}
     spectrum_thread = threading.Thread(target=minerva.spectrograph.take_image, kwargs=kwargs)
     spectrum_thread.start()
 
@@ -164,17 +321,31 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
     # wait for spectrum to complete
     spectrum_thread.join()
     
+    # delete the spectrograph image
+    badfiles = glob.glob('/Data/kiwispec/' + minerva.night + '/*backlight*.fits')
+    for badfile in badfiles:
+        os.remove(badfile)
+
     # turn off the slit flat LED
     minerva.spectrograph.led_turn_off()
-
     minerva.logger.info("Done with backlit images")
-    
-    #minerva.takeFauImage({'name':'backlight','fauexptime':1},telescope_num=1)
 
 # given a backlit FAU image, locate the fiber
 def find_fiber(image):
-    pass
     
+    catname = utils.sextract('',image)
+    cat = utils.readsexcat(catname)
+
+    # readsexcat will return an empty dictionary if it fails
+    # and a dictionary with empty lists if there are no targets
+    # both will be caught (and missing key) by this try/except
+    try: brightest = np.argmax(cat['FLUX_ISO'])
+    except: return None, None
+
+    # if the keys aren't present, it will be caught here
+    try: return cat['XWIN_IMAGE'][brightest], cat['YWIN_IMAGE'][brightest]
+    except: return None, None
+
 def rv_observing_catch(minerva):
     try:
         rv_observing(minerva)
@@ -298,9 +469,15 @@ def mkschedule(minerva):
     sunset = minerva.site.sunset(horizon=-18)
     sunrise = minerva.site.sunrise(horizon=-18)
 
-
+    num = 3
+    
     targets = get_rv_target(minerva)
     bstars = get_rv_target(minerva,bstar=True)
+
+    for target in targets:
+        target['num'] = [num]
+    for bstar in bstars:
+        bstar['num'] = [num]
 
     acquisitionOverhead = 300.0
     readTime = 21.7
@@ -308,10 +485,11 @@ def mkschedule(minerva):
     nbstars = len(bstars)
     elapsedTime = 0.0
 
+    print ((sunrise-sunset).total_seconds() + 3600.0)/3600.0
+
     fh = open(scheduleFile,'w')
     while ((sunrise-sunset).total_seconds() + 3600.0) > elapsedTime:
         for target in targets:
-            num = 3
             target['num'] = [num]
 
             acquisitionTime = acquisitionOverhead + num*(readTime+target['exptime'][0])
@@ -323,8 +501,6 @@ def mkschedule(minerva):
                 target['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
                 target['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
 
-                                              
-
                 # add a target to the schedule
                 elapsedTime += acquisitionTime
 
@@ -332,7 +508,6 @@ def mkschedule(minerva):
                 fh.write(jsonstr + '\n')
 
                 # add a B star to the schedule
-
                 acquisitionTime = (acquisitionOverhead + num*(readTime+bstars[bstarndx]['exptime'][0]))
 
                 bstars[bstarndx]['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
@@ -343,6 +518,10 @@ def mkschedule(minerva):
                 fh.write(jsonstr + '\n')
 
                 bstarndx = (bstarndx + 1) % nbstars
+                
+            if ((sunrise-sunset).total_seconds() + 3600.0) < elapsedTime:
+                break
+
     fh.close()
 
 
@@ -354,7 +533,7 @@ if __name__ == "__main__":
 #    endNight(minerva)
 #    sys.exit()
     mkschedule(minerva)
-#    sys.exit()
+    sys.exit()
     
      
     minerva.telescope_initialize(tracking=False,derotate=False)

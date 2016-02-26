@@ -7,17 +7,21 @@ import ipdb, datetime, time, socket
 import threading
 import math
 import numpy as np
+from minerva_library import rv_control
 
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+
+
+
 	ipdb.set_trace()
 #	minerva.spectrograph.i2stage_move('flat')
 #	ipdb.set_trace()
 
-#	'''
+	'''
 #	ipdb.set_trace()
 #	target = {'name':'fiberflat_T3','ra':0,'dec':0,'i2':True,'exptime':[15]}
 #	minerva.takeSpectrum(target)
@@ -80,12 +84,12 @@ if __name__ == '__main__':
 		"name" : "HD19373", 
 		"ra" : 3.15111666667, 
 		"dec" : 49.6132777778, 
-		"starttime" : "2015-01-01 00:00:00", 
-		"endtime" : "2018-01-01 00:00:00", 
+		"starttime" : datetime.datetime(2015,01,01,0,0,0), 
+		"endtime" : datetime.datetime(2018,01,01,0,0,0), 
 		"spectroscopy": True, 
 		"filter": ["rp"], 
-		"num": [10], 
-		"exptime": [300], 
+		"num": [1], 
+		"exptime": [10], 
 		"fauexptime": 1, 
 		"defocus": 0.0, 
 		"selfguide": True, 
@@ -98,7 +102,10 @@ if __name__ == '__main__':
 		"template" : False, 
 		"i2": False,
 		"comment":"RV standard star"}
-	minerva.doSpectra(target,[1,2,3,4])
+	minerva.autofocus(4,fau=True,target=target)
+	ipdb.set_trace()
+
+	rv_control.doSpectra(minerva,target,[1,2,3,4])
 	ipdb.set_trace()
 
 #	target['name'] = 'ThAr_T1'
