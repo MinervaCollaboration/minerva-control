@@ -12,7 +12,8 @@ import mail
 import math
 
 
-#S A custom exception class, so we can catch the results of fits on a case by case basis.
+#S A custom exception class, so we can catch the results of fits on a case by 
+#S case basis.
 class afException(Exception):
     def __init__(self,message='Autofocus Exception',focus=0.0,coeffs=0.0):
         self.message = message
@@ -154,17 +155,20 @@ def get_hfr_med(catfile):
     #S we could explicitly write out arguemnets, but this will do for now.
     try:
         #S Get this from the catalog file.
-        #S It will put up a warning if the file is empty is all, meaning no stars sextracted.
+        #S It will put up a warning if the file is empty is all, meaning no 
+        #S stars sextracted.
         cat_array = np.genfromtxt(catfile)
     except: raise Exception()
-    #S If we were not able to both a semi-major and -minor axis columns, then we will just use
-    #S all the values from the hfr_column
+    #S If we were not able to both a semi-major and -minor axis columns, then 
+    #S we will just use all the values from the hfr_column
     if ae_col == None or be_col == None:
         hfr_array = cat_array[:,hfr_col-1]
-    #S if we found both, we can filter by the 'eccentricity', or minor-axis/major-axis
-    #S 0.8 here is an empirical value, probably could be stricter, but testing in progress.
+    #S if we found both, we can filter by the 'eccentricity', or minor-
+    #S axis/major-axis 0.8 here is an empirical value, probably could be 
+    #S stricter, but testing in progress.
     else:
-        circ_ind = np.where(cat_array[:,be_col-1]/cat_array[:,ae_col-1] > 0.7)[0]
+        circ_ind = np.where(cat_array[:,be_col-1]/cat_array[:,ae_col-1] >\
+                                0.7)[0]
         #S If we found some indices where we weren't too elliptical
         if len(circ_ind) != 0:
             hfr_array = cat_array[circ_ind,hfr_col-1]
@@ -174,7 +178,8 @@ def get_hfr_med(catfile):
 
     #S If there are less than 10 stars, then we don't want to use the image
     if len(hfr_array) > 10:
-        #S Try and find the median. This will hopefully catch if we have too few values, etc.
+        #S Try and find the median. This will hopefully catch if we have too 
+        #S few values, etc.
         try:
             hfr_med = np.median(hfr_array)
         except: raise Exception()
@@ -183,9 +188,11 @@ def get_hfr_med(catfile):
     #S try and find std, not sure if we want SDOM or just std
     try:
         numstars = len(hfr_array)
-        #S Get the Median Absolute Deviation, and we'll convert to stddev then stddev of the mean
+        #S Get the Median Absolute Deviation, and we'll convert to stddev then
+        #S stddev of the mean
         hfr_mad = np.median(np.absolute(hfr_array-np.median(hfr_array)))
-        #S We assume that our distribution is normal, and convert to stddev. May need to think more 
+        #S We assume that our distribution is normal, and convert to stddev. 
+        #S May need to think more 
         #S about this, as it isn't probably normal. 
         #S Recall stddev of the mean = stddev/sqrt(N)
         hfr_std = (hfr_mad*1.4862)/np.sqrt(numstars)
@@ -198,8 +205,9 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
 	telescope_num=99):
 
     
-    #S if given a list of stadard deviations, we need to do the inverse of that for the wieght in np.polyfit
-    #S per the documentation it minimizes sum(w**2(y-y_mod)**2), where w is the weight provided.
+    #S if given a list of stadard deviations, we need to do the inverse of 
+    #S that for the wieght in np.polyfit per the documentation it minimizes 
+    #S sum(w**2(y-y_mod)**2), where w is the weight provided.
 
     if type(weight_list) != type(None):
         stdlist = weight_list.copy()
@@ -222,7 +230,8 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
     #S initialize the iteration couter
     iters = 0
     if type(logger)!=type(None):
-        logger.debug('T'+str(telescope_num)+': Starting sigma clipping for autofocus fit.')
+        logger.debug('T'+str(telescope_num)+': Starting sigma clipping for'\
+                         +' autofocus fit.')
     #S see if the old coefficients are the same and if iters is below the max
     #S we enter this loop at least once, but probably don't need to refit.
     #TODO think of better ways to do this? not that important right now.
@@ -240,8 +249,8 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
         quad = coeffs[0]*poslist**2 + coeffs[1]*poslist + coeffs[2]
         #S find the std of the residuals
         std = np.std(fwhmnp[inds]-quadnp[inds])
-        #S redefine the indices where the residuals are greater than 3sigma. this should 
-        #S catch all points that were previously excluded. 
+        #S redefine the indices where the residuals are greater than 3sigma. 
+        #S this should catch all points that were previously excluded. 
         fwhmnp = np.asarray(fwhmlist)
         quadnp = np.asarray (quad)
         inds = np.where(np.absolute(fwhmnp-quadnp) < 3.*std)[0]
@@ -253,13 +262,16 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
         print "couldn't fit"
         return None, coeffs
     # if the best fit was a downward facing parabola, it was bad
-    #S For most of these I return None, None if there was no input logger, which is a way of saying 
-    #S exceptions need to handled by any other call except for those from control.autofocus
+    #S For most of these I return None, None if there was no input logger, 
+    #S which is a way of saying exceptions need to handled by any other call
+    #S except for those from control.autofocus
     if coeffs[0] <= 0.0: 
         #S Check if our fit was upside down
         if type(logger)!=type(None):
-            #S going to return where the maximum is, so that we can decide to add more points on the opposite side. 
-            logger.error('T'+str(telescope_num)+': Autofocus fit upside down quadratic (or a line), something funky.')
+            #S going to return where the maximum is, so that we can decide to 
+            #S add more points on the opposite side. 
+            logger.error('T'+str(telescope_num)+': Autofocus fit upside down'\
+                             +'quadratic (or a line), something funky.')
 #            maximum = int(-coeffs[1]/(2.0*coeffs[0]))
             raise afException('NoMinimum_Exception',None,coeffs)
         else:
@@ -272,7 +284,8 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
     if best_focus <= min(poslist):
         #S log that we were out of range
         if type(logger)!=type(None):
-            logger.error('T'+str(telescope_num)+': New best focus was below lower limit.')
+            logger.error('T'+str(telescope_num)+': New best focus was below '\
+                         +'lower limit.')
             #S we return exceptions now so it can be caught in calling routine
             raise afException('LowerLimit_Exception',best_focus,coeffs)
         else:
@@ -282,7 +295,8 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
     if best_focus >= max(poslist):
         #S log that we were out of range
         if type(logger)!=type(None):
-            logger.error('T'+str(telescope_num)+': New best focus was above upper limit.')
+            logger.error('T'+str(telescope_num)+': New best focus was above'\
+                             +' upper limit.')
             #S Same as above
             raise afException('UpperLimit_Exception',best_focus,coeffs)
         else:
@@ -308,7 +322,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                 #TODO Need to think about incorporating guiding for FAU
                 af_target = target
         except:
-            telescope.logger.error('No coordinates for desired target'
+            telescope.logger.error('No coordinates for desired target')
 #        af_target['fauexptime'] = af_exptime
     #S Else we just want a blank dictionary
     else: 
@@ -340,6 +354,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     #S Get current time for measuring timeout
     t0 = datetime.datetime.utcnow()
 
+    """
     #S Loop to wait for dome to open, cancels afeter ten minutes
     while dome.isOpen == False:
         telescope.logger.info(' Enclosure closed; waiting for dome to open')
@@ -349,7 +364,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                                     '10 minutes; skipping autofocus')
             return
         time.sleep(30)
-
+    """
     #S make array of af_defocus_steps
     defsteps = np.linspace(-defocus_step*(num_steps/2),\
                                 defocus_step*(num_steps/2),num_steps)
@@ -375,7 +390,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         if newfocus <> status.focuser.position:
             telescope.logger.info("Defocusing by " + str(step) + \
                                  ' mm, to ' + str(newfocus))
-            telescope.focuserMove(newfocus)
+            telescope.focuserMove(newfocus,port=m3port)
             #S Needed a bit longer to recognize focuser movement, changed
             #S from 0.3
             time.sleep(.5)
@@ -503,7 +518,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     if telescope.focus[m3port] <> status.focuser.position:
         control.logger.info('T'+str(telescope_number) + ": Moving focus to " +\
                                 str(telescope.focus[m3port]))
-        telescope.focuserMove(telescope.focus[m3port])
+        telescope.focuserMove(telescope.focus[m3port],port=m3port)
         # wait for focuser to finish moving
         status = telescope.getStatus()
         while status.focuser.moving == 'True':
