@@ -10,6 +10,7 @@ import datetime
 import time
 import mail
 import math
+import copy
 
 
 #S A custom exception class, so we can catch the results of fits on a case by 
@@ -306,42 +307,48 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
 
 
 def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
-                  af_exptime=5,af_filter="V",fau=False,target=None):
+                  target=None):
+
     #S get the telescope we plan on working with, now redundent
     telescope = control.telescopes[telescope_number-1]
-    #S Initialize telescope, we want tracking ON
-    if not telescope.initialize(tracking=True, derotate=True):
-        telescope.recover(tracking=True, derotate=True)
 
-    #S if a target dictionary is handed to the autofocus, we want to use that.
-    #S But
+    #S Define/make sure we have a target
     if target != None:
-        try:
-            if 'ra' in target.keys() and 'dec' in target.keys():
-                telescope.acquireTarget(target)
-                #TODO Need to think about incorporating guiding for FAU
-                af_target = target
-        except:
-            telescope.logger.error('No coordinates for desired target')
-#        af_target['fauexptime'] = af_exptime
-    #S Else we just want a blank dictionary
-    else: 
-        af_target = {}
-    #S Overwrite the target dictionary with all the autofocus information for 
-    #S takeImage(s)
-    af_target['name'] = 'autofocus'
-    af_target['exptime'] = af_exptime
-    af_target['filter'] = af_filter
-    af_target['spectroscopy'] = fau
-
-    #select the appropriate port (default to imager)
-    if 'spectroscopy' in af_target.keys():
-        if af_target['spectroscopy']:
-            m3port = telescope.port['FAU']
+        af_target = copy.deepcopy(target)
+        af_target['name'] = 'autofocus'
+        # select the appropriate port (default to imager)
+        if 'spectroscopy' in af_target.keys():
+            if af_target['spectroscopy']:
+                m3port = telescope.port['FAU']
+            else:
+                m3port = telescope.port['IMAGER']
         else:
-            m3port = telescope.port['IMAGER']
+            m3port = telescope.port['IMAGER']                
+            af_target['spectroscopy'] = False
+
     else:
-        m3port = telescope.port['IMAGER']        
+        af_target = {'name':'autofocus',\
+                      'exptime':[5],\
+                      'fauexptime':10,\
+                      'filter':["V"],\
+                      'spectroscopy':False}
+        m3port = telescope.port['IMAGER']
+    #S Initialize telescope, we want tracking ON
+    if not telescope.isInitialized(
+        tracking=True,derotate=(not af_target['spectroscopy'])):
+        if not telescope.initialize(\
+            tracking=True,derotate=(not af_target['spectroscopy'])):
+            telescope.recover(
+                tracking=True,derotate=(not af_target['spectroscopy']))
+
+        
+    if 'ra' in af_target.keys() and 'dec' in af_target.keys():
+        telescope.acquireTarget(af_target)
+        #TODO Need to think about incorporating guiding for FAU
+
+    else:
+        telescope.logger.info('No ra and dec, using current position')
+
     #S our data path
     datapath = '/Data/t' + str(telescope_number) + '/' + \
         control.site.night + '/'
@@ -354,7 +361,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     #S Get current time for measuring timeout
     t0 = datetime.datetime.utcnow()
 
-    """
+
     #S Loop to wait for dome to open, cancels afeter ten minutes
     while dome.isOpen == False:
         telescope.logger.info(' Enclosure closed; waiting for dome to open')
@@ -364,7 +371,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                                     '10 minutes; skipping autofocus')
             return
         time.sleep(30)
-    """
+
     #S make array of af_defocus_steps
     defsteps = np.linspace(-defocus_step*(num_steps/2),\
                                 defocus_step*(num_steps/2),num_steps)
@@ -397,12 +404,21 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
 
             #S Take image, recall takeimage returns the filename of the image.
             #S we have the datapath from earlier
-            if fau:
+            if af_target['spectroscopy']:
                 imagename = control.takeFauImage(af_target,telescope_num=\
                                                      telescope_number)
             else:
                 imagename = control.takeImage(af_target,telescope_num=\
                                                   telescope_number)
+            if imagename == 'error':
+                telescope.logger.exception('Failed to save image')
+#                    control.imager[telescope_number-1].recover()
+                focusmeas_list.append(-999)
+                stddev_list.append(999)
+                numstar_list.append(0)
+                imagenum_list.append('9999')
+                continue
+    
             imagenum_list.append(imagename.split('.')[4])
 
             #S Sextract this guy, put in a try just in case. Defaults should
@@ -418,8 +434,8 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             #S get focus measure value, as well as standard deviation of the
             #S mean
             try:
-                median,stddev,numstar=new_get_hfr(catalog,telescope=telescope,\
-                                                      fau=fau)
+                median,stddev,numstar=new_get_hfr(
+                    catalog,telescope=telescope,fau=af_target['spectroscopy'])
                 telescope.logger.info('Got hfr value from '+catalog)
                 focusmeas_list.append(median)
                 stddev_list.append(stddev)
@@ -571,8 +587,8 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             #S where AAAA is the image number on the first image of the
             #S autofocus sequence, and BBBB the last image number.
             datafile = control.site.night+'.T'+str(telescope_number)+\
-                '.autorecord.'+af_filter+'.'+imagenum_list[0]+'.'+\
-                imagenum_list[-1]+'.txt'
+                '.autorecord.'+af_target['filter'][0]+'.'+imagenum_list[0]+\
+                '.'+imagenum_list[-1]+'.txt'
             with open(datapath+datafile,'a') as fd:
                 #S Write all the environment temps, etc. also record old
                 #S and new best focii
