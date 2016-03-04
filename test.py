@@ -8,6 +8,7 @@ import threading
 import math
 import numpy as np
 from minerva_library import rv_control
+from minerva_library import newauto
 
 if __name__ == '__main__':
 
@@ -15,6 +16,8 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+
+#	minerva.cameras[0].take_image(5,'V','testexp')
 
 
 	ipdb.set_trace()
@@ -80,6 +83,7 @@ if __name__ == '__main__':
 		minerva.fauguide(target,telnum,acquireonly=False)
 		ipdb.set_trace()
 #	'''	
+	"""
 	target = {
 		"name" : "HD19373", 
 		"ra" : 3.15111666667, 
@@ -102,9 +106,30 @@ if __name__ == '__main__':
 		"template" : False, 
 		"i2": False,
 		"comment":"RV standard star"}
-	minerva.autofocus(4,fau=True,target=target)
-	ipdb.set_trace()
 
+	minerva.autofocus(4,fau=True,target=target)
+	"""
+	target = {
+		"name" : "HD125455", 
+		"ra" : 20.5,#14.3263513,
+		"dec" : -5.15119,
+		"starttime" : datetime.datetime(2015,01,01,0,0,0), 
+		"endtime" : datetime.datetime(2018,01,01,0,0,0), 
+		"spectroscopy": True, 
+		"filter": ["rp"], 
+		"num": [1], 
+		"exptime": [10], 
+		"fauexptime": 20, 
+		"defocus": 0.0, 
+		"selfguide": True, 
+		"guide": False, 
+		"cycleFilter": True, 
+		"positionAngle": 0.0, 
+		"template" : False, 
+		"i2": False,
+		"comment":"RV standard star"}
+	ipdb.set_trace()
+	newauto.autofocus(minerva,3,target=target)
 	rv_control.doSpectra(minerva,target,[1,2,3,4])
 	ipdb.set_trace()
 

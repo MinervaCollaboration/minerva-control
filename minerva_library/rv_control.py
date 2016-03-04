@@ -87,8 +87,17 @@ def rv_observing(minerva):
                     target['endtime'] = settime
 
                 if target['starttime'] < target['endtime']:
-                    doSpectra(minerva,target,[1,2,3,4])
-#                    minerva.doSpectra(target,[1,2,3,4])
+                    if target['name'] == 'autofocus':
+                        if 'spectroscopy' in target.keys(): fau = target['spectroscopy']
+                        else: fau = False
+                        kwargs = {'target':target,'fau':fau}
+                        threads = []
+                        for telescope in minerva.telescopes:
+                            threads.append(threading.Thread(target=newauto.autofocus,args=(minerva,telescope.num,),kwargs=kwargs))
+                        for thread in threads(): thread.start()
+                        for thread in threads(): thread.join()
+                    else:
+                        doSpectra(minerva,target,[1,2,3,4])
                 else: minerva.logger.info(target['name']+ ' not observable; skipping')
 
     minerva.observing=False
@@ -151,7 +160,7 @@ def doSpectra(minerva, target, tele_list):
                       "Dear Benevolent Humans,\n\n"+
                       "T" + str(tele_list[t]) + " thread timed out waiting for slew. "+
                       "This shouldn't happen. Please fix me and note what was done."+
-                      "Love,\nMINERVA",level='critical')
+                      "Love,\nMINERVA",level='serious')
         
     minerva.logger.info("Locating Fiber")
     backlight(minerva)
@@ -401,59 +410,9 @@ def get_rv_target(minerva, bstar=False):
     goodtargets = []
     for target in targets:
 
-        starttime = sunset
-        endtime = sunrise
+        utils.truncate_observable_window(minerva.site, target)
 
-        minerva.site.obs.horizon = '21.0'
-        body = ephem.FixedBody()
-        body._ra = str(target['ra']*15.0)
-        body._dec = str(target['dec'])
-
-        #S UTC vs local time not right, but not significant
-        body._epoch = datetime.datetime.utcnow()
-        body.compute()
-                        
-        # calculate the object's rise time
-        try:
-            risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()).datetime()
-        except ephem.AlwaysUpError:
-            # if it's always up, don't modify the start time
-            risetime = starttime
-        except ephem.NeverUpError:
-            # if it's never up, skip the target     
-            risetime = endtime
- 
-        # calculate the object's set time
-        try:
-            settime = minerva.site.obs.next_setting(body,start=minerva.site.NautTwilEnd()).datetime()
-        except ephem.AlwaysUpError:
-            # if it's always up, don't modify the end time
-            settime = endtime
-        except ephem.NeverUpError:
-            # if it's never up, skip the target
-            settime = starttime
-
-        # if it rises before it sets, redo with the previous day
-        if risetime > settime:
-            try:
-                risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
-            except ephem.AlwaysUpError:
-                # if it's always up, don't modify the start time
-                risetime = starttime
-            except ephem.NeverUpError:
-                # if it's never up, skip the target
-                risetime = endtime
-
-        # modify start time to ensure the target is always above the horizon
-        if starttime < risetime:
-            starttime = risetime
-        if endtime > settime:
-            endtime = settime
-
-        if starttime < endtime:
-            target['starttime'] = starttime
-            target['endtime'] = endtime
-            
+        if target['starttime'] < target['endtime']:
             goodtargets.append(target)
 
     for target in goodtargets:
@@ -518,9 +477,12 @@ def mkschedule(minerva):
                 fh.write(jsonstr + '\n')
 
                 bstarndx = (bstarndx + 1) % nbstars
-                
+          
             if ((sunrise-sunset).total_seconds() + 3600.0) < elapsedTime:
                 break
+        if elapsedTime == 0:
+            print "no targets at sunset"
+            break
 
     fh.close()
 

@@ -76,13 +76,13 @@ def mkdict(name=None, bstar=False, includeInactive=False):
         target['name'] = targetlist['name'][i]
         target['ra'] = float(targetlist['ra'][i])
         target['dec'] = float(targetlist['dec'][i])
-        target['starttime'] = "2015-01-01 00:00:00"
-        target['endtime'] = "2115-01-01 00:00:00"
+        target['starttime'] = datetime.datetime(2015,01,01,00,00,00)
+        target['endtime'] = datetime.datetime(2115,01,01,00,00,00)
         target['spectroscopy'] = True
         target['filter'] = ["rp"]
         target['num'] = [1]
         target['exptime'] = [float(targetlist['exptime'][i])]
-        target['fauexptime'] = 1
+        target['fauexptime'] = 5.0
         target['defocus'] = 0.0
         target['selfguide'] = True
         target['guide'] = False

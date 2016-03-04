@@ -421,25 +421,21 @@ class site:
 
 
 	def sunrise(self, horizon=0):
-
 		self.obs.horizon = str(horizon)
 		sunrise = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return sunrise
 	
 	def sunset(self, horizon=0):
-
 		self.obs.horizon = str(horizon)
 		sunset = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return sunset
 		
 	def NautTwilBegin(self, horizon=-8):
-
 		self.obs.horizon = str(horizon)
 		NautTwilBegin = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return NautTwilBegin
 
 	def NautTwilEnd(self, horizon=-12):
-
 		self.obs.horizon = str(horizon)
 		NautTwilEnd = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return NautTwilEnd

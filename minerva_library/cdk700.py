@@ -69,6 +69,9 @@ class CDK700:
 		self.base_directory = base
 		#S Get values from config_file
 		self.load_config()
+
+		self.num = self.logger_name[-1]
+
 		#S Set up logger
 		self.setup_logger()
 		self.pdu = pdu.pdu(self.pdu_config,base)
@@ -89,7 +92,6 @@ class CDK700:
 				status = self.getStatus()
 				self.focus[port] = self.default_focus[port]  #status.focuser.position
 				
-		self.num = self.logger_name[-1]
 			
 	#additional higher level routines
 	#tracking and detrotating should be on by default
@@ -862,15 +864,15 @@ class CDK700:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 			self.recover()
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
-			self.acquireTarget(target,pa=pa)
+			self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
 			return
 
-	def radectoaltaz(self,ra,dec):
+	def radectoaltaz(self,ra,dec,date=datetime.datetime.utcnow()):
 		obs = ephem.Observer()
 		obs.lat = str(self.latitude)
 		obs.long = str(self.longitude)
 		obs.elevation = self.elevation
-		obs.date = str(datetime.datetime.utcnow())
+		obs.date = str(date)
 		star = ephem.FixedBody()
 		star._ra = ephem.hours(str(ra))
 		star._dec = ephem.degrees(str(dec))
@@ -939,20 +941,17 @@ class CDK700:
 
 	def park(self):
 		# park the scope (no danger of pointing at the sun if opened during the day)
-		self.initialize(tracking=True)
+		self.initialize(tracking=True, derotate=False)
 		parkAlt = 45.0
 		parkAz = 0.0 
 
 		self.logger.info('T' + self.num + ': Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
 		self.mountGotoAltAz(parkAlt, parkAz)
-		if not self.inPosition(alt=parkAlt,az=parkAz, pointingTolerance=3600.0):
+		if not self.inPosition(alt=parkAlt,az=parkAz, pointingTolerance=3600.0,derotate=False):
 			if self.recover(): self.park()
 
 		self.logger.info('T' + self.num + ': Turning mount tracking off')
 		self.mountTrackingOff()
-	
-		self.logger.info('T' + self.num + ': Turning rotator tracking off')
-		self.rotatorStopDerotating()
 
 	def recoverFocuser(self):
 		timeout = 60.0

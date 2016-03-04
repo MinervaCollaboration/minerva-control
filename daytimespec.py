@@ -29,7 +29,10 @@ if __name__ == '__main__':
 	# change to the imaging port for calibrations
 	for telescope in minerva.telescopes:
 		telescope.m3port_switch(telescope.port['IMAGER'])
-	minerva.specCalib(darkexptime=150.0)
+
+	# only do calibrations if it was started by the cron job (or within 30 minutes of the nominal start time)
+	if datetime.datetime.now().hour == 8:
+		minerva.specCalib(darkexptime=150.0)
 
 	# change to the spectrograph port
 	for telescope in minerva.telescopes:

@@ -535,7 +535,7 @@ class imager:
 				return False
 
 		if self.nserver_failed > 3:
-			mail.send(telescope_name + 'Server failed','',level='critical')
+			mail.send(telescope_name + 'Server failed','',level='serious')
 			sys.exit()
 		
 

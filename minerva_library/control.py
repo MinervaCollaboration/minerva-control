@@ -530,6 +530,7 @@ class control:
 		
 	# check weather condition; close if bad, open and send heartbeat if good; update dome status
 	def domeControl(self,day=False):
+
 		while self.observing:
 			t0 = datetime.datetime.utcnow()
 
@@ -570,7 +571,6 @@ class control:
 			# ensure 4 hearbeats before timeout
 			sleeptime = max(14.0-(datetime.datetime.utcnow() - t0).total_seconds(),0)
 			time.sleep(sleeptime)
-
 
 		self.dome_close()
 		
@@ -879,8 +879,8 @@ class control:
                 threads = [None] * len(tele_list)
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]-1]:
-                                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement                                
-                                #S i think this might act up due to being a dictionary, but well see.                               
+                                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
+                                #S i think this might act up due to being a dictionary, but well see.
                                 threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
                                 threads[t].start()
 
@@ -938,27 +938,30 @@ class control:
 
 	def pointAndGuide(self, target, tel_num, backlight=False):
 
-		self.logger.info("T" + str(tel_num) + ": pointing to target")
-		self.telescopes[tel_num-1].acquireTarget(target)
+		try:
+			self.telescopes[tel_num-1].logger.info('Beginning autofocus on '+target['name'])
+			newauto.autofocus(self, tel_num, target=target)
+			self.logger.info("T" + str(tel_num) + ": pointing to target")
+			self.telescopes[tel_num-1].acquireTarget(target, derotate=False)
+
+			if backlight:
+				rv_control.backlight(self)
+				backlit = glob.glob('/Data/t' + str(tel_num) + '/' + self.night + '/*backlight*.fits')
+				if len(backlit) > 1:
+					xfiber, yfiber = rv_control.find_fiber(backlit[-1])
+					self.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ")")
+					camera.fau.xfiber = xfiber
+					camera.fau.yfiber = yfiber
+				else:
+					self.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
 
 
-
-		if backlight:
-			rv_control.backlight(self)
-			backlit = glob.glob('/Data/t' + str(tel_num) + '/' + self.night + '/*backlight*.fits')
-			if len(backlit) > 1:
-				xfiber, yfiber = rv_control.find_fiber(backlit[-1])
-				self.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ")")
-				camera.fau.xfiber = xfiber
-				camera.fau.yfiber = yfiber
-			else:
-				self.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
-
-
-		self.logger.info("T" + str(tel_num) + ": beginning guiding")
-		self.cameras[tel_num-1].fau.guiding=True
-		self.fauguide(target,tel_num)
-
+			self.logger.info("T" + str(tel_num) + ": beginning guiding")
+			self.cameras[tel_num-1].fau.guiding=True
+			self.fauguide(target,tel_num)
+		except:
+			self.logger.exception("T" + str(tel_num) + ": Pointing and guiding failed")
+#			mail.send("Pointing and guiding failed","",level="serious")
 
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
@@ -1020,9 +1023,8 @@ class control:
 
 				ndx = np.argmax(stars[:,2])
 
-
 				self.logger.info("T" + str(tel_num) + ": Found " + str(len(stars)) + " stars, using the star at (x,y)=(" + str(stars[ndx][0]) + "," + str(stars[ndx][1]) + ")")
-#				ipdb.set_trace()
+
 				curpos = np.array([stars[ndx][0],stars[ndx][1]])
 				tvals = np.append(tvals,i)
 				xvals = np.append(xvals, curpos[0])
@@ -1032,7 +1034,8 @@ class control:
 				filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
 				filtercurpos=np.array([filterx, filtery])
 				separation = camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1])*camera.fau.platescale
-				self.logger.info("T" + str(tel_num) + ": Target is at (" + str(curpos[0]) + ',' + str(curpos[1]) + "), " + str(separation) + '" away from the fiber (' + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) ") -- tolerance is " + str(camera.fau.acquisition_tolerance) + '"')
+				self.logger.info("T%i: Target is at (%f,%f), %f'' away from the fiber (%f,%f) -- tolerance is %f'"%(tel_num,curpos[0],curpos[1],separation,camera.fau.xfiber,camera.fau.yfiber,camera.fau.acquisition_tolerance))
+#				self.logger.info("T" + str(tel_num) + ": Target is at (" + str(curpos[0]) + ',' + str(curpos[1]) + "), " + str(separation) + '" away from the fiber (' + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) ") -- tolerance is " + str(camera.fau.acquisition_tolerance) + '"')
  				if separation < camera.fau.acquisition_tolerance:
 					self.logger.info("T" + str(tel_num) + ": Target acquired")
 					camera.fau.acquired = True
@@ -1939,7 +1942,13 @@ class control:
 			moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
 
 			m3port = telescopeStatus.m3.port
-			defocus = (float(telescopeStatus.focuser.position) - telescope.focus[m3port])/1000.0
+			try:
+				if m3port == '0': defocus = "UNKNOWN"
+				else: defocus = (float(telescopeStatus.focuser.position) - float(telescope.focus[m3port]))/1000.0
+			except:
+				defocus = "UNKNOWN"
+				self.logger.exception("What is going on?")
+
 			rotpos = telescopeStatus.rotator.position
 			parang = str(telescope.parangle(useCurrent=True))
 			rotoff = telescope.rotatoroffset[m3port]
@@ -2963,57 +2972,9 @@ class control:
 			for line in targetfile:
 				target = self.parseTarget(line)
 				if target <> -1:
-					# check if the end is after morning twilight begins
-					if target['endtime'] > self.site.NautTwilBegin(): 
-						target['endtime'] = self.site.NautTwilBegin()
-					# check if the start is after evening twilight ends
-					if target['starttime'] < self.site.NautTwilEnd(): 
-						target['starttime'] = self.site.NautTwilEnd()
 
-					# compute the rise/set times of the target
-					#S I think something with coordinates is screwing us up here
-					#S We are still going below 20 degrees.
-					self.site.obs.horizon = '21.0'
-					body = ephem.FixedBody()
-					body._ra = str(target['ra'])
-					body._dec = str(target['dec'])
-					#S using UTC now for the epoch, shouldn't make a siginificant 
-					#S difference from using local time
-					body._epoch = datetime.datetime.utcnow()
-					body.compute()
-
-					try:
-						risetime = self.site.obs.next_rising(body,start=self.site.NautTwilEnd()).datetime()
-					except ephem.AlwaysUpError:
-						# if it's always up, don't modify the start time
-						risetime = target['starttime']
-					except ephem.NeverUpError:
-						# if it's never up, skip the target
-						risetime = target['endtime']
-					try:
-						settime = self.site.obs.next_setting(body,start=self.site.NautTwilEnd()).datetime()
-					except ephem.AlwaysUpError:
-						# if it's always up, don't modify the end time
-						settime = target['endtime']
-					except ephem.NeverUpError:
-						# if it's never up, skip the target
-						settime = target['starttime']
-
-					if risetime > settime:
-						try:
-							risetime = self.site.obs.next_rising(body,start=self.site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
-						except ephem.AlwaysUpError:
-							# if it's always up, don't modify the start time
-							risetime = target['starttime']
-						except ephem.NeverUpError:
-							# if it's never up, skip the target
-							risetime = target['endtime']
-						
-					# make sure the target is always above the horizon
-					if target['starttime'] < risetime:
-						target['starttime'] = risetime
-					if target['endtime'] > settime:
-						target['endtime'] = settime
+					# truncate the start and end times so it's observable
+					utils.truncate_observable_window(self,target)
 
 					if target['starttime'] < target['endtime']:
 						if 'spectroscopy' in target.keys():

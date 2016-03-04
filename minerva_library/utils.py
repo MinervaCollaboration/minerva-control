@@ -4,6 +4,70 @@ import subprocess
 import os
 import pyfits
 import numpy as np
+import ephem
+import datetime
+import ipdb
+
+# Truncates target['starttime'] and target['endtime'] to ensure 
+# the object is observable (Sun below sunalt and target above horizon)
+def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0):
+
+    sunset = site.sunset(horizon=sunalt)
+    sunrise = site.sunrise(horizon=sunalt)
+
+    starttime = max(sunset,target['starttime'])
+    endtime = min(sunrise,target['endtime'])
+
+    site.obs.horizon = str(horizon)
+
+    body = ephem.FixedBody()
+    body._ra = ephem.hours(str(target['ra']))
+    body._dec = ephem.degrees(str(target['dec']))
+
+
+    #S UTC vs local time not right for epoch, but not significant
+    body._epoch = datetime.datetime.utcnow()
+    body.compute()
+
+    # calculate the object's rise time
+    try:
+        risetime = site.obs.next_rising(body,start=sunset).datetime()
+    except ephem.AlwaysUpError:
+        # if it's always up, don't modify the start time
+        risetime = starttime
+    except ephem.NeverUpError:
+        # if it's never up, skip the target
+        risetime = endtime
+
+    # calculate the object's set time
+    try:
+        settime = site.obs.next_setting(body,start=sunset).datetime()
+    except ephem.AlwaysUpError:
+        # if it's always up, don't modify the end time
+        settime = endtime
+    except ephem.NeverUpError:
+        # if it's never up, skip the target
+        settime = starttime
+
+    # if it rises before it sets, redo with the previous day
+    if risetime > settime:
+        try:
+            risetime = site.obs.next_rising(body,start=sunset + datetime.timedelta(days=1)).datetime()
+        except ephem.AlwaysUpError:
+            # if it's always up, don't modify the start time
+            risetime = starttime
+        except ephem.NeverUpError:
+            # if it's never up, skip the target
+            risetime = endtime
+
+    # modify start time to ensure the target is always above the horizon
+    if starttime < risetime:
+        starttime = risetime
+    if endtime > settime:
+        endtime = settime
+
+    target['starttime'] = starttime
+    target['endtime'] = endtime
 
 # converts a sexigesimal string to a float
 # the string may be delimited by either spaces or colons
