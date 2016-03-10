@@ -11,6 +11,9 @@ if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 
+	if os.path.exists('sunOverride.txt'):
+		os.remove('sunOverride.txt')
+
 	minerva = control.control('control.ini',base_directory)
 
 	# if a file for kiwispec exists, use that. If not, observe with all four telescopes

@@ -36,6 +36,7 @@ import newauto
 from fix_fits import fix_fits
 import copy
 import rv_control
+from plotweather import plotweather
 
 # FAU guiding dependencies
 import PID_test as pid
@@ -77,6 +78,7 @@ class control:
                 self.cameras = []
 		self.pdus = []
 		self.site = env.site('site_mtHopkins.ini',self.base_directory)
+		self.thermalenclosureemailsent = False
 
 		for i in range(2):
 			try:
@@ -1025,6 +1027,21 @@ class control:
 
 				self.logger.info("T" + str(tel_num) + ": Found " + str(len(stars)) + " stars, using the star at (x,y)=(" + str(stars[ndx][0]) + "," + str(stars[ndx][1]) + ")")
 
+				# include an arbitrary offset from the nominal position (experimental)
+				offset_file = '/home/minerva/minerva-control/t' + str(tel_num) + '_fiber_offset.txt'
+				if os.path.exists(offset_file):
+					with open(offset_file) as fh:
+						entries = fh.readline().split()
+						xoffset = float(entries[0])
+						yoffset = float(entries[1])
+						self.logger.info("T" + str(tel_num) + ": offset file found, applying offset to fiber position (" + str(xoffset) + "," + str(yoffset) + ")")
+				else:
+					xoffset = 0.0
+					yoffset = 0.0
+
+				p.setPoint((camera.fau.xfiber+xoffset,camera.fau.yfiber+yoffset))
+				pfast.setPoint((camera.fau.xfiber+xoffset,camera.fau.yfiber+yoffset))
+
 				curpos = np.array([stars[ndx][0],stars[ndx][1]])
 				tvals = np.append(tvals,i)
 				xvals = np.append(xvals, curpos[0])
@@ -1033,8 +1050,8 @@ class control:
 				filterx=camera.fau.filterdata(xvals, N=camera.fau.smoothing)
 				filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
 				filtercurpos=np.array([filterx, filtery])
-				separation = camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1])*camera.fau.platescale
-				self.logger.info("T%i: Target is at (%f,%f), %f'' away from the fiber (%f,%f) -- tolerance is %f'"%(tel_num,curpos[0],curpos[1],separation,camera.fau.xfiber,camera.fau.yfiber,camera.fau.acquisition_tolerance))
+				separation = camera.fau.dist(camera.fau.xfiber+xoffset-curpos[0], camera.fau.yfiber+yoffset-curpos[1])*camera.fau.platescale
+				self.logger.info("T%i: Target is at (%f,%f), %f'' away from the fiber (%f,%f) -- tolerance is %f'"%(tel_num,curpos[0],curpos[1],separation,camera.fau.xfiber+xoffset,camera.fau.yfiber+yoffset,camera.fau.acquisition_tolerance))
 #				self.logger.info("T" + str(tel_num) + ": Target is at (" + str(curpos[0]) + ',' + str(curpos[1]) + "), " + str(separation) + '" away from the fiber (' + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) ") -- tolerance is " + str(camera.fau.acquisition_tolerance) + '"')
  				if separation < camera.fau.acquisition_tolerance:
 					self.logger.info("T" + str(tel_num) + ": Target acquired")
@@ -1069,7 +1086,9 @@ class control:
 
 				if guiding == True:
 				#telescope.increment_alt_az_balanced(telupdateval[0],telupdateval[1])
-					telescope.mountOffsetRaDec(-telupdateval[0],-telupdateval[1])
+					telescopeStatus = telescope.getStatus()
+					dec = utils.ten(telescopeStatus.mount.dec_2000)
+					telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
 
 					if fast:
 						time.sleep(5)
@@ -1090,7 +1109,7 @@ class control:
 
 				self.logger.debug("T" + str(tel_num) + ": Curpos " + str(curpos[0])+"   "+str(curpos[1]))
 				#self.logger.debug("Filtercurpos " +  filtercurpos)
-				self.logger.debug("T" + str(tel_num) + ": distance from target: " +str(round(camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1]),2)))
+				self.logger.debug("T" + str(tel_num) + ": distance from target: " +str(round(camera.fau.dist(camera.fau.xfiber+xoffset-curpos[0], camera.fau.yfiber+yoffset-curpos[1]),2)))
 				self.logger.debug("T" + str(tel_num) + ": Updatevalue: " + str(updateval[0])+" "+str(updateval[1]))
 				self.logger.debug("T" + str(tel_num) + ": Commanding update: " + str(telupdateval[0])+" "+str(telupdateval[1]))
 				if i >50:
@@ -1785,12 +1804,16 @@ class control:
 		for cont in temp_controllers:
 			for i in range(4):
 				filename = '%s/log/%s/temp.%s.%s.log'%(self.base_directory,night,cont,str(i+1))
-				with open(filename,'r') as fh:
-					lineList = fh.readlines()
-					temps = lineList[-1].split(',')
-					if temps[1] == "None" : temp = 'UNKNOWN'
-					else: temp = float(temps[1])
-					f['TEMP'+cont+str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
+				try:
+					with open(filename,'r') as fh:
+						lineList = fh.readlines()
+						temps = lineList[-1].split(',')
+						if temps[1] == "None" : temp = 'UNKNOWN'
+						else: temp = float(temps[1])
+						f['TEMP'+cont+str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
+				except:
+					f['TEMP'+cont+str(i+1)] = ('UNKNOWN','Temperature (C)')
+					
 
 		# add the temperatures from the thermal enclosure log
 		filename = self.base_directory + '/config/thermal_enclosure.ini'
@@ -1798,11 +1821,18 @@ class control:
 			header = fh.readlines()[0].strip().split(',')
 		filename = '/Data/thermallog/Thermal Enclosure Log ' + \
 		    datetime.datetime.utcnow().strftime('%Y-%m-%d') + ' UTC.csv'
-		with open(filename,'rb') as fh:
-			temps = fh.readlines()[-1].strip().split(',')
-			for i in range(12):
-				f['TEMPE'+str(i+1).zfill(2)] = (float(temps[i+4]), header[i] + ' Temperature (C)')
-			f['ENCSETP'] = (float(temps[3]),'Thermal enclosure set point (C)')
+		
+		if os.path.exists(filename):
+			with open(filename,'rb') as fh:
+				temps = fh.readlines()[-1].strip().split(',')
+				for i in range(12):
+					f['TEMPE'+str(i+1).zfill(2)] = (float(temps[i+4]), header[i] + ' Temperature (C)')
+				f['ENCSETP'] = (float(temps[3]),'Thermal enclosure set point (C)')
+			self.thermalenclosureemailsent = False
+		else:
+			if self.thermalenclosureemailsent:
+				mail.send("Thermal enclosure logging died","Please restart me!")
+			self.thermalenclosureemailsent = True
 
 		# iodine temperature and set point
                 f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
@@ -2844,24 +2874,26 @@ class control:
 		for key in errors.keys():
 			body += key + ': ' + str(errors[key]) + '\n'
 
-		body += '\nThe weather for tonight was:\n\n'
-		for key in weatherstats:
-			arr = [x[1] for x in weatherstats[key]]
-			if len(arr) > 0:
-				body += key + ': min=' + str(min(arr)) + \
-				    ', max=' + str(max(arr)) + \
-				    ', ave=' + str(sum(arr)/float(len(arr))) + '\n'
+		body += "\nSee the attached plot for tonight's weather\n"
+#		for key in weatherstats:
+#			arr = [x[1] for x in weatherstats[key]]
+#			if len(arr) > 0:
+#				body += key + ': min=' + str(min(arr)) + \
+#				    ', max=' + str(max(arr)) + \
+#				    ', ave=' + str(sum(arr)/float(len(arr))) + '\n'
 
 		body += "\nPlease see the webpage for movies and another diagnostics:\n" + \
 		    "https://www.cfa.harvard.edu/minerva/site/" + night + "/movie.html\n\n" + \
 		    "Love,\n" + \
 		    "MINERVA"
 
+		weatherplotname = plotweather(self,night=night)
+		
 		# email observing report
 		if email: 
 			if num == 0: subject="MINERVA done observing"
 			else: subject = "T" + str(num) + ' done observing'
-			mail.send(subject,body)
+			mail.send(subject,body,attachment=weatherplotname)
 
 		print body
 

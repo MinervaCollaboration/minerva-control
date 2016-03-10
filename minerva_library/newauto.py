@@ -307,7 +307,7 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
 
 
 def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
-                  target=None):
+                  target=None,dome_override=False):
 
     #S get the telescope we plan on working with, now redundent
     telescope = control.telescopes[telescope_number-1]
@@ -361,9 +361,9 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     #S Get current time for measuring timeout
     t0 = datetime.datetime.utcnow()
 
-
+    
     #S Loop to wait for dome to open, cancels afeter ten minutes
-    while dome.isOpen == False:
+    while dome.isOpen == False and (not dome_override):
         telescope.logger.info(' Enclosure closed; waiting for dome to open')
         timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
         if timeelapsed > 600:
@@ -545,7 +545,10 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
 
 
     # record values in the header
-    alt = str(float(status.mount.alt_radian)*180.0/math.pi)
+    try: alt = str(float(status.mount.alt_radian)*180.0/math.pi)
+    except: alt = '-1'
+    try: rotang = str(float(status.rotator.position))
+    except: rotang = '720'
     try:    tm1 = str(status.temperature.primary)
     except: tm1 = 'UNKNOWN'
     try:    tm2 = str(status.temperature.secondary)
@@ -557,7 +560,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     try:    tback = str(status.temperature.backplate)
     except: tback = 'UNKNOWN'
 
-    control.logger.info('T' + str(telescope_number) + ': Updating best focus'+\
+    telescope.logger.info('Updating best focus for port '+str(m3port)+\
                             ' to '+str(telescope.focus[m3port])+' (TM1='+tm1 +\
                             ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + \
                             tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
@@ -587,15 +590,20 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             #S where AAAA is the image number on the first image of the
             #S autofocus sequence, and BBBB the last image number.
             datafile = control.site.night+'.T'+str(telescope_number)+\
-                '.autorecord.'+af_target['filter'][0]+'.'+imagenum_list[0]+\
-                '.'+imagenum_list[-1]+'.txt'
+                '.autorecord.port'+str(m3port)+'.'+af_target['filter'][0]+\
+                '.'+imagenum_list[0]+'.'+imagenum_list[-1]+'.txt'
             with open(datapath+datafile,'a') as fd:
                 #S Write all the environment temps, etc. also record old
                 #S and new best focii
-                fd.write('Old\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\n')
-                fd.write(str(old_best_focus)+'\t'+str(new_best_focus)+'\t'+tm1\
-                             +'\t'+tm2+'\t'+tm3+'\t'+tamb+'\t'+tback+'\t'+alt\
-                             +'\n')
+                fd.write('Old\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\trotang\n')
+                fd.write('%0.0f\t%0.0f\t%s\t%s\t%s\t%s\t%s\t%0.2f\t%s\n'\
+                             %(old_best_focus,new_best_focus,tm1,tm2,tm3,tamb,\
+                                   tback,float(alt),rotang))
+                fd.write(datetime.datetime.utcnow().strftime(\
+                        '%Y-%m-%d %H:%M:%S')+'\n')
+#                fd.write(str(old_best_focus)+'\t'+str(new_best_focus)+'\t'+tm1\
+#                             +'\t'+tm2+'\t'+tm3+'\t'+tamb+'\t'+tback+'\t'\
+ #                            +alt+'\n')
                 #S Write a header with info on following columns
                 header = 'Column 1\tImage number\n'+\
                     'Column 2\tFocuser position\n'+\

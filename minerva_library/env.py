@@ -69,10 +69,11 @@ class site:
 			'mearth'  : (1.00000000,0.000000000),
 			'aurora'  : (0.89876588,6.878974400),
 			'hat'     : (0.98378265,1.289965700),
-			'minerva' : (1.34948860,0.058437186)
+			'minerva' : (0.74102145,0.058437186)
+#			'minerva' : (1.34948860,0.058437186)
 			}
-		openCloudLimit = -32
-		closeCloudLimit = -30
+		openCloudLimit = -30
+		closeCloudLimit = -28
 
 
 		self.openLimits = {
@@ -88,8 +89,8 @@ class site:
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude'         : [-90,0],
 			'MearthCloud'         : [-999, openCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
-			'HATCloud'            : [-999, openCloudLimit*cloudScale['aurora'][0] +cloudScale['aurora'][1]],
-			'AuroraCloud'         : [-999, openCloudLimit*cloudScale['hat'][0]    +cloudScale['hat'][1]],
+			'HATCloud'            : [-999, openCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
+			'AuroraCloud'         : [-999, openCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
 			'MINERVACloud'        : [-999, openCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
 			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
@@ -107,8 +108,8 @@ class site:
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude'         : [-90,0],
 			'MearthCloud'         : [-999, closeCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
-			'HATCloud'            : [-999, closeCloudLimit*cloudScale['aurora'][0] +cloudScale['aurora'][1]],
-			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['hat'][0]    +cloudScale['hat'][1]],
+			'HATCloud'            : [-999, closeCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
+			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
 			'MINERVACloud'        : [-999, closeCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
 			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}

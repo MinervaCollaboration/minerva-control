@@ -17,7 +17,7 @@ if __name__ == '__main__':
 	minerva.telescope_park()
 
 	for telescope in minerva.telescopes:
-		if not telescope.inPosition(alt=45.0,az=0.0, pointingTolerance=3600.0, tracking=False):
+		if not telescope.inPosition(alt=45.0,az=0.0, pointingTolerance=3600.0, tracking=False, derotate=False):
 			mail.send("T" + telescope.num + " failed to home; skipping daytime sky spectra",
 				  "Dear Benevolent Humans,\n\n"
 				  "T" + telescope.num + " failed to home properly and I fear it could "
@@ -26,12 +26,12 @@ if __name__ == '__main__':
 				  "Love,\nMINERVA",level='serious')
 			sys.exit()
 
-	# change to the imaging port for calibrations
-	for telescope in minerva.telescopes:
-		telescope.m3port_switch(telescope.port['IMAGER'])
-
 	# only do calibrations if it was started by the cron job (or within 30 minutes of the nominal start time)
 	if datetime.datetime.now().hour == 8:
+		# change to the imaging port for calibrations
+		for telescope in minerva.telescopes:
+			telescope.m3port_switch(telescope.port['IMAGER'])
+
 		minerva.specCalib(darkexptime=150.0)
 
 	# change to the spectrograph port
@@ -109,19 +109,23 @@ if __name__ == '__main__':
 			target['exptime'] = [150]
 			target['i2'] = True
 			for i in range(target['num'][0]): 
+				print 'this is before the break'
 				if (datetime.datetime.utcnow() - endtime).total_seconds() > 0: break
+				minerva.logger.info("Beginning daytimesky spectrum with iodine")
 				minerva.takeSpectrum(target)
 			
 			target['i2'] = False
 			for i in range(target['num'][0]): 
+				print 'this is before the break'
 				if (datetime.datetime.utcnow() - endtime).total_seconds() > 0: break
+				minerva.logger.info("Beginning daytimesky spectrum without iodine")
 				minerva.takeSpectrum(target)
 
 			status = minerva.domes[0].status()
 			isOpen = status['Shutter1'] == 'OPEN'
 
 		if not minerva.domes[0].isOpen:
-			print "Dome not open, waiting for conditions to improve"
+			minerva.logger.info("Dome not open, waiting for conditions to improve")
 			time.sleep(60)
 
 	# all done; close the dome

@@ -214,7 +214,7 @@ def doSpectra(minerva, target, tele_list):
     # wait for all telescopes to put target on their fibers (or timeout)
     minerva.logger.info("Waiting for all telescopes to acquire")
     acquired = False
-    timeout = 180.0 # is this long enough?
+    timeout = 300.0 # is this long enough?
     elapsedTime = 0.0
     t0 = datetime.datetime.utcnow()
     while not acquired and elapsedTime < timeout:
@@ -253,7 +253,19 @@ def doSpectra(minerva, target, tele_list):
         minerva.takeSpectrum(target)
 
     minerva.stopFAU(tele_list)
+
+    # let's take another backlit image to see how stable it is
+    backlight(minerva)
+
     return
+
+def peakupflux(minerva, target, telnum):
+
+#    minerva.fauguide(target,[telnum], xfiber=camera.fau.xfiber, yfiber=camera.fau.yfiber)
+#    aveflux = 
+
+    pass
+
 
 def endNight(minerva):
 

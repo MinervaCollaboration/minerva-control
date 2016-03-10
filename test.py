@@ -19,6 +19,8 @@ if __name__ == '__main__':
 
 #	minerva.cameras[0].take_image(5,'V','testexp')
 
+	minerva.endNight(night='n20160307')
+
 
 	ipdb.set_trace()
 #	minerva.spectrograph.i2stage_move('flat')
