@@ -251,7 +251,7 @@ class server:
 		try:
                         if fau:
                                 self.logger.info('Saving guider image')
-                                time.sleep(0.5) # wait for the image to start
+                                time.sleep(0.2) # wait for the image to start
                                 while self.cam.GuiderRunning:
                                         time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)
@@ -259,7 +259,7 @@ class server:
                                 self.maxim.CurrentDocument.SaveFile(self.file_name,3, False, 1)
 				return 'success'				
                         else:
-                                time.sleep(0.5) # wait for the image to start
+                                time.sleep(0.2) # wait for the image to start
         			while (not self.cam.ImageReady) and (self.cam.CameraStatus <> 2):
                 			time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)

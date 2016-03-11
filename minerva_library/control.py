@@ -2874,7 +2874,17 @@ class control:
 		for key in errors.keys():
 			body += key + ': ' + str(errors[key]) + '\n'
 
-		body += "\nSee the attached plot for tonight's weather\n"
+		body += "\nSee the attached plot for tonight's weather. "+\
+		    "The yellow shaded regions denote when the sun is up "+\
+		    "(sunalt > -12 deg), the red shaded regions denote our "+\
+		    "limits for closing when we're already open, the horizontal "+\
+		    "lines next to the red regions are our limits for opening "+\
+		    "when we're closed (the region in between is the deadband "+\
+		    "to prevent rapid cycling of the roof when the weather "+\
+		    "conditions are on the edge), the grey shaded regions are "+\
+		    "when the dome was actually closed, and the blue line is the "+\
+		    "value of the weather parameter denoted on the y axis.\n"
+
 #		for key in weatherstats:
 #			arr = [x[1] for x in weatherstats[key]]
 #			if len(arr) > 0:
