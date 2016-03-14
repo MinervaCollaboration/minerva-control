@@ -7,6 +7,7 @@ import datetime
 import threading
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
+import utils
 
 class telcom_client:
 	
@@ -16,7 +17,7 @@ class telcom_client:
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
 	def load_config(self):
 		try:
@@ -34,22 +35,6 @@ class telcom_client:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
 			
-	def setup_logger(self):
-		
-		log_directory = self.base_directory + '/log/' + self.night
-		self.logger = logging.getLogger(self.logger_name)
-		formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-		if os.path.exists(log_directory) == False:
-			os.mkdir(log_directory)
-		self.logger.handlers = []
-		fileHandler = logging.FileHandler(log_directory + '/' + self.logger_name + '.log', mode='a+')
-		fileHandler.setFormatter(formatter)
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-		self.logger.setLevel(logging.DEBUG)
-		self.logger.addHandler(fileHandler)
-		self.logger.addHandler(streamHandler)
-		
 	#return a socket object connected to the server
 	def connect_server(self):
 		try:

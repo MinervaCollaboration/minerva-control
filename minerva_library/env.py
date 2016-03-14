@@ -11,6 +11,8 @@ sys.dont_write_bytecode = True
 import ipdb
 import mail
 import threading
+import copy
+import utils
 
 class site:
 
@@ -19,7 +21,7 @@ class site:
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.lock = threading.Lock()
 		
 	def load_config(self):
@@ -113,38 +115,11 @@ class site:
 			'MINERVACloud'        : [-999, closeCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
 			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
-			
-	def setup_logger(self):
-			
-		log_path = self.base_directory + '/log/' + self.night
-		if os.path.exists(log_path) == False:os.mkdir(log_path)
-		
-                # setting up aqawan logger                                                                                            
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-                self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
 
 	def getWeather(self):
 
            self.logger.debug("Beginning serial communications with the weather station")
+	   pageError = False
            with self.lock:
 
 		if self.logger_name == 'site_mtHopkins':
@@ -158,13 +133,11 @@ class site:
 				response = urllib2.urlopen(request)
 			except:
 				self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
-				self.weather = -1
 				return
 			
 			data = response.read().split('\n')
 			if data[0] == '':
-				self.weather = -1
-				return -1
+				return
 			
 			# convert the date into a datetime object
 			weather = {
@@ -182,68 +155,28 @@ class site:
 			try: 
 				#S Read the last line from the url above, and split it at the spaces.
 				cloudstr = os.popen('curl -s ' + url).read().split(' ')
-				#S Get the date from the line by concatenating the first split, then add 7 hours to put in UTC.
-				weather['cloudDate'] = datetime.datetime.strptime(cloudstr[0]+' '+cloudstr[1],'%b-%d-%Y %H:%M:%S') + datetime.timedelta(hours=7)
-				#S Assign as specified.
 
-				# if the connection is lost, it returns 0
-				weather['MearthCloud'] = float(cloudstr[2])
-				if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
-				weather['HATCloud'] = float(cloudstr[3])
-				if weather['HATCloud'] == 0.0: weather['HATCloud'] = 999
-				weather['AuroraCloud'] = float(cloudstr[4])
-				if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
-				weather['MINERVACloud'] = float(cloudstr[5])
-				if weather['MINERVACloud'] == 0.0: weather['MINERVACloud'] = 999
+				if len(cloudstr) == 6:
+				        #S Get the date from the line by concatenating the first split, then add 7 hours to put in UTC.
+					weather['cloudDate'] = datetime.datetime.strptime(" ".join(cloudstr[0:2]),'%b-%d-%Y %H:%M:%S') + datetime.timedelta(hours=7)
+					#S Assign as specified.
+					# if the connection is lost, it returns 0
+					weather['MearthCloud'] = float(cloudstr[2])
+					if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
+					weather['HATCloud'] = float(cloudstr[3])
+					if weather['HATCloud'] == 0.0: weather['HATCloud'] = 999
+					weather['AuroraCloud'] = float(cloudstr[4])
+					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
+					weather['MINERVACloud'] = float(cloudstr[5])
+					if weather['MINERVACloud'] == 0.0: weather['MINERVACloud'] = 999
+				else:
+					self.logger.error("Error reading the cloud page; line is: " + " ".join(cloudstr))
+
 			except: 
-				self.weather = -1
-				pageError = True
-				
+				# error reading the cloud monitor, don't update the values
 				self.logger.error('Error reading the page for cloud temps at '+url)
-				#S We'll set everything to close essentially, and make cloudDate utcnow.
-				weather['cloudDate'] = datetime.datetime.utcnow()
-				weather['MearthCloud'] = 999
-				weather['HATCloud'] = 999
-				weather['AuroraCloud'] = 999
-				weather['MINERVACloud'] = 999
+				pageError = True
 
-			'''		
-			# add in the cloud monitor
-			url = "http://mearth.sao.arizona.edu/weather/now"
-
-			# read the webpage
-			self.logger.debug('Requesting URL: ' + url)
-			request = urllib2.Request(url)
-			try:
-				response = urllib2.urlopen(request)
-			except:
-				self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
-				site.weather = -1
-				return -1
-			data = response.read().split()
-			if data[0] == '':
-				self.logger.error('Error reading the weather page (empty response)')
-				site.weather = -1
-				return -1
-			if len(data) <> 14:
-				self.logger.error('Error reading the weather page; response: ' + str(data))
-				site.weather = -1
-				return -1
-
-			# MJD to datetime
-			weather['cloudDate'] = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
-			if data[13] == '---':
-				self.logger.error("Mearth cloud sensor down")
-				weather['MearthCloud'] = 999
-			else:
-				try: weather['MearthCloud'] = float(data[13])
-				except: 
-					self.logger.error("Couldn't parse data" + str(data[13]) + "; " + " ".join(data))
-					weather['MearthCloud'] = 999
-			weather['HATCloud'] = 999
-			weather['AuroraCloud'] = 999
-			'''
-			
 		elif self.logger_name == 'site_Simulate' or self.logger_name == 'site_Wellington':
                         # get values that pass through
                         weather = {}
@@ -257,6 +190,7 @@ class site:
                         weather['MearthCloud'] = 999
                         weather['AuroraCloud'] = 999
                         weather['HATCloud'] = 999
+                        weather['MINERVACloud'] = 999
                         weather['totalRain'] = 0.0
                         weather['barometer'] = 1000.0
                         weather['windGustSpeed'] = 0.0
@@ -266,9 +200,6 @@ class site:
 		weather['sunAltitude'] = self.sunalt()
 		
 		# make sure all required keys are present
-                #S Do we want to require other cloud monitors?
-		#TODO See above
-		pageError = False
 		requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
                                 'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
 				'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
@@ -278,11 +209,10 @@ class site:
 			if not key in weather.keys():
 				# if not, return an error
 				logging.error('Weather page does not have all required keys (' + key + ')')
-				self.weather = -1
 				pageError = True
 
 		# if everything checks out, store the weather
-		if not pageError: self.weather = weather
+		if not pageError: self.weather = copy.deepcopy(weather)
 
 		# record the coldest temp for snow/ice detection
 		try:

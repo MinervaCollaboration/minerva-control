@@ -1,6 +1,7 @@
 import datetime, time
 import pdu
 import convectron
+import utils
 
 class vacuum:
 
@@ -16,28 +17,9 @@ class vacuum:
             print('ERROR accessing ', self.num, ".", 
                 self.num, " was not found in the configuration file", configfile)
             return 
-
-        logger_name = config['Setup']['LOGNAME']
-        log_file = 'logs/' + night + '/' + config['Setup']['LOGFILE']
-			
-	# setting up imager logger
-        fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-        datefmt = "%Y-%m-%dT%H:%M:%S"
-
-        self.logger = logging.getLogger(logger_name)
-        formatter = logging.Formatter(fmt,datefmt=datefmt)
-        formatter.converter = time.gmtime
         
-        fileHandler = logging.FileHandler(log_file, mode='a')
-        fileHandler.setFormatter(formatter)
-
-        console = logging.StreamHandler()
-        console.setFormatter(formatter)
-        console.setLevel(logging.INFO)
-        
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.addHandler(fileHandler)
-        self.logger.addHandler(console)
+        self.logger_name = config['Setup']['LOGNAME']
+        self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
         self.specgauge = convectron('spectrograph')
         self.pumpgauge = convectron('pump')

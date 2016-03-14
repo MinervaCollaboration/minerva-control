@@ -16,7 +16,7 @@ from si.client import SIClient
 from si.imager import Imager
 import dynapower
 import ipdb
-
+import utils
 
 # spectrograph control class, control all spectrograph hardware
 class spectrograph:
@@ -27,7 +27,7 @@ class spectrograph:
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night(),self.logger_name)
 		self.create_class_objects()
 		self.status_lock = threading.RLock()
 		self.file_name = ''
@@ -73,34 +73,6 @@ class spectrograph:
 	def night(self):
 		return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 
-	#set up logger object
-	def setup_logger(self):
-		
-		log_path = self.base_directory + '/log/' + self.night()
-                if os.path.exists(log_path) == False:os.mkdir(log_path)
-
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-                self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
-		
 	def create_class_objects(self):
                 #TODO Should we have this here? It makes sense to give it the time
                 #TODO to warm and settle.

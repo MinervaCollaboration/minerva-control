@@ -309,7 +309,7 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
 def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                   target=None,dome_override=False):
 
-    #S get the telescope we plan on working with, now redundent
+    #S get the telescope we plan on working with, now redundant
     telescope = control.telescopes[telescope_number-1]
 
     #S Define/make sure we have a target
@@ -327,20 +327,17 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             af_target['spectroscopy'] = False
 
     else:
-        af_target = {'name':'autofocus',\
-                      'exptime':[5],\
-                      'fauexptime':10,\
-                      'filter':["V"],\
-                      'spectroscopy':False}
+        af_target = {'name':'autofocus',
+                     'exptime':[5],
+                     'fauexptime':10,
+                     'filter':["V"],
+                     'spectroscopy':False}
         m3port = telescope.port['IMAGER']
-    #S Initialize telescope, we want tracking ON
-    if not telescope.isInitialized(
-        tracking=True,derotate=(not af_target['spectroscopy'])):
-        if not telescope.initialize(\
-            tracking=True,derotate=(not af_target['spectroscopy'])):
-            telescope.recover(
-                tracking=True,derotate=(not af_target['spectroscopy']))
 
+    #S Initialize telescope, we want tracking ON
+    if not telescope.isInitialized(tracking=True,derotate=(not af_target['spectroscopy'])):
+        if not telescope.initialize(tracking=True,derotate=(not af_target['spectroscopy'])):
+            telescope.recover(tracking=True,derotate=(not af_target['spectroscopy']))
         
     if 'ra' in af_target.keys() and 'dec' in af_target.keys():
         telescope.acquireTarget(af_target)
@@ -363,7 +360,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
 
     
     #S Loop to wait for dome to open, cancels afeter ten minutes
-    while dome.isOpen == False and (not dome_override):
+    while (not dome.isOpen()) and (not dome_override):
         telescope.logger.info(' Enclosure closed; waiting for dome to open')
         timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
         if timeelapsed > 600:
@@ -533,8 +530,8 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     status = telescope.getStatus()
     if telescope.focus[m3port] <> status.focuser.position:
         control.logger.info('T'+str(telescope_number) + ": Moving focus to " +\
-                                str(telescope.focus[m3port]))
-        telescope.focuserMove(telescope.focus[m3port],port=m3port)
+                                str(telescope.focus[m3port] + telescope.focus_offset[m3port]))
+        telescope.focuserMove(telescope.focus[m3port]+telescope.focus_offset[m3port],port=m3port)
         # wait for focuser to finish moving
         status = telescope.getStatus()
         while status.focuser.moving == 'True':

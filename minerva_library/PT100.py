@@ -3,6 +3,7 @@ import time, sys, socket, logging, datetime, ipdb, time, json, os, struct
 import numpy as np
 from scipy.interpolate import interp1d
 import threading
+import utils
 
 class PT100:
 
@@ -12,7 +13,7 @@ class PT100:
         self.controller = config[-5]
 	self.base_directory = base
 	self.load_config()
-	self.setup_logger()
+	self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
     def load_config(self):
 	
@@ -31,26 +32,6 @@ class PT100:
             if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                     today = today + datetime.timedelta(days=1)
             self.night = 'n' + today.strftime('%Y%m%d')
-
-    #set up logger object
-    def setup_logger(self):
-            
-            self.logger = logging.getLogger(self.logger_name)
-            formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-            log_path = self.base_directory + '/log/' + self.night
-            if os.path.exists(log_path) == False:
-                    os.mkdir(log_path)
-            fileHandler = logging.FileHandler(log_path + '/' + self.logger_name +'.log', mode='a')
-            fileHandler.setFormatter(formatter)
-            streamHandler = logging.StreamHandler()
-            streamHandler.setFormatter(formatter)
-
-            #clear handlers before setting new ones
-            self.logger.handlers = []
-            
-            self.logger.setLevel(logging.DEBUG)
-            self.logger.addHandler(fileHandler)
-            self.logger.addHandler(streamHandler)
 
     # interpolate the lookup table for a given resistance to derive the temp
     # https://www.picotech.com/download/manuals/USBPT104ProgrammersGuide.pdf

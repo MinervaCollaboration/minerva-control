@@ -7,6 +7,7 @@ import selenium
 from selenium import webdriver
 from configobj import ConfigObj
 from requests.auth import HTTPBasicAuth
+import utils
 
 #To Do: change log to appropriate format, log open/close failure by reading status, add more functionality as needed 
 class dynapower:
@@ -27,33 +28,14 @@ class dynapower:
         self.base_directory = base
         self.IP = config['IP']
         self.PORT = config['PORT']
-        logger_name = config['LOGNAME']
-        log_file = self.base_directory+'/log/' + night + '/' + config['LOGFILE']
+        self.logger_name = config['LOGNAME']
         self.outlets = config['OUTLETS']
         self.username = config['USER']
         self.password = config['PASSWORD']
         self.base = base
         self.driverfile = driverfile
         
-                
-        # setting up powerswitch logger
-        fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-        datefmt = "%Y-%m-%dT%H:%M:%S"
-
-        self.logger = logging.getLogger(logger_name)
-        formatter = logging.Formatter(fmt,datefmt=datefmt)
-        formatter.converter = time.gmtime
-        
-        fileHandler = logging.FileHandler(log_file, mode='a')
-        fileHandler.setFormatter(formatter)
-
-        console = logging.StreamHandler()
-        console.setFormatter(formatter)
-        console.setLevel(logging.INFO)
-        
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.addHandler(fileHandler)
-        self.logger.addHandler(console)
+        self.logger = utils.setup_logger(self.base_directory, self.night, self.logger_name)
 
         #S Stuff for status check
         #S I added the browser boolean in case there are dynapower instances that do not require

@@ -18,8 +18,16 @@ def rv_observing(minerva):
     junk = datetime.datetime.strptime('2000-01-01 00:00:00','%Y-%m-%d %H:%M:%S')
 
     mail.send("MINERVA starting observing","Love,\nMINERVA")
-    
-    minerva.domeControlThread()
+
+    if os.path.exists('sunOverride.txt'): os.remove('sunOverride.txt')
+    with open('aqawan1.request.txt','w') as fh:
+        fh.write(str(datetime.datetime.utcnow()))
+
+    with open('aqawan2.request.txt','w') as fh:
+        fh.write(str(datetime.datetime.utcnow()))
+
+#    minerva.domeControlThread()
+
     minerva.telescope_initialize(tracking=False,derotate=False)
     minerva.telescope_park()
 
@@ -100,7 +108,11 @@ def rv_observing(minerva):
                         doSpectra(minerva,target,[1,2,3,4])
                 else: minerva.logger.info(target['name']+ ' not observable; skipping')
 
-    minerva.observing=False
+
+    # all done; close the domes                 
+    if os.path.exists('aqawan1.request.txt'): os.remove('aqawan1.request.txt')
+    if os.path.exists('aqawan2.request.txt'): os.remove('aqawan2.request.txt')
+
     minerva.endNight()
     
 
@@ -119,7 +131,7 @@ def doSpectra(minerva, target, tele_list):
 
     # if the dome isn't open, wait for it to open
     for dome in minerva.domes:
-        while not dome.isOpen:
+        while not dome.isOpen():
             minerva.logger.info("Waiting for dome to open")
             if datetime.datetime.utcnow() > target['endtime']: 
                 minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
@@ -242,7 +254,7 @@ def doSpectra(minerva, target, tele_list):
 
         # if the dome isn't open, wait for it to open
         for dome in minerva.domes:
-            while not dome.isOpen:
+            while not dome.isOpen():
                 minerva.logger.info("Waiting for dome to open")
                 if datetime.datetime.utcnow() > target['endtime']: 
                     minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
@@ -452,8 +464,6 @@ def mkschedule(minerva):
 
     acquisitionOverhead = 300.0
     readTime = 21.7
-    bstarndx = 0
-    nbstars = len(bstars)
     elapsedTime = 0.0
 
     print ((sunrise-sunset).total_seconds() + 3600.0)/3600.0
@@ -474,21 +484,26 @@ def mkschedule(minerva):
 
                 # add a target to the schedule
                 elapsedTime += acquisitionTime
-
                 jsonstr = targetlist.target2json(target)
                 fh.write(jsonstr + '\n')
 
                 # add a B star to the schedule
-                acquisitionTime = (acquisitionOverhead + num*(readTime+bstars[bstarndx]['exptime'][0]))
+                added = False
+                for bstar in bstars:
+                    acquisitionTime = (acquisitionOverhead + num*(readTime+bstar['exptime'][0]))
+                    starttime = sunset + datetime.timedelta(seconds=elapsedTime)
+                    endtime = sunset + datetime.timedelta(seconds=elapsedTime+acquisitionTime)
+                    print starttime, endtime, bstar['starttime'], bstar['endtime']
+                    if (endtime <= bstar['endtime'] and starttime >= bstar['starttime']) or (starttime >= bstar['starttime'] and bstar['endtime'] == sunrise) and not added:
+                        bstar['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
+                        bstar['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
 
-                bstars[bstarndx]['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
-                bstars[bstarndx]['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
+                        elapsedTime += acquisitionTime
 
-                elapsedTime += acquisitionTime
-                jsonstr = targetlist.target2json(bstars[bstarndx])
-                fh.write(jsonstr + '\n')
-
-                bstarndx = (bstarndx + 1) % nbstars
+                        jsonstr = targetlist.target2json(bstar)
+                        fh.write(jsonstr + '\n')
+                        added = True
+                        print "added " +bstar['name']
           
             if ((sunrise-sunset).total_seconds() + 3600.0) < elapsedTime:
                 break

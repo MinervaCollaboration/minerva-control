@@ -5,6 +5,7 @@ from scipy import stats
 import numpy as np
 import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, pyfits, subprocess, collections
 import atexit, win32api
+import utils
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
@@ -23,7 +24,7 @@ class server:
                         today = today + datetime.timedelta(days=1)
 		night = 'n' + today.strftime('%Y%m%d')
 
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.set_data_path()
 		self.connect_camera()
 		#XXX These do not work
@@ -50,50 +51,6 @@ class server:
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
-
-		
-	def setup_logger(self):
-
-		log_path = self.base_directory + '/log/' + self.night
-                if os.path.exists(log_path) == False:os.mkdir(log_path)
-
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-                self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
-
-		'''
-		log_directory = self.base_directory + '/log/' + night
-		self.logger = logging.getLogger(self.logger_name)
-		formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-		if os.path.exists(log_directory) == False:
-			os.mkdir(log_directory)
-		self.logger.handlers = []
-		fileHandler = logging.FileHandler(log_directory + '/' + self.logger_name + '.log', mode='a+')
-		fileHandler.setFormatter(formatter)
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-		self.logger.setLevel(logging.DEBUG)
-		self.logger.addHandler(fileHandler)
-		self.logger.addHandler(streamHandler)
-		'''
 
 	def get_index(self,param):
 		files = glob.glob(self.data_path + "/*.fits*")

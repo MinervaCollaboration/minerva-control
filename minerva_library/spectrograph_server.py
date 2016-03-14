@@ -21,6 +21,7 @@ import json
 import numpy as np
 import pdu
 import mail
+import utils
 
 # minerva library dependency
 #S Put copy of dynapwoer.py in spectrograph_modules for power stuff on expmeter
@@ -41,7 +42,7 @@ class server:
                 self.load_config()
 
                 #S Defined later.
-                self.setup_logger()
+                self.logger = utils.setup_logger(self.base_directory,self.night(),self.logger_name)
                 #S Defined later.
                 self.set_data_path()
 #                self.file_name = ''
@@ -82,57 +83,6 @@ class server:
         def night(self):
 		return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 	
-	#create logger object and link to log file
-	def setup_logger(self):
-                #S Looks for existing log path, and creates one if none exist.
-		log_path = self.base_directory + '\\log\\' + self.night()
-		
-                if os.path.exists(log_path) == False:
-                        os.mkdir(log_path)
-                #S the log's format for entries.
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                #S The log's date format for entries.
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-                #S Gets logger name form config file entry. 
-                self.logger = logging.getLogger(self.logger_name)
-                #S From later on, setting level to DEBUG just
-                #S ignores debug meesages that occur, those from
-                #S ipdb?
-                self.logger.setLevel(logging.DEBUG)
-                #S Makes log entries conform to those formats above.
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                #S Not sure how this converter works, but just takes GMT to
-                #S local I bleieve.
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '\\' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                #? What is INFO level?
-                console.setLevel(logging.INFO)
-                #? Purpossely redone?
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
-
-		'''
-		self.logger = logging.getLogger(self.name)
-		formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-		fileHandler = logging.FileHandler(self.base_directory + '/log/' + folder + '/telecom_server.log', mode='a')
-		fileHandler.setFormatter(formatter)
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-
-		self.logger.setLevel(logging.DEBUG)
-		self.logger.addHandler(fileHandler)
-		self.logger.addHandler(streamHandler)
-		'''
         #S Finds path for data, creates if none exist. What is the point of the
 	#S night arguement though? Doesn;t go into self., as that's defined
 	#S earlier. 

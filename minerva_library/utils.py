@@ -5,8 +5,41 @@ import os
 import pyfits
 import numpy as np
 import ephem
-import datetime
+import datetime, time
 import ipdb
+import logging
+
+def night():
+    return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+
+def setup_logger(base_dir, night, logger_name):
+
+    path = base_dir + '/log/' + night
+
+    if os.path.exists(path) == False:os.mkdir(path)
+
+    fmt = "%(asctime)s [%(filename)s:%(lineno)s,%(thread)d - %(funcName)s()] %(levelname)s: %(message)s"
+    datefmt = "%Y-%m-%dT%H:%M:%S"
+
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(fmt,datefmt=datefmt)
+    formatter.converter = time.gmtime
+
+    #clear handlers before setting new ones
+    logger.handlers = []
+    fileHandler = logging.FileHandler(path + '/' + logger_name + '.log', mode='a')
+    fileHandler.setFormatter(formatter)
+    logger.addHandler(fileHandler)
+
+    # add a separate logger for the terminal (don't display debug-level messages)
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    console.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(console)
+
+    return logger
 
 # Truncates target['starttime'] and target['endtime'] to ensure 
 # the object is observable (Sun below sunalt and target above horizon)

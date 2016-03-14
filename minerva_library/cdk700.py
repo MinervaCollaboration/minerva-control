@@ -73,7 +73,8 @@ class CDK700:
 		self.num = self.logger_name[-1]
 
 		#S Set up logger
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
+
 		self.pdu = pdu.pdu(self.pdu_config,base)
 		#TODO Get reading telcom as well
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
@@ -126,11 +127,11 @@ class CDK700:
 
 		if tracking:
 			if telescopeStatus.mount.tracking <> 'True': 
-				self.logger.warning('T' + self.num + ': mount not tracking (' + telescopeStatus.mount.tracking + '), telescope not initialized')
+				self.logger.info('T' + self.num + ': mount not tracking (' + telescopeStatus.mount.tracking + '), telescope not initialized')
 				return False
 		if derotate:
 			if telescopeStatus.rotator.altaz_derotate <> 'True': 
-				self.logger.warning('T' + self.num + ': rotator not tracking (' + telescopeStatus.rotator.altaz_derotate + '), telescope not initialized')
+				self.logger.info('T' + self.num + ': rotator not tracking (' + telescopeStatus.rotator.altaz_derotate + '), telescope not initialized')
 				return False
 		
 		return True
@@ -157,8 +158,6 @@ class CDK700:
 		self.m3port_switch(telescopeStatus.m3.port,force=True)
 
 		# turning on mount tracking, rotator tracking
-		#S I'm defaulting this off, but including an argument in case we do want it
-		#S This could be for initializing at 4PM start, or for testing. 
 		if tracking:
 			self.logger.info('T' + self.num + ': Turning mount tracking on')
 			self.mountTrackingOn()
@@ -189,41 +188,20 @@ class CDK700:
 			self.model = config['MODEL']
 			self.rotatoroffset = config['ROTATOROFFSET']
 			self.default_focus = config['DEFAULT_FOCUS']
+			self.focus_offset = config['FOCUS_OFFSET']
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
+
+		for key in self.focus_offset:
+			try: self.focus_offset[key] = float(self.focus_offset[key])
+			except: pass
+
 
                 today = datetime.datetime.utcnow()
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
-
-	def setup_logger(self):
-			
-		log_path = self.base_directory + '/log/' + self.night
-		if os.path.exists(log_path) == False:os.mkdir(log_path)
-		
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-		self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                                                                                                 
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                                                                                           
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
 
 	# SUPPORT FUNCITONS
 	def makeUrl(self, **kwargs):

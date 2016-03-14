@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import sys
 sys.dont_write_bytecode = True
 from minerva_library import control
@@ -16,11 +18,12 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+	ipdb.set_trace()
 
 #	minerva.cameras[0].take_image(5,'V','testexp')
 
-	minerva.endNight(night='n20160307')
-
+	minerva.endNight(night='n20160314',kiwispec=True)
+	sys.exit()
 
 	ipdb.set_trace()
 #	minerva.spectrograph.i2stage_move('flat')

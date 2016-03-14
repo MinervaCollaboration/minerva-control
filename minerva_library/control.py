@@ -53,13 +53,13 @@ class control:
 		#S Only sets logger name right now
 		self.load_config()
 
-		self.setup_logger()
-
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
+		
 		#S See below, lots of new objects created here. 
-		self.create_class_objects()#telescope_list)
+		self.create_class_objects()
 		
 		self.logger_lock = threading.Lock()
-		self.setup_loggers()
+#		self.setup_loggers()
 		self.telcom_enable()
 		
 	#create class objects needed to control Minerva system
@@ -112,65 +112,56 @@ class control:
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
+		self.night = utils.night()
 
-	#? What happens here if this isn't called between 10:00AM and 4:00PM?
-	#create logger object and link to log file, if night is not specified, log files will go into /log/dump directory
-	def setup_logger(self):
+	def update_logpaths(self,path):
+		if not os.path.exists(path): os.mkdir(path)
 
-		# reset the night at 10 am local                                                                                                 
-		today = datetime.datetime.utcnow()
-		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
-                        today = today + datetime.timedelta(days=1)
-		self.night = 'n' + today.strftime('%Y%m%d')
+		fmt = "%(asctime)s [%(filename)s:%(lineno)s,%(thread)d - %(funcName)s()] %(levelname)s: %(message)s"
+                datefmt = "%Y-%m-%dT%H:%M:%S"
+                formatter = logging.Formatter(fmt,datefmt=datefmt)
+                formatter.converter = time.gmtime
+
+		self.logger_lock.acquire()
+
+		# control's logger
+		for fh in self.logger.handlers: self.logger.removeHandler(fh)
+		fh = logging.FileHandler(path + '/' + self.logger_name + '.log', mode='a')	
+                fh.setFormatter(formatter)
+		self.logger.addHandler(fh)
+
+		for a in self.domes:
+			for fh in a.logger.handlers: a.logger.removeHandler(fh)
+			fh = logging.FileHandler(path + '/' + a.logger_name + '.log', mode='a')	
+			fh.setFormatter(formatter)
+			a.logger.addHandler(fh)
+		for t in self.telescopes:
+			for fh in t.logger.handlers: t.logger.removeHandler(fh)
+			fh = logging.FileHandler(path + '/' + t.logger_name + '.log', mode='a')	
+			fh.setFormatter(formatter)
+			t.logger.addHandler(fh)
+		for c in self.cameras:
+			for fh in c.logger.handlers: c.logger.removeHandler(fh)
+			fh = logging.FileHandler(path + '/' + c.logger_name + '.log', mode='a')	
+			fh.setFormatter(formatter)
+			c.logger.addHandler(fh)
+
+		for fh in self.site.logger.handlers: self.site.logger.removeHandler(fh)
+		fh = logging.FileHandler(path + '/' + self.site.logger_name + '.log', mode='a')	
+		fh.setFormatter(formatter)
+		self.site.logger.addHandler(fh)
+
+		for fh in self.spectrograph.logger.handlers: self.spectrograph.logger.removeHandler(fh)
+		fh = logging.FileHandler(path + '/' + self.spectrograph.logger_name + '.log', mode='a')	
+		fh.setFormatter(formatter)
+		self.spectrograph.logger.addHandler(fh)
+
+		self.logger_lock.release()
 		
-		log_path = self.base_directory + '/log/' + self.night
-		if os.path.exists(log_path) == False:os.mkdir(log_path)
-
-		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-		datefmt = "%Y-%m-%dT%H:%M:%S"
-
-		self.logger = logging.getLogger(self.logger_name)
-		self.logger.setLevel(logging.DEBUG)
-		formatter = logging.Formatter(fmt,datefmt=datefmt)
-		formatter.converter = time.gmtime
-        
-		#clear handlers before setting new ones
-		self.logger.handlers = []
-
-		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-		fileHandler.setFormatter(formatter)
-		self.logger.addHandler(fileHandler)
-
-		# add a separate logger for the terminal (don't display debug-level messages)
-		console = logging.StreamHandler()
-		console.setFormatter(formatter)
-		console.setLevel(logging.INFO)
-		self.logger.setLevel(logging.DEBUG)
-		self.logger.addHandler(console)
-
-		'''
-		self.logger = logging.getLogger(self.logger_name)
-		self.logger.setLevel(logging.DEBUG)
-
-		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-		datefmt = "%Y-%m-%dT%H:%M:%S"
-		formatter = logging.Formatter(fmt,datefmt=datefmt)
-		formatter.converter = time.gmtime
-		
-		#clear handlers before setting new ones
-		self.logger.handlers = []
-		
-		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a+')
-		fileHandler.setFormatter(formatter)
-		self.logger.addHandler(fileHandler)
-		
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-		self.logger.addHandler(streamHandler)
-		'''
 
 	#set logger path for all control objects
 	def setup_loggers(self):
+		
 	
 		self.logger_lock.acquire()
 		for a in self.domes:
@@ -180,7 +171,6 @@ class control:
 		for c in self.cameras:
 			c.setup_logger()
 		self.site.setup_logger()
-		#S NEED TO UNCOMMENT IF YOU PUT SPECTROGRAPH BACK IN XXXXX
 		self.spectrograph.setup_logger()
 		self.logger_lock.release()
 		
@@ -244,7 +234,7 @@ class control:
 			for t in range(len(self.domes)):
 				threads[t].join()
 		for t in self.domes:
-			if t.isOpen == False:
+			if t.isOpen() == False:
 				return False
 		return True
 	def dome_close(self,num=0):
@@ -529,14 +519,15 @@ class control:
 		except:
 			self.logger.info(telescope_name + 'error loading calib info: ' + self.site.night + '.T' + str(num) + '.txt')
 			sys.exit()
-		
+
+	'''
 	# check weather condition; close if bad, open and send heartbeat if good; update dome status
 	def domeControl(self,day=False):
 
 		while self.observing:
 			t0 = datetime.datetime.utcnow()
 
-			if not self.site.oktoopen(domeopen=self.domes[0].isOpen):
+			if not self.site.oktoopen(domeopen=self.domes[0].isOpen()):
 				if self.site.sunalt() < 0.0:
 					self.logger.info('Weather not ok to open; resetting timeout')
 					self.site.lastClose = datetime.datetime.utcnow()
@@ -558,8 +549,8 @@ class control:
 			# does this create a problem if domes[*].isOpen changes as other threads access it?
 			for i in range(len(self.domes)):
 				status = self.domes[i].status()
-				if status['Shutter1'] == 'OPEN' and status['Shutter2'] == 'OPEN': self.domes[i].isOpen = True
-				else: self.domes[i].isOpen = False
+				if status['Shutter1'] == 'OPEN' and status['Shutter2'] == 'OPEN': self.domes[i].isOpen() = True
+				else: self.domes[i].isOpen() = False
 
 				response = self.domes[i].send('CLEAR_FAULTS')
 				if 'Estop' in response:
@@ -580,6 +571,7 @@ class control:
 		kwargs={'day' : day}
 		self.observing = True
 		threading.Thread(target = self.domeControl_catch,kwargs=kwargs).start()
+	'''
 
         # run astrometry.net on imageName, update solution in header                                             
 	def astrometry(self, imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None):
@@ -866,7 +858,7 @@ class control:
 
 		# if the dome isn't open, wait for it to open
 		for dome in self.domes:
-			while not dome.isOpen:
+			while not dome.isOpen():
 				if datetime.datetime.utcnow() > target['endtime']:
 					self.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
 					return
@@ -915,7 +907,7 @@ class control:
 				self.stopFAU(tele_list)
 				return
 			
-			while not self.domes[0].isOpen:
+			while not self.domes[0].isOpen():
 				self.logger.info("Waiting for dome to open")
 				time.sleep(60.0)
 				if datetime.datetime.utcnow() > target['endtime']: 
@@ -2302,7 +2294,7 @@ class control:
 			time.sleep(secondsUntilTwilight)
 
 		# wait for the dome to open
-		while not dome.isOpen:
+		while not dome.isOpen():
 			# exit if outside of twilight
 			if self.site.sunalt() > maxSunAlt or self.site.sunalt() < minSunAlt: return
 			self.logger.info("Dome closed; waiting for conditions to improve")
@@ -2331,7 +2323,7 @@ class control:
 				firstImage = True
 				#S While the number of flats in the filter is less than required AND the dome is still open
 				#TODO needs testing, watch out for this.
-				while i < num and dome.isOpen:
+				while i < num and dome.isOpen():
 
 					# Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
 					Alt = 75.0 # degrees (somewhat site dependent)
@@ -2339,7 +2331,7 @@ class control:
 					if Az > 360.0: Az = Az - 360.0
 
 					inPosition = False
-					while not inPosition and dome.isOpen:
+					while not inPosition and dome.isOpen():
 
 						self.logger.info(telescope_name + 'Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
 						telescope.mountGotoAltAz(Alt,Az)
@@ -2358,7 +2350,7 @@ class control:
 					target['exptime'] = exptime
 					#while filename == 'error': filename = self.takeImage(exptime, filterInd, 'SkyFlat',telescope_num)
 					#S new target dict implementation
-					while filename == 'error' and dome.isOpen: filename = self.takeImage(target,telescope_num)
+					while filename == 'error' and dome.isOpen(): filename = self.takeImage(target,telescope_num)
 					
 					# determine the mode of the image (mode requires scipy, use mean for now...)
 					mode = imager.getMode()
@@ -2519,7 +2511,7 @@ class control:
 			dome = self.domes[0]
 
 		#used for testing
-#		dome.isOpen = True
+#		dome.isOpen() = True
 		telescope = self.telescopes[telescope_num-1]
 		
 		# if after end time, return
@@ -2595,8 +2587,8 @@ class control:
 				for j in range(len(target['filter'])):
 					filename = 'error'
 					while filename == 'error':
-						if dome.isOpen == False:
-							while dome.isOpen == False:
+						if dome.isOpen() == False:
+							while dome.isOpen() == False:
 								self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
 								time.sleep(30)
 								if datetime.datetime.utcnow() > target['endtime']: return
@@ -2634,8 +2626,8 @@ class control:
 				for i in range(target['num'][j]):
 					filename = 'error'
 					while filename == 'error':
-						if dome.isOpen == False:
-							while dome.isOpen == False:
+						if dome.isOpen() == False:
+							while dome.isOpen() == False:
 								self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
 								time.sleep(30)
 								if datetime.datetime.utcnow() > target['endtime']: return
@@ -2709,6 +2701,9 @@ class control:
 
 
 	def endNight(self, num=0, email=True, night=None, kiwispec=True):
+
+		if os.path.exists('aqawan1.request.txt'): os.remove('aqawan1.request.txt')
+		if os.path.exists('aqawan2.request.txt'): os.remove('aqawan2.request.txt')
 		
 		#S This implementation should allow you to specify a night you want to 'clean-up',
 		#S or just run end night on the current night. I'm not sure how it will act
@@ -2987,7 +2982,7 @@ class control:
 		if telescope_num > 2: dome = self.domes[1]
 		else: dome = self.domes[0]
 
-		while not dome.isOpen and datetime.datetime.utcnow() < self.site.NautTwilBegin():
+		while not dome.isOpen() and datetime.datetime.utcnow() < self.site.NautTwilBegin():
 			self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
 			time.sleep(60)
 
@@ -3046,7 +3041,10 @@ class control:
 		#S I think we need a way to check if both telescopes are done observing, even if one has
 		#S ['waitformorning']==false
 		self.telescope_park(telescope_num)
-		self.observing = False
+
+		# all done; close the domes
+		if os.path.exists('aqawan1.request.txt'): os.remove('aqawan1.request.txt')
+		if os.path.exists('aqawan2.request.txt'): os.remove('aqawan2.request.txt')
 
 		if CalibEndInfo['nbiasEnd'] <> 0 or CalibEndInfo['ndarkEnd']:
 			self.imager_connect(telescope_num) # make sure the cooler is on
@@ -3065,7 +3063,7 @@ class control:
 			else: dome = self.domes[0]
 
 			# wait for the dome to close (the heartbeat thread will update its status)
-			while dome.isOpen and (datetime.datetime.utcnow()-t0).total_seconds() < timeout:
+			while dome.isOpen() and (datetime.datetime.utcnow()-t0).total_seconds() < timeout:
 				self.logger.info(telescope_name + 'Waiting for dome to close')
 				time.sleep(60)
 				
@@ -3124,8 +3122,14 @@ class control:
                         sys.exit()
 
 	def observingScript_all(self):
-		self.domeControlThread()
-		
+		with open('aqawan1.request.txt','w') as fh:
+			fh.write(str(datetime.datetime.utcnow()))
+
+		with open('aqawan2.request.txt','w') as fh:
+			fh.write(str(datetime.datetime.utcnow()))
+
+
+
 		# python bug work around -- strptime not thread safe. Must call this once before starting threads
 		junk = datetime.datetime.strptime('2000-01-01 00:00:00','%Y-%m-%d %H:%M:%S')
 
@@ -3360,7 +3364,7 @@ class control:
 		"""
 #		
 		#S Loop to wait for dome to open, cancels afeter ten minutes 
-		while dome.isOpen == False:
+		while dome.isOpen() == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
 			if timeelapsed > 600: 
@@ -3607,7 +3611,7 @@ class control:
 		t0 = datetime.datetime.utcnow()
 #		"""
 		#S Loop to wait for dome to open, cancels afeter ten minutes
-		while dome.isOpen == False:
+		while dome.isOpen() == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
 			if timeelapsed > 600: 

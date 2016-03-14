@@ -1,18 +1,21 @@
 #Minerva system main routine
 #create master control object and run one of the observing scripts
-
+import matplotlib
+matplotlib.use('Agg')
 import sys, os
 sys.dont_write_bytecode = True
 from minerva_library import control
 from minerva_library import rv_control
 import datetime
 
+
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 
-	if os.path.exists('sunOverride.txt'):
-		os.remove('sunOverride.txt')
+	if os.path.exists('minerva_library/sunOverride.txt'): os.remove('minerva_library/sunOverride.txt')
+	if os.path.exists('minerva_library/aqawan1.request.txt'): os.remove('minerva_library/aqawan1.request.txt')
+	if os.path.exists('minerva_library/aqawan2.request.txt'): os.remove('minerva_library/aqawan2.request.txt')
 
 	minerva = control.control('control.ini',base_directory)
 
