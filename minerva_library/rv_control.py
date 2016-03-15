@@ -19,11 +19,12 @@ def rv_observing(minerva):
 
     mail.send("MINERVA starting observing","Love,\nMINERVA")
 
-    if os.path.exists('sunOverride.txt'): os.remove('sunOverride.txt')
-    with open('aqawan1.request.txt','w') as fh:
+    sunfile = minerva.base_directory + 'minerva_library/sunOverride.txt'
+    if os.path.exists(sunfile): os.remove(sunfile)
+    with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
         fh.write(str(datetime.datetime.utcnow()))
 
-    with open('aqawan2.request.txt','w') as fh:
+    with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
         fh.write(str(datetime.datetime.utcnow()))
 
 #    minerva.domeControlThread()
@@ -101,7 +102,9 @@ def rv_observing(minerva):
                         kwargs = {'target':target,'fau':fau}
                         threads = []
                         for telescope in minerva.telescopes:
-                            threads.append(threading.Thread(target=newauto.autofocus,args=(minerva,telescope.num,),kwargs=kwargs))
+                            thread = threading.Thread(target=newauto.autofocus,args=(minerva,telescope.num,),kwargs=kwargs)
+                            thread.name = 'T' + str(telescope.num)
+                            threads.append(thread)
                         for thread in threads(): thread.start()
                         for thread in threads(): thread.join()
                     else:
@@ -109,9 +112,10 @@ def rv_observing(minerva):
                 else: minerva.logger.info(target['name']+ ' not observable; skipping')
 
 
-    # all done; close the domes                 
-    if os.path.exists('aqawan1.request.txt'): os.remove('aqawan1.request.txt')
-    if os.path.exists('aqawan2.request.txt'): os.remove('aqawan2.request.txt')
+    # all done; close the domes
+    path = minerva.base_directory + '/minerva_library/'
+    if os.path.exists(path + 'aqawan1.request.txt'): os.remove(path + 'aqawan1.request.txt')
+    if os.path.exists(path + 'aqawan2.request.txt'): os.remove(path + 'aqawan2.request.txt')
 
     minerva.endNight()
     
@@ -153,6 +157,7 @@ def doSpectra(minerva, target, tele_list):
             m3port = minerva.telescopes[tele_list[t]-1].port['IMAGER']
             kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
             threads[t] = threading.Thread(target = minerva.telescopes[tele_list[t]-1].acquireTarget,args=(target,),kwargs=kwargs)
+            threads[t].name = "T" + str(minerva.telescopes[tele_list[t]-1].num)
             threads[t].start()
 
     # wait for all telescopes to get to the target
@@ -206,10 +211,12 @@ def doSpectra(minerva, target, tele_list):
             
             m3port = telescope.port['FAU']
             thread = threading.Thread(target = telescope.m3port_switch, args=(m3port,))
+            thread.name = "T" + str(telescope.num)
             thread.start()
             threads.append(thread)
             
             thread = threading.Thread(target=minerva.fauguide,args=(target,tele_list[t],))
+            thread.name = "T" + str(telescope.num)
             thread.start()
             guideThreads.append(thread)
 
@@ -221,6 +228,7 @@ def doSpectra(minerva, target, tele_list):
         #TODOACQUIRETARGET Needs to be switched to take dictionary argument
         #S i think this might act up due to being a dictionary, but well see.                
         threads[t] = threading.Thread(target = minerva.pointAndGuide,args=(target,tele_list[t]))
+        thread.name= "T" + str(minerva.telescopes[tele_list[t]].num)
         threads[t].start()
         
     # wait for all telescopes to put target on their fibers (or timeout)
@@ -305,20 +313,21 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
     tele_list = [x-1 for x in tele_list]
 
     # move the iodine stage to the best position for backlighting
-    if stagepos == None:
-        kwargs = {'locationstr' : 'backlight'}
-        threads = [threading.Thread(target=minerva.ctrl_i2stage_move,kwargs=kwargs)]
-    else:
-        kwargs = {'position':stagepos}
-        threads = [threading.Thread(target=minerva.ctrl_i2stage_move,kwargs=kwargs)]
+    if stagepos == None: kwargs = {'locationstr' : 'backlight'}
+    else: kwargs = {'position':stagepos}
+
+    threads = [threading.Thread(target=minerva.ctrl_i2stage_move,kwargs=kwargs)]
+    threads[0].name = 'I2Stage'
         
     # turn on the slit flat LED
     minerva.spectrograph.led_turn_on()
 
     # swap to the imaging port to block light from the telescope
     for i in range(len(tele_list)):
-        threads.append(threading.Thread(target=minerva.telescopes[tele_list[i]].m3port_switch,
-                                        args=[minerva.telescopes[tele_list[i]].port['IMAGER'],]))
+        thread = threading.Thread(target=minerva.telescopes[tele_list[i]].m3port_switch,
+                                        args=[minerva.telescopes[tele_list[i]].port['IMAGER'],])
+        thread.name = "T" + str(minerva.telescopes[tele_list[i]].num)
+        threads.append(thread)        
 
     # execute long commands asynchronously
     for thread in threads:
@@ -341,7 +350,9 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
             'name':name,
             'fauexptime':fauexptime,
             }
-        fau_threads.append(threading.Thread(target=minerva.takeFauImage,args=[target,],kwargs=kwargs)) 
+        thread = threading.Thread(target=minerva.takeFauImage,args=[target,],kwargs=kwargs)
+        thread.name = 'T' + str(minerva.telescopes[tele_list[i]].num)
+        fau_threads.append(thread)
 
     # start all the FAU images
     for fau_thread in fau_threads:
@@ -402,7 +413,9 @@ def fiber_stability(minerva):
 
         threads = []
         for telescope in minerva.telescopes:
-            threads.append(threading.Thread(target=telescope.rotatorMove,args=[rotang,]))
+            thread = threading.Thread(target=telescope.rotatorMove,args=[rotang,])
+            thread.name = "T" + str(telescope.num)
+            threads.append(thread)
         for thread in threads:
             thread.start()
             

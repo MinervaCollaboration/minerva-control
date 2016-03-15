@@ -21,8 +21,8 @@ def domeControl(minerva,number,day=False):
             lastnight = thisnight
 
         # see if the dome was requested to be open
-        openRequested = os.path.isfile('aqawan' + str(number) + '.request.txt')
-        day = os.path.isfile('sunOverride.txt')
+        openRequested = os.path.isfile(minerva.base_directory + '/minerva_library/aqawan' + str(number) + '.request.txt')
+        day = os.path.isfile(minerva.base_directory + '/minerva_library/sunOverride.txt')
 
         if not minerva.site.oktoopen(domeopen=dome.isOpen()):
             if minerva.site.sunalt() < 0.0:
@@ -39,6 +39,7 @@ def domeControl(minerva,number,day=False):
 
             kwargs={'day' : day}
             openthread = threading.Thread(target=minerva.dome_open,kwargs=kwargs)
+            openthread.name = "A" + str(number) + '_OPEN'
             openthread.start()
             
             # only send heartbeats when we want it open
@@ -88,8 +89,10 @@ def domeControl_catch(minerva, number, day=False):
 def domeControlThread(minerva,day=False):
     threads = []
     for dome in [1,2]:
-        threads.append(threading.Thread(target = domeControl_catch,args=(minerva,dome,)))
-
+        thread = threading.Thread(target = domeControl_catch,args=(minerva,dome,)) 
+        thread.name = 'A' + str(dome)
+        threads.append(thread)
+        
     for thread in threads:
         thread.start()
 

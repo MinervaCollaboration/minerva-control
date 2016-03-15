@@ -18,7 +18,7 @@ def setup_logger(base_dir, night, logger_name):
 
     if os.path.exists(path) == False:os.mkdir(path)
 
-    fmt = "%(asctime)s [%(filename)s:%(lineno)s,%(thread)d - %(funcName)s()] %(levelname)s: %(message)s"
+    fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(threadName)s: %(message)s"
     datefmt = "%Y-%m-%dT%H:%M:%S"
 
     logger = logging.getLogger(logger_name)

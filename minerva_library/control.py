@@ -211,6 +211,7 @@ class control:
 			threads = [None]*len(self.domes)
 			for t in range(len(self.domes)):
 				threads[t] = threading.Thread(target = self.domes[t].initialize)
+				threads[t].name = 'A' + str(self.domes[t].num)
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
@@ -230,6 +231,7 @@ class control:
 					threads[t] = threading.Thread(target = self.domes[t].open_shutter,args=[1,])
 				else:
 					threads[t] = threading.Thread(target = self.domes[t].open_both,kwargs=kwargs)
+				threads[t].name = 'A' + str(self.domes[t].num)
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
@@ -244,6 +246,7 @@ class control:
 			threads = [None]*len(self.domes)
 			for t in range(len(self.domes)):
 				threads[t] = threading.Thread(target = self.domes[t].close_both)
+				threads[t].name = 'A' + str(self.domes[t].num)
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
@@ -287,6 +290,7 @@ class control:
 				kwargs['tracking']=tracking
 				kwargs['derotate']=derotate
 				threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].initialize,kwargs=kwargs)
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 #S Join all the threads together
                 for t in range(len(tele_list)):
@@ -306,6 +310,7 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].autoFocus)
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -327,6 +332,7 @@ class control:
                                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 				#S i think this might act up due to being a dictionary, but well see. 
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].acquireTarget,args=(target))
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -344,6 +350,7 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].mountGotoAltAz,args=(alt,az))
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -361,6 +368,7 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].park)
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -368,79 +376,6 @@ class control:
                 return
 
 
-                
-                                                               
-
-                        
-                        
-	#S Old functions
-	def telescope_initialize_old(self,num=0):
-                #? Why is there no telecom check for the single case?
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].initialize()
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].initialize)
-					threads[t].start()
-			#? why are there two seperate loops?
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-				
-	def telescope_autoFocus_old(self,num=0):
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].autoFocus()
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].autoFocus)
-					threads[t].start()
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-					
-	def telescope_acquireTarget_old(self,ra,dec,num=0):
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].acquireTarget(ra,dec)
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].acquireTarget,args = (ra,dec))
-					threads[t].start()
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-					
-	def telescope_mountGotoAltAz_old(self,Alt,Az,num=0):
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].mountGotoAltAz(Alt,Az)
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].mountGotoAltAz,args=(Alt,Az))
-					threads[t].start()
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-					
-	def telescope_park_old(self,num=0):
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].park()
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].park)
-					threads[t].start()
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-					
 #============Imager control===============#
 #block until command is complete
 #operate on imagre specified by num
@@ -454,6 +389,7 @@ class control:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].initialize)
+				threads[t].name = 'T' + str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -465,6 +401,7 @@ class control:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].connect_camera)
+				threads[t].name = 'T' + str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -477,6 +414,7 @@ class control:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].set_dataPath)
+				threads[t].name = 'T' + str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -493,6 +431,7 @@ class control:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].compress_data)
+				threads[t].name = 'T' + str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -519,59 +458,6 @@ class control:
 		except:
 			self.logger.info(telescope_name + 'error loading calib info: ' + self.site.night + '.T' + str(num) + '.txt')
 			sys.exit()
-
-	'''
-	# check weather condition; close if bad, open and send heartbeat if good; update dome status
-	def domeControl(self,day=False):
-
-		while self.observing:
-			t0 = datetime.datetime.utcnow()
-
-			if not self.site.oktoopen(domeopen=self.domes[0].isOpen()):
-				if self.site.sunalt() < 0.0:
-					self.logger.info('Weather not ok to open; resetting timeout')
-					self.site.lastClose = datetime.datetime.utcnow()
-					self.dome_close()
-			elif (datetime.datetime.utcnow() - self.site.lastClose).total_seconds() < (20.0*60.0):
-				self.logger.info('Conditions must be favorable for 20 minutes before opening; last bad weather at ' + str(self.site.lastClose))
-				self.dome_close() # should already be closed, but for good measure...
-			else:
-				self.logger.debug('Weather is good; opening dome')				
-
-				kwargs={'day' : day}
-				openthread = threading.Thread(target=self.dome_open,kwargs=kwargs)
-				openthread.start()
-
-				# only send heartbeats when it's ok to open
-				for i in range(len(self.domes)):
-					self.domes[i].heartbeat()
-
-			# does this create a problem if domes[*].isOpen changes as other threads access it?
-			for i in range(len(self.domes)):
-				status = self.domes[i].status()
-				if status['Shutter1'] == 'OPEN' and status['Shutter2'] == 'OPEN': self.domes[i].isOpen() = True
-				else: self.domes[i].isOpen() = False
-
-				response = self.domes[i].send('CLEAR_FAULTS')
-				if 'Estop' in response:
-					if not self.domes[i].estopmailsent:
-						mail.send("Aqawan " + str(i+1) + " Estop has been pressed!",self.domes[i].estopmail,level='serious')
-						self.domes[i].estopmailsent = True
-				else:
-					self.domes[i].estopmailsent = False
-
-
-			# ensure 4 hearbeats before timeout
-			sleeptime = max(14.0-(datetime.datetime.utcnow() - t0).total_seconds(),0)
-			time.sleep(sleeptime)
-
-		self.dome_close()
-		
-	def domeControlThread(self,day=False):
-		kwargs={'day' : day}
-		self.observing = True
-		threading.Thread(target = self.domeControl_catch,kwargs=kwargs).start()
-	'''
 
         # run astrometry.net on imageName, update solution in header                                             
 	def astrometry(self, imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None):
@@ -876,6 +762,7 @@ class control:
                                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
                                 #S i think this might act up due to being a dictionary, but well see.
                                 threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
 
 		self.logger.info("Waiting for all telescopes to acquire")
@@ -1422,6 +1309,7 @@ class control:
                         #S Move the I2 stage out of the way of the slit.
 			kwargs['locationstr'] = 'out'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.name = "I2Stage"
                         i2stage_move_thread.start()
                         
                         #self.spectrograph.i2stage_move('out')
@@ -1453,7 +1341,7 @@ class control:
                         #S Move the LED in place with the Iodine stage
 			kwargs['locationstr'] = 'flat'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-
+			i2stage_move_thread.name = "I2Stage"
                         i2stage_move_thread.start()
 
                         # Configure the lamps
@@ -1484,8 +1372,8 @@ class control:
 			else:
 				kwargs['locationstr'] = 'out'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.name = "I2Stage"
                         i2stage_move_thread.start()
-
 
                         #Configure the lamps
 #                        self.spectrograph.thar_turn_off()
@@ -1524,6 +1412,7 @@ class control:
                         #S and will at least make things orderly.
 			kwargs['locationstr'] = 'in'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.name = "I2Stage"
                         i2stage_move_thread.start()
                         #TODO Calibration shutter closed
                         self.logger.info('Waiting on i2stage_move_thread')
@@ -1544,6 +1433,7 @@ class control:
 			else:
 				kwargs['locationstr'] = 'out'
 			i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.name = "I2Stage"
 			i2stage_move_thread.start()
 				
                         #Configure the lamps
@@ -1610,6 +1500,7 @@ class control:
 
 #		self.spectrograph.take_image(target['exptime'][0],target['name'])
 		imaging_thread = threading.Thread(target = self.spectrograph.take_image, kwargs=kwargs)
+		imaging_thread.name = "SI"
 		imaging_thread.start()
                         
 		f = self.getHdr(target,[1,2,3,4],[1,2])
@@ -1629,6 +1520,7 @@ class control:
 			night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 			dataPath = '/Data/kiwispec/' + night + '/'
 			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
+			fix_fits_thread.name = 'SI'
 			fix_fits_thread.start()
 			
 			return self.spectrograph.file_name
@@ -1656,6 +1548,7 @@ class control:
 		#start imaging process in a different thread
 		kwargs = {'exptime':target['fauexptime'],'objname':target['name']}
 		imaging_thread = threading.Thread(target = imager.take_fau_image, kwargs = kwargs)
+		imaging_thread.name = "T" + str(imager.telnum)
 		imaging_thread.start()
 		
 		# Prepare header while waiting for imager to finish taking image
@@ -1728,8 +1621,8 @@ class control:
                 f['PARDLY'] = ("","Parallel Shift Delay, ns")   # PARAM57
                 f['NPORTS'] = ("","Number of Ports")            # PARAM58
                 f['SHUTDLY'] = ("","Shutter Close Delay, ms")   # PARAM59
-                f['GAIN'] = ("1.30","Detector gain (e-/ADU)")
-                f['READNOISE'] = ("3.63","Detector read noise (e-)")
+                f['GAIN'] = (1.30,"Detector gain (e-/ADU)")
+                f['RDNOISE'] = (3.63,"Detector read noise (e-)")
 
                                         
         #PARAM60 =                   74 / CCD Temp. Setpoint Offset,0.1 C               
@@ -1778,8 +1671,8 @@ class control:
 			self.logger.error("Error reading the pump pressure")
 			
 
-                f['SPECPRES'] = (str(specpressure),"spectrograph pressure (mbars)")
-                f['PUMPPRES'] = (str(pumppressure),"vacuum pump pressure (mbars)")
+                f['SPECPRES'] = (specpressure,"spectrograph pressure (mbars)")
+                f['PUMPPRES'] = (pumppressure,"vacuum pump pressure (mbars)")
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
 
 		# which valves are open; is the pump on?
@@ -1868,19 +1761,19 @@ class control:
 
 		# Weather station information
 		f['WJD'] = (str(weather['date']),"Last update of weather (UTC)")
-		f['RAIN'] = (str(weather['wxt510Rain']),"Current Rain since UT 00:00 (mm)")
-		f['TOTRAIN'] = (str(weather['totalRain']),"Total yearly rain (mm)")
-		f['OUTTEMP'] = (str(weather['outsideTemp']),"Outside Temperature (C)")
-		f['MCLOUD'] = (str(weather['MearthCloud']),"Mearth Cloud Sensor (C)")
-		f['HCLOUD'] = (str(weather['HATCloud']),"HAT Cloud Sensor (C)")
-		f['ACLOUD'] = (str(weather['AuroraCloud']),"Aurora Cloud Sensor (C)")
-		f['MINCLOUD'] = (str(weather['MINERVACloud']),"MINERVA Cloud Sensor (C)")
-		f['DEWPOINT'] = (str(weather['outsideDewPt']),"Dewpoint (C)")
-		f['WINDSPD'] = (str(weather['windSpeed']),"Wind Speed (mph)")
-		f['WINDGUST'] = (str(weather['windGustSpeed']),"Wind Gust Speed (mph)")
-		f['WINDIR'] = (str(weather['windDirectionDegrees']),"Wind Direction (Deg E of N)")
-		f['PRESSURE'] = (str(weather['barometer']),"Outside Pressure (mbar)")
-		f['SUNALT'] = (str(weather['sunAltitude']),"Sun Altitude (deg)")
+		f['RAIN'] = (weather['wxt510Rain'],"Current Rain since UT 00:00 (mm)")
+		f['TOTRAIN'] = (weather['totalRain'],"Total yearly rain (mm)")
+		f['OUTTEMP'] = (weather['outsideTemp'],"Outside Temperature (C)")
+		f['MCLOUD'] = (weather['MearthCloud'],"Mearth Cloud Sensor (C)")
+		f['HCLOUD'] = (weather['HATCloud'],"HAT Cloud Sensor (C)")
+		f['ACLOUD'] = (weather['AuroraCloud'],"Aurora Cloud Sensor (C)")
+		f['MINCLOUD'] = (weather['MINERVACloud'],"MINERVA Cloud Sensor (C)")
+		f['DEWPOINT'] = (weather['outsideDewPt'],"Dewpoint (C)")
+		f['WINDSPD'] = (weather['windSpeed'],"Wind Speed (mph)")
+		f['WINDGUST'] = (weather['windGustSpeed'],"Wind Gust Speed (mph)")
+		f['WINDIR'] = (weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
+		f['PRESSURE'] = (weather['barometer'],"Outside Pressure (mbar)")
+		f['SUNALT'] = (weather['sunAltitude'],"Sun Altitude (deg)")
 		
 		return f
 
@@ -1905,18 +1798,18 @@ class control:
 			f['AQSOFTV' + domestr] = (domeStatus['SWVersion'],"Aqawan software version number")
 			f['AQSHUT1' + domestr] = (domeStatus['Shutter1'],"Aqawan shutter 1 state")
 			f['AQSHUT2' + domestr] = (domeStatus['Shutter2'],"Aqawan shutter 2 state")
-			f['INHUMID' + domestr] = (domeStatus['EnclHumidity'],"Humidity inside enclosure")
+			f['INHUMID' + domestr] = (float(domeStatus['EnclHumidity']),"Humidity inside enclosure")
 			f['DOOR1'   + domestr] = (domeStatus['EntryDoor1'],"Door 1 into aqawan state")
 			f['DOOR2'   + domestr] = (domeStatus['EntryDoor2'],"Door 2 into aqawan state")
 			f['PANELDR' + domestr] = (domeStatus['PanelDoor'],"Aqawan control panel door state")
-			f['HRTBEAT' + domestr] = (domeStatus['Heartbeat'],"Heartbeat timer")
+			f['HRTBEAT' + domestr] = (int(domeStatus['Heartbeat']),"Heartbeat timer")
 			f['AQPACUP' + domestr] = (domeStatus['SystemUpTime'],"PAC uptime (seconds)")
 			f['AQFAULT' + domestr] = (domeStatus['Fault'],"Aqawan fault present?")
 			f['AQERROR' + domestr] = (domeStatus['Error'],"Aqawan error present?")
-			f['PANLTMP' + domestr] = (domeStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
-			f['AQTEMP'  + domestr] = (domeStatus['EnclTemp'],"Enclosure temperature (C)")
-			f['AQEXTMP' + domestr] = (domeStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
-			f['AQINTMP' + domestr] = (domeStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
+			f['PANLTMP' + domestr] = (float(domeStatus['PanelExhaustTemp']),"Aqawan control panel exhaust temp (C)")
+			f['AQTEMP'  + domestr] = (float(domeStatus['EnclTemp']),"Enclosure temperature (C)")
+			f['AQEXTMP' + domestr] = (float(domeStatus['EnclExhaustTemp']),"Enclosure exhaust temperature (C)")
+			f['AQINTMP' + domestr] = (float(domeStatus['EnclIntakeTemp']),"Enclosure intake temperature (C)")
 			f['AQLITON' + domestr] = (domeStatus['LightsOn'],"Aqawan lights on?")
 
 			# is the monitor powered on?
@@ -1931,9 +1824,9 @@ class control:
 		
                 # loop over each telescope and insert the appropriate keywords
 		moonpos = self.site.moonpos()
-		moonra = str(moonpos[0])
-		moondec = str(moonpos[1])
-		moonphase = str(self.site.moonphase())
+		moonra = moonpos[0]
+		moondec = moonpos[1]
+		moonphase = self.site.moonphase()
 		f['MOONRA'] = (moonra, "Moon RA (J2000)")    
 		f['MOONDEC'] =  (moondec, "Moon Dec (J2000)")
 		f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")    
@@ -1954,13 +1847,13 @@ class control:
 			imager = self.cameras[int(telnum)-1]
 
 			telescopeStatus = telescope.getStatus()
-			telra = utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
+			telra =utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
 			teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
 			if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
 
-			az = str(float(telescopeStatus.mount.azm_radian)*180.0/math.pi)
-			alt = str(float(telescopeStatus.mount.alt_radian)*180.0/math.pi)
-			airmass = str(1.0/math.cos((90.0 - float(alt))*math.pi/180.0))
+			az = float(telescopeStatus.mount.azm_radian)*180.0/math.pi
+			alt = float(telescopeStatus.mount.alt_radian)*180.0/math.pi
+			airmass = 1.0/math.cos((90.0 - float(alt))*math.pi/180.0)
 			moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
 
 			m3port = telescopeStatus.m3.port
@@ -1971,14 +1864,14 @@ class control:
 				defocus = "UNKNOWN"
 				self.logger.exception("What is going on?")
 
-			rotpos = telescopeStatus.rotator.position
-			parang = str(telescope.parangle(useCurrent=True))
-			rotoff = telescope.rotatoroffset[m3port]
+			rotpos = float(telescopeStatus.rotator.position)
+			parang = telescope.parangle(useCurrent=True)
+			rotoff = float(telescope.rotatoroffset[m3port])
 			try: skypa = float(parang) + float(rotoff) - float(rotpos)
 			except: skypa = "UNKNOWN"
 			hourang = self.hourangle_calc(target,telnum=telnum)
-#			hourang = telescope.hourangle(useCurrent=True)
-			moonsep = str(ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi)
+			#hourang = telescope.hourangle(useCurrent=True)
+			moonsep = ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi
 
 			# target ra, J2000 degrees
 			if 'ra' in target.keys(): ra = target['ra']*15.0 
@@ -2017,15 +1910,15 @@ class control:
 			else: state = 'UNKNOWN'
 
                         #S Get telescope temps
-			try: m1temp = telescopeStatus.temperature.primary
+			try: m1temp = float(telescopeStatus.temperature.primary)
 			except: m1temp = 'UNKNOWN'
-			try: m2temp = telescopeStatus.temperature.secondary
+			try: m2temp = float(telescopeStatus.temperature.secondary)
 			except: m2temp = 'UNKNOWN'
-			try: m3temp = telescopeStatus.temperature.m3
+			try: m3temp = float(telescopeStatus.temperature.m3)
 			except: m3temp = 'UNKNOWN'
-			try: ambtemp = telescopeStatus.temperature.ambient
+			try: ambtemp = float(telescopeStatus.temperature.ambient)
 			except: ambtemp = 'UNKNOWN'
-			try: bcktemp = telescopeStatus.temperature.backplate
+			try: bcktemp = float(telescopeStatus.temperature.backplate)
 			except: bcktemp = 'UNKNOWN'
 			    
 			f['LST'] = (telescopeStatus.status.lst,"Local Sidereal Time")
@@ -2044,19 +1937,19 @@ class control:
 			f['PMRA'    + telstr] = (pmra, "Target Proper Motion in RA (mas/yr)")  
 			f['PMDEC'   + telstr] = (pmdec, "Target Proper Motion in DEC (mas/yr)")  
 			f['PARLAX'  + telstr] = (parallax, "Target Parallax (mas)")  
-			f['RV'      + telstr] = (parallax, "Target Parallax (mas)")  
+			f['RV'      + telstr] = (rv, "Target RV (km/s)")  
 			
 			# This will likely need to be calculated by the pipeline
 			f['FLUXMID' + telstr] = ("UNKNOWN","Flux-weighted mid exposure time (JD_UTC)")
 
 			f['PMODEL'  + telstr] = (telescope.model[m3port],"Pointing Model File")
-			f['FOCPOS'  + telstr] = (telescopeStatus.focuser.position,"Focus Position (microns)")
-			f['DEFOCUS' + telstr] = (str(defocus),"Intentional defocus (mm)")
+			f['FOCPOS'  + telstr] = (float(telescopeStatus.focuser.position),"Focus Position (microns)")
+			f['DEFOCUS' + telstr] = (defocus,"Intentional defocus (mm)")
 			f['ROTPOS'  + telstr] = (rotpos,"Mechanical rotator position (degrees)")
 			f['ROTOFF'  + telstr] = (rotoff,"Mechanical rotator offset (degrees)")
 			f['PARANG'  + telstr] = (parang,"Parallactic Angle (degrees)")
 			f['SKYPA'   + telstr] = (skypa,"Position angle on the sky (degrees E of N)")
-			f['PORT'    + telstr] = (m3port,"Selected port on the telescope")
+			f['PORT'    + telstr] = (int(m3port),"Selected port on the telescope")
 			f['OTAFAN'  + telstr] = (telescopeStatus.fans.on,"OTA Fans on?")			
 			f['M1TEMP'  + telstr] = (m1temp,"Primary Mirror Temp (C)")
 			f['M2TEMP'  + telstr] = (m2temp,"Secondary Mirror Temp (C)")
@@ -2088,9 +1981,9 @@ class control:
 			else: tel = 'ALL'
 
 		f['TELESCOP'] = (tel,"Telescope name")
-		f['APTDIA'] = ("700","Diameter of the telescope in mm")
-		f['APTAREA'] = ("490000","Collecting area of the telescope in mm^2")
-                f['FOCALLEN'] = ("4560.0","Focal length of the telescope in mm")
+		f['APTDIA'] = (700,"Diameter of the telescope in mm")
+		f['APTAREA'] = (490000,"Collecting area of the telescope in mm^2")
+                f['FOCALLEN'] = (4560.0,"Focal length of the telescope in mm")
 
                 gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
 		f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
@@ -2140,8 +2033,8 @@ class control:
 		teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
 		if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
 
-		f['CRVAL1'] = (telra,"RA of reference point")
-		f['CRVAL2'] = (teldec,"DEC of reference point")
+		f['CRVAL1'] = (str(telra),"RA of reference point")
+		f['CRVAL2'] = (str(teldec),"DEC of reference point")
 		f['CRPIX1'] = (str(imager.xcenter),"X reference pixel")
 		f['CRPIX2'] = (str(imager.ycenter),"Y reference pixel")
 		f['CD1_1'] = str(-platescale*math.cos(PA))
@@ -2167,6 +2060,7 @@ class control:
 
 		#start imaging process in a different thread
 		imaging_thread = threading.Thread(target = imager.take_image, args = (target['exptime'], target['filter'], target['name']))
+		imaging_thread.name = 'T' + str(imager.telnum)
 		imaging_thread.start()
 		
 		#Prepare header while waiting for imager to finish taking image
@@ -2190,6 +2084,7 @@ class control:
 				imager.logger.info("Running astrometry to find PA on " + imager.image_name())
 				dataPath = '/Data/t' + str(telescope_num) + '/' + self.site.night + '/'
 				astrometryThread = threading.Thread(target=self.getPA, args=(dataPath + imager.image_name(),), kwargs={})
+				astrometryThread.name = "T" + str(imager.telnum)
 				astrometryThread.start()
 			return imager.image_name()
 
@@ -3137,6 +3032,7 @@ class control:
 		self.logger.info('Starting '+str(len(self.telescopes))+ ' telecopes.')
 		for t in range(len(self.telescopes)):
 			threads[t] = threading.Thread(target = self.observingScript_catch,args = (t+1,))
+			threads[t].name = 'T' + str(self.telescopes[t].num)
 			threads[t].start()
 
 #		speccalib_thread = threading.Thread(target=self.specCalib_catch)

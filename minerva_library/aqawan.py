@@ -64,7 +64,7 @@ class aqawan:
                 self.night = 'n' + today.strftime('%Y%m%d')
 
 	def isOpen(self):
-		filename = 'aqawan' + str(self.num) + '.stat'
+		filename = self.base_directory + '/minerva_library/aqawan' + str(self.num) + '.stat'
 		#with FileLock(filename):
 		if True:	
 			with open(filename,'r') as fh:
@@ -74,7 +74,7 @@ class aqawan:
 					if (datetime.datetime.utcnow() - lastUpdate).total_seconds() > 300:
 						self.logger.error("Dome status hasn't updated in 5 minutes; assuming closed")
 						return False
-					return line[1] == 'True'
+					return line[2] == 'True'
 				except:
 					self.logger.exception("Failed to read aqawan status file")
 					return False

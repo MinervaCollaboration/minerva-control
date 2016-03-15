@@ -6,6 +6,7 @@ import numpy as np
 import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, pyfits, subprocess, collections
 import atexit, win32api
 import utils
+import math
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
@@ -250,15 +251,24 @@ class server:
 			header_info = self.header_buffer + param
 			self.header_buffer = ''
 			f = pyfits.open(self.file_name, mode='update')
-			for key,value in json.loads(header_info,object_pairs_hook=collections.OrderedDict).iteritems():
+
+			try: 
+				hdr = json.loads(header_info,object_pairs_hook=collections.OrderedDict)
+			except: 
+				self.logger.exception('Error updating header for ' +self.file_name+ "; header string is: " + header_info)
+				hdr = {}
+
+			for key,value in hdr.iteritems():
 				if isinstance(value, (str, unicode)):
+					if math.isnan(value): value = 'NaN'
 					f[0].header[key] = value
 				else:
+					if math.isnan(value[0]): value[0] = 'NaN'
 					f[0].header[key] = (value[0],value[1])
 			f.flush()
 			f.close()
 		except:
-			self.logger.exception('Error updating header for ' +self.file_name)
+			self.logger.exception('Error updating header for ' +self.file_name+ "; header string is: " + header_info)
 			return 'fail'
 		return 'success'
 		
