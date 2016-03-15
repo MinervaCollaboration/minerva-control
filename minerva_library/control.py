@@ -2644,12 +2644,20 @@ class control:
 		try: shutil.copyfile(schedulename, scheduleDest)
 		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + scheduleDest)
 
+		# copy server logs to data directory
+		logs = glob.glob('/Data/serverlogs/t?/' + night + '/*.log')
+		for log in logs:
+			self.logger.info("Copying log file " + log + " to " + dataPath)
+			try: shutil.copyfile(log, dataPath + os.path.basename(log))
+			except: pass
+
 		# copy logs to data directory
 		logs = glob.glob(self.base_directory + "/log/" + night + "/*.log")
 		for log in logs:
 			self.logger.info("Copying log file " + log + " to " + dataPath)
 			try: shutil.copyfile(log, dataPath + os.path.basename(log))
 			except: pass
+		logs = glob.glob(dataPath + "/*.log")
 
                 #### create an observing report ####
 

@@ -247,10 +247,16 @@ class server:
 			self.logger.error("self.file_name not defined; saving failed earlier")
 			return 'fail'
 
+		header_info = self.header_buffer + param
+		self.header_buffer = ''
+
 		try:
-			header_info = self.header_buffer + param
-			self.header_buffer = ''
-			f = pyfits.open(self.file_name, mode='update')
+			# check to see if the image exists
+			if os.path.isfile(self.file_name):
+				f = pyfits.open(self.file_name, mode='update')
+			else:
+				self.logger.error("FITS file (" + self.file_name + ") not found")
+				return 'fail'
 
 			try: 
 				hdr = json.loads(header_info,object_pairs_hook=collections.OrderedDict)
