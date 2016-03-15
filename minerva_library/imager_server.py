@@ -245,6 +245,7 @@ class server:
 			self.logger.info("Writing header for " + self.file_name)
 		except: 
 			self.logger.error("self.file_name not defined; saving failed earlier")
+			self.header_buffer = ''
 			return 'fail'
 
 		header_info = self.header_buffer + param
