@@ -13,6 +13,7 @@ import requests
 from configobj import ConfigObj
 from requests.auth import HTTPBasicAuth
 sys.dont_write_bytecode = True
+import utils
 
 #To Do: change log to appropriate format, log open/close failure by reading status, add more functionality as needed 
 class powerswitch:
@@ -23,7 +24,7 @@ class powerswitch:
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		
 	def load_config(self):
 			   
@@ -41,34 +42,6 @@ class powerswitch:
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
-
-
-	def setup_logger(self):
-		
-		log_path = self.base_directory + '/log/' + self.night
-                if os.path.exists(log_path) == False:os.mkdir(log_path)
-
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-                self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
 
 	def send(self,url):
 

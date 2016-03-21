@@ -70,7 +70,8 @@ class SIClient (object):
 		"""
 
 		if len(self.buff) > 0:
-			logging.warning("Buffer not empty...")
+			pass
+#			logging.warning("Buffer not empty...")
 
 		# if buffer isn't empty, return it and clear it
 		bytes_to_receive = n - len(self.buff)
@@ -80,17 +81,17 @@ class SIClient (object):
 
 		retries = 0
 
-		print("bytes to receive %d (received %d)"%(bytes_to_receive,len(bytes_received)))
-		logging.info("bytes to receive %d (received %d)"%(bytes_to_receive,len(bytes_received)))
+#		print("bytes to receive %d (received %d)"%(bytes_to_receive,len(bytes_received)))
+#		logging.info("bytes to receive %d (received %d)"%(bytes_to_receive,len(bytes_received)))
 
 		while bytes_to_receive > 0:
 
-			print ("bytes to receive %d" % bytes_to_receive)
-			logging.info ("bytes to receive %d" % bytes_to_receive)
+#			print ("bytes to receive %d" % bytes_to_receive)
+#			logging.info ("bytes to receive %d" % bytes_to_receive)
 			this_try = self.sk.recv (bytes_to_receive)
 
-			print ("bytes received on this try %d" % len(this_try))
-			logging.info ("bytes received on this try %d" % len(this_try))
+#			print ("bytes received on this try %d" % len(this_try))
+#			logging.info ("bytes received on this try %d" % len(this_try))
 			bytes_to_receive -= len (this_try)
 
 			bytes_received += this_try
@@ -102,12 +103,12 @@ class SIClient (object):
 			# we received more then one packet, get the packet and put the rest on a buffer
 			self.buff = bytes_received[n:]
 			ret = bytes_received[:n]
-			logging.warning("buffer overrrun")
+#			logging.warning("buffer overrrun")
 		else:
 			ret = bytes_received
 
-                print ret
-		logging.info ("> framing retries %d (return length %d)" % (retries, len(ret)))
+#                print ret
+#		logging.info ("> framing retries %d (return length %d)" % (retries, len(ret)))
 
 		return ret
 		
@@ -128,15 +129,15 @@ class SIClient (object):
 				raise e
 
 		cmd_to_send = cmd.command ()
-		logging.debug (cmd_to_send)
+#		logging.debug (cmd_to_send)
 
-		print 'sending command' + str(cmd)
+#		print 'sending command' + str(cmd)
 		bytes_sent = self.sk.send (cmd_to_send.toStruct())
-		logging.debug ("%d bytes sent" % bytes_sent)
+#		logging.debug ("%d bytes sent" % bytes_sent)
 	 
 		while True:
 			
-			print 'receiving package'
+#			print 'receiving package'
 			ret = select.select ([self.sk], [], [])
 
 			if not ret[0]:
@@ -144,18 +145,18 @@ class SIClient (object):
 
 			if ret[0][0] == self.sk:
 
-				print 'package received'
+#				print 'package received'
 				header = Packet ()
 				header_data = self.recv (len(header))
 				header.fromStruct (header_data)
 
-				print 'header id: ' + str(header.id)
+#				print 'header id: ' + str(header.id)
 				
 				if header.id == 129:
-					print 'ack package'
+#					print 'ack package'
 					ack = Ack ()                  
 					ack.fromStruct (header_data + self.recv (header.length - len(header)))                    
-					logging.debug (ack)
+#					logging.debug (ack)
 					# TODO: Figure out why do I need this sleep here. If I don't do this, some commands are not
 					# TODO: performed. I really don't know why!
 					time.sleep(0.1)
@@ -165,16 +166,16 @@ class SIClient (object):
 
 				
 				if header.id == 131:
-					print 'data package'
+#					print 'data package'
 
 
 					
 					data = cmd.result ()
                         		data.fromStruct (header_data + self.recv (header.length - len(header)))
 					#data.fromStruct (header_data + self.recv (header.length))
-					logging.debug (data)
+#					logging.debug (data)
 					
-					print data.data_type
+#					print data.data_type
 					
 					if data.data_type == 2002:
 						return
@@ -195,7 +196,7 @@ class SIClient (object):
 
 				
 				if header.id == 132:
-					print 'image package'
+#					print 'image package'
 					#tmp_array = np.array([])
 
 					img = cmd.result ()
@@ -203,7 +204,7 @@ class SIClient (object):
 
 					# TODO: Needs better mapping of types here!
 					tmp_array = np.fromstring(self.recv(img.img_bytes),np.uint16)
-					logging.debug (img)
+#					logging.debug (img)
 
 					packets = img.total_packets - 1
 				   

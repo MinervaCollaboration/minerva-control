@@ -6,7 +6,10 @@ import ipdb
 import sys
 import socket
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
 sys.dont_write_bytecode = True
+import os
 
 
 def send(subject,body,level='normal',attachment=None):
@@ -38,12 +41,20 @@ def send(subject,body,level='normal',attachment=None):
 	f.close()
 
 	# Prep email
-	msg = MIMEText(body)
+	msg = MIMEMultipart()
+#	msg = MIMEText(body)
 	msg['From'] = username.strip()
 	msg['To'] = ', '.join(recipients)
 	msg['Subject'] = subject
-# attachments don't work like this!  
-#    if attachment <> None: msg.attach(MIMEText(file(attachment).read()))   
+	msg.attach(MIMEText(body))
+
+	# attachments don't work like this!  
+	if attachment <> None:
+		if os.path.exists(attachment):
+			fp = open(attachment,'rb')
+			img = MIMEImage(fp.read(),name=os.path.basename(attachment))
+			fp.close()
+			msg.attach(img)
 
 	# send email
 	server = smtplib.SMTP('smtp.gmail.com')

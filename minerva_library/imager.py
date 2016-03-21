@@ -15,6 +15,7 @@ import subprocess
 import cdk700
 import fau
 sys.dont_write_bytecode = True
+import utils
 
 class imager:
 
@@ -24,7 +25,7 @@ class imager:
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.pdu = pdu.pdu(self.pdu_config,base)
 		self.initialize()
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
@@ -87,34 +88,6 @@ class imager:
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
-
-
-	def setup_logger(self):
-			
-		log_path = self.base_directory + '/log/' + self.night
-		if os.path.exists(log_path) == False:os.mkdir(log_path)
-		
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-                self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
 		
 	#return a socket object connected to the camera server
 	def connect_server(self):
@@ -133,6 +106,7 @@ class imager:
 			self.logger.exception(telescope_name + 'connection failed')
 			return False
 
+		self.nserver_failed = 0
 		return s
 	#send commands to camera server
 	def send(self,msg,timeout):
@@ -433,7 +407,7 @@ class imager:
 			if self.recover(): return self.take_fau_image(exptime=exptime, objname=objname)
 			return False
 
-		self.file_name = self.night + "." + self.telescope_name + "." + objname + ".FAU." + str(ndx).zfill(4) + ".fits"
+		self.file_name = self.night + "." + self.telescope_name + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
 
 		if self.exposeGuider(exptime):
 			self.write_status()
@@ -443,7 +417,6 @@ class imager:
 				self.nfailed = 0 # success; reset the failed counter
 				return self.file_name
 			else: 
-				ipdb.set_trace()
 				self.logger.error(telescope_name + 'failed to save image: ' + self.file_name)
 				self.file_name = ''
 				if self.recover(): return self.take_fau_image(exptime=exptime, objname=objname)
@@ -519,8 +492,25 @@ class imager:
 	def recover_server(self):
                 telescope_name = 'T' + self.telnum + ': '
 
+		self.nserver_failed += 1
+
 		# this requires winexe on linux and a registry key on each Windows (7?) machine (apply keys.reg in dependencies folder):
 		self.logger.warning(telescope_name + 'Server failed, beginning recovery') 
+	
+		if self.nserver_failed > 1:
+			self.logger.warning(telescope_name + 'Server failed more than once; try power cycling the camera')
+			if not self.kill_server(): ipdb.set_trace()
+			if not self.kill_maxim(): ipdb.set_trace()
+			self.powercycle()
+			time.sleep(10)
+			if not self.start_server(): 
+				self.logger.error(telescope_name + "failed to start server")
+				return False
+
+		if self.nserver_failed > 3:
+			mail.send(telescope_name + 'Server failed','',level='serious')
+			sys.exit()
+		
 
                 # try to re-connect
 #                if self.connect_server():

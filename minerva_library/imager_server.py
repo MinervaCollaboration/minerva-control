@@ -5,6 +5,8 @@ from scipy import stats
 import numpy as np
 import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, pyfits, subprocess, collections
 import atexit, win32api
+import utils
+import math
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
@@ -23,7 +25,7 @@ class server:
                         today = today + datetime.timedelta(days=1)
 		night = 'n' + today.strftime('%Y%m%d')
 
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.set_data_path()
 		self.connect_camera()
 		#XXX These do not work
@@ -50,50 +52,6 @@ class server:
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
-
-		
-	def setup_logger(self):
-
-		log_path = self.base_directory + '/log/' + self.night
-                if os.path.exists(log_path) == False:os.mkdir(log_path)
-
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-                self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
-
-		'''
-		log_directory = self.base_directory + '/log/' + night
-		self.logger = logging.getLogger(self.logger_name)
-		formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-		if os.path.exists(log_directory) == False:
-			os.mkdir(log_directory)
-		self.logger.handlers = []
-		fileHandler = logging.FileHandler(log_directory + '/' + self.logger_name + '.log', mode='a+')
-		fileHandler.setFormatter(formatter)
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-		self.logger.setLevel(logging.DEBUG)
-		self.logger.addHandler(fileHandler)
-		self.logger.addHandler(streamHandler)
-		'''
 
 	def get_index(self,param):
 		files = glob.glob(self.data_path + "/*.fits*")
@@ -251,6 +209,7 @@ class server:
 		try:
                         if fau:
                                 self.logger.info('Saving guider image')
+                                time.sleep(0.2) # wait for the image to start
                                 while self.cam.GuiderRunning:
                                         time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)
@@ -258,14 +217,21 @@ class server:
                                 self.maxim.CurrentDocument.SaveFile(self.file_name,3, False, 1)
 				return 'success'				
                         else:
+                                time.sleep(0.2) # wait for the image to start
         			while (not self.cam.ImageReady) and (self.cam.CameraStatus <> 2):
                 			time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)
         			self.file_name = self.data_path + '\\' + file_name
-                                if self.cam.SaveImage(self.file_name):
-					return 'success'
-				return 'fail'
-		except:
+                                try:
+                                        if self.cam.SaveImage(self.file_name):
+                				return 'success'
+                                        self.logger.error("Error saving image")
+                                	return 'fail'
+                                except:
+                                        self.logger.exception("Error saving image")
+                                        return 'fail'
+                except:
+                        self.logger.exception("Error saving image")
 			return 'fail'
 
 	def write_header(self,param):
@@ -279,21 +245,39 @@ class server:
 			self.logger.info("Writing header for " + self.file_name)
 		except: 
 			self.logger.error("self.file_name not defined; saving failed earlier")
+			self.header_buffer = ''
 			return 'fail'
 
+		header_info = self.header_buffer + param
+		self.header_buffer = ''
+
 		try:
-			header_info = self.header_buffer + param
-			self.header_buffer = ''
-			f = pyfits.open(self.file_name, mode='update')
-			for key,value in json.loads(header_info,object_pairs_hook=collections.OrderedDict).iteritems():
+			# check to see if the image exists
+			if os.path.isfile(self.file_name):
+				f = pyfits.open(self.file_name, mode='update')
+			else:
+				self.logger.error("FITS file (" + self.file_name + ") not found")
+				return 'fail'
+
+			try: 
+				hdr = json.loads(header_info,object_pairs_hook=collections.OrderedDict)
+			except: 
+				self.logger.exception('Error updating header for ' +self.file_name+ "; header string is: " + header_info)
+				hdr = {}
+
+			for key,value in hdr.iteritems():
 				if isinstance(value, (str, unicode)):
+					if isinstance(value,float):
+						if math.isnan(value): value = 'NaN'
 					f[0].header[key] = value
 				else:
+					if isinstance(value[0],float):
+						if math.isnan(value[0]): value[0] = 'NaN'
 					f[0].header[key] = (value[0],value[1])
 			f.flush()
 			f.close()
 		except:
-			self.logger.exception('Error updating header for ' +self.file_name)
+			self.logger.exception('Error updating header for ' +self.file_name+ "; header string is: " + header_info)
 			return 'fail'
 		return 'success'
 		
@@ -522,10 +506,3 @@ if __name__ == '__main__':
 	
     test_server = server(config_file,base_directory)
     test_server.run_server()
-	
-	
-	
-	
-	
-	
-	

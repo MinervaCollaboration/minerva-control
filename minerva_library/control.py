@@ -27,13 +27,16 @@ import cdk700
 import imager
 import fau
 import spectrograph
+import utils
 import pdu
 import mail
 from get_all_centroids import *
 import segments
 import newauto 
 from fix_fits import fix_fits
-
+import copy
+import rv_control
+from plotweather import plotweather
 
 # FAU guiding dependencies
 import PID_test as pid
@@ -50,13 +53,13 @@ class control:
 		#S Only sets logger name right now
 		self.load_config()
 
-		self.setup_logger()
-
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
+		
 		#S See below, lots of new objects created here. 
-		self.create_class_objects()#telescope_list)
+		self.create_class_objects()
 		
 		self.logger_lock = threading.Lock()
-		self.setup_loggers()
+#		self.setup_loggers()
 		self.telcom_enable()
 		
 	#create class objects needed to control Minerva system
@@ -75,6 +78,7 @@ class control:
                 self.cameras = []
 		self.pdus = []
 		self.site = env.site('site_mtHopkins.ini',self.base_directory)
+		self.thermalenclosureemailsent = False
 
 		for i in range(2):
 			try:
@@ -108,65 +112,56 @@ class control:
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
+		self.night = utils.night()
 
-	#? What happens here if this isn't called between 10:00AM and 4:00PM?
-	#create logger object and link to log file, if night is not specified, log files will go into /log/dump directory
-	def setup_logger(self):
+	def update_logpaths(self,path):
+		if not os.path.exists(path): os.mkdir(path)
 
-		# reset the night at 10 am local                                                                                                 
-		today = datetime.datetime.utcnow()
-		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
-                        today = today + datetime.timedelta(days=1)
-		self.night = 'n' + today.strftime('%Y%m%d')
+		fmt = "%(asctime)s [%(filename)s:%(lineno)s,%(thread)d - %(funcName)s()] %(levelname)s: %(message)s"
+                datefmt = "%Y-%m-%dT%H:%M:%S"
+                formatter = logging.Formatter(fmt,datefmt=datefmt)
+                formatter.converter = time.gmtime
+
+		self.logger_lock.acquire()
+
+		# control's logger
+		for fh in self.logger.handlers: self.logger.removeHandler(fh)
+		fh = logging.FileHandler(path + '/' + self.logger_name + '.log', mode='a')	
+                fh.setFormatter(formatter)
+		self.logger.addHandler(fh)
+
+		for a in self.domes:
+			for fh in a.logger.handlers: a.logger.removeHandler(fh)
+			fh = logging.FileHandler(path + '/' + a.logger_name + '.log', mode='a')	
+			fh.setFormatter(formatter)
+			a.logger.addHandler(fh)
+		for t in self.telescopes:
+			for fh in t.logger.handlers: t.logger.removeHandler(fh)
+			fh = logging.FileHandler(path + '/' + t.logger_name + '.log', mode='a')	
+			fh.setFormatter(formatter)
+			t.logger.addHandler(fh)
+		for c in self.cameras:
+			for fh in c.logger.handlers: c.logger.removeHandler(fh)
+			fh = logging.FileHandler(path + '/' + c.logger_name + '.log', mode='a')	
+			fh.setFormatter(formatter)
+			c.logger.addHandler(fh)
+
+		for fh in self.site.logger.handlers: self.site.logger.removeHandler(fh)
+		fh = logging.FileHandler(path + '/' + self.site.logger_name + '.log', mode='a')	
+		fh.setFormatter(formatter)
+		self.site.logger.addHandler(fh)
+
+		for fh in self.spectrograph.logger.handlers: self.spectrograph.logger.removeHandler(fh)
+		fh = logging.FileHandler(path + '/' + self.spectrograph.logger_name + '.log', mode='a')	
+		fh.setFormatter(formatter)
+		self.spectrograph.logger.addHandler(fh)
+
+		self.logger_lock.release()
 		
-		log_path = self.base_directory + '/log/' + self.night
-		if os.path.exists(log_path) == False:os.mkdir(log_path)
-
-		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-		datefmt = "%Y-%m-%dT%H:%M:%S"
-
-		self.logger = logging.getLogger(self.logger_name)
-		self.logger.setLevel(logging.DEBUG)
-		formatter = logging.Formatter(fmt,datefmt=datefmt)
-		formatter.converter = time.gmtime
-        
-		#clear handlers before setting new ones
-		self.logger.handlers = []
-
-		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-		fileHandler.setFormatter(formatter)
-		self.logger.addHandler(fileHandler)
-
-		# add a separate logger for the terminal (don't display debug-level messages)
-		console = logging.StreamHandler()
-		console.setFormatter(formatter)
-		console.setLevel(logging.INFO)
-		self.logger.setLevel(logging.DEBUG)
-		self.logger.addHandler(console)
-
-		'''
-		self.logger = logging.getLogger(self.logger_name)
-		self.logger.setLevel(logging.DEBUG)
-
-		fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-		datefmt = "%Y-%m-%dT%H:%M:%S"
-		formatter = logging.Formatter(fmt,datefmt=datefmt)
-		formatter.converter = time.gmtime
-		
-		#clear handlers before setting new ones
-		self.logger.handlers = []
-		
-		fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a+')
-		fileHandler.setFormatter(formatter)
-		self.logger.addHandler(fileHandler)
-		
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-		self.logger.addHandler(streamHandler)
-		'''
 
 	#set logger path for all control objects
 	def setup_loggers(self):
+		
 	
 		self.logger_lock.acquire()
 		for a in self.domes:
@@ -176,7 +171,6 @@ class control:
 		for c in self.cameras:
 			c.setup_logger()
 		self.site.setup_logger()
-		#S NEED TO UNCOMMENT IF YOU PUT SPECTROGRAPH BACK IN XXXXX
 		self.spectrograph.setup_logger()
 		self.logger_lock.release()
 		
@@ -217,6 +211,7 @@ class control:
 			threads = [None]*len(self.domes)
 			for t in range(len(self.domes)):
 				threads[t] = threading.Thread(target = self.domes[t].initialize)
+				threads[t].name = 'A' + str(self.domes[t].num)
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
@@ -236,11 +231,12 @@ class control:
 					threads[t] = threading.Thread(target = self.domes[t].open_shutter,args=[1,])
 				else:
 					threads[t] = threading.Thread(target = self.domes[t].open_both,kwargs=kwargs)
+				threads[t].name = 'A' + str(self.domes[t].num)
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
 		for t in self.domes:
-			if t.isOpen == False:
+			if t.isOpen() == False:
 				return False
 		return True
 	def dome_close(self,num=0):
@@ -250,6 +246,7 @@ class control:
 			threads = [None]*len(self.domes)
 			for t in range(len(self.domes)):
 				threads[t] = threading.Thread(target = self.domes[t].close_both)
+				threads[t].name = 'A' + str(self.domes[t].num)
 				threads[t].start()
 			for t in range(len(self.domes)):
 				threads[t].join()
@@ -293,6 +290,7 @@ class control:
 				kwargs['tracking']=tracking
 				kwargs['derotate']=derotate
 				threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].initialize,kwargs=kwargs)
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 #S Join all the threads together
                 for t in range(len(tele_list)):
@@ -312,6 +310,7 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].autoFocus)
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -333,6 +332,7 @@ class control:
                                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 				#S i think this might act up due to being a dictionary, but well see. 
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].acquireTarget,args=(target))
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -350,6 +350,7 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].mountGotoAltAz,args=(alt,az))
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -367,6 +368,7 @@ class control:
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
                                 threads[t] = threading.Thread(target = self.telescopes[tele_list[t]].park)
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]]:
@@ -374,79 +376,6 @@ class control:
                 return
 
 
-                
-                                                               
-
-                        
-                        
-	#S Old functions
-	def telescope_initialize_old(self,num=0):
-                #? Why is there no telecom check for the single case?
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].initialize()
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].initialize)
-					threads[t].start()
-			#? why are there two seperate loops?
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-				
-	def telescope_autoFocus_old(self,num=0):
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].autoFocus()
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].autoFocus)
-					threads[t].start()
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-					
-	def telescope_acquireTarget_old(self,ra,dec,num=0):
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].acquireTarget(ra,dec)
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].acquireTarget,args = (ra,dec))
-					threads[t].start()
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-					
-	def telescope_mountGotoAltAz_old(self,Alt,Az,num=0):
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].mountGotoAltAz(Alt,Az)
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].mountGotoAltAz,args=(Alt,Az))
-					threads[t].start()
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-					
-	def telescope_park_old(self,num=0):
-		if num >= 1 and num <= len(self.telescopes):
-			self.telescopes[num-1].park()
-		else:
-			threads = [None]*len(self.telescopes)
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t] = threading.Thread(target = self.telescopes[t].park)
-					threads[t].start()
-			for t in range(len(self.telescopes)):
-				if self.telcom_enabled[t] == True:
-					threads[t].join()
-					
 #============Imager control===============#
 #block until command is complete
 #operate on imagre specified by num
@@ -460,6 +389,7 @@ class control:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].initialize)
+				threads[t].name = 'T' + str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -471,6 +401,7 @@ class control:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].connect_camera)
+				threads[t].name = 'T' + str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -483,6 +414,7 @@ class control:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].set_dataPath)
+				threads[t].name = 'T' + str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -499,6 +431,7 @@ class control:
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].compress_data)
+				threads[t].name = 'T' + str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
@@ -525,69 +458,19 @@ class control:
 		except:
 			self.logger.info(telescope_name + 'error loading calib info: ' + self.site.night + '.T' + str(num) + '.txt')
 			sys.exit()
-		
-	# check weather condition; close if bad, open and send heartbeat if good; update dome status
-	def domeControl(self,day=False):
-		while self.observing:
-			t0 = datetime.datetime.utcnow()
 
-			if not self.site.oktoopen(domeopen=self.domes[0].isOpen):
-				if self.site.sunalt() < 0.0:
-					self.logger.info('Weather not ok to open; resetting timeout')
-					self.site.lastClose = datetime.datetime.utcnow()
-					self.dome_close()
-			elif (datetime.datetime.utcnow() - self.site.lastClose).total_seconds() < (20.0*60.0):
-				self.logger.info('Conditions must be favorable for 20 minutes before opening; last bad weather at ' + str(self.site.lastClose))
-				self.dome_close() # should already be closed, but for good measure...
-			else:
-				self.logger.debug('Weather is good; opening dome')				
-
-				kwargs={'day' : day}
-				openthread = threading.Thread(target=self.dome_open,kwargs=kwargs)
-				openthread.start()
-
-				# only send heartbeats when it's ok to open
-				for i in range(len(self.domes)):
-					self.domes[i].heartbeat()
-
-			# does this create a problem if domes[*].isOpen changes as other threads access it?
-			for i in range(len(self.domes)):
-				status = self.domes[i].status()
-				if status['Shutter1'] == 'OPEN' and status['Shutter2'] == 'OPEN': self.domes[i].isOpen = True
-				else: self.domes[i].isOpen = False
-
-				response = self.domes[i].send('CLEAR_FAULTS')
-				if 'Estop' in response:
-					if not self.domes[i].estopmailsent:
-						mail.send("Aqawan " + str(i+1) + " Estop has been pressed!",self.domes[i].estopmail,level='serious')
-						self.domes[i].estopmailsent = True
-				else:
-					self.domes[i].estopmailsent = False
-
-
-			# ensure 4 hearbeats before timeout
-			sleeptime = max(14.0-(datetime.datetime.utcnow() - t0).total_seconds(),0)
-			time.sleep(sleeptime)
-
-
-		self.dome_close()
-		
-	def domeControlThread(self,day=False):
-		kwargs={'day' : day}
-		self.observing = True
-		threading.Thread(target = self.domeControl_catch,kwargs=kwargs).start()
-
-	def astrometry(self,imageName):
-
+        # run astrometry.net on imageName, update solution in header                                             
+	def astrometry(self, imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None):
 		hdr = pyfits.getheader(imageName)
-		try: pixscale = float(hdr['PIXSCALE'])
-		except: pixscale = 0.61
-		
-		try: ra = float(hdr['RA'])
-		except: ra = self.ten(hdr['RA'])*15.0
-    
-		try: dec = float(hdr['DEC'])
-		except: dec = self.ten(hdr['DEC'])
+
+		if pixscale == None:
+			pixscale = float(hdr[pixscalekey])
+			
+		try: ra = float(hdr[rakey])
+		except: ra = ten(hdr[rakey])*15.0
+
+		try: dec = float(hdr[deckey])
+		except: dec = utils.ten(hdr[deckey])
 		if dec > 90.0: dec = dec - 360.0
 
 		radius = 3.0*pixscale*float(hdr['NAXIS1'])/3600.0
@@ -607,10 +490,9 @@ class control:
 		    ' --no-plots' + \
 		    ' --overwrite ' + \
 		    imageName
-#		' --use-sextractor' + \ #need to install sextractor
+#        ' --use-sextractor' + \ #need to install sextractor
 
-		cmd = r'/usr/local/astrometry/bin/' + cmd + ' >/dev/null 2>&1' 
-		self.logger.info("executing solve-field command: " + cmd)
+		cmd = r'/usr/local/astrometry/bin/' + cmd + ' >/dev/null 2>&1'
 		os.system(cmd)
 
 	def getPA(self,imageName, email=True):
@@ -771,6 +653,30 @@ class control:
 	def rads_to_degs(self,rads):
 		return rads*180./np.pi
 
+	def hourangle_calc(self,target,telnum=None):
+		#S update the site time to the current utc time
+		self.site.date = datetime.datetime.utcnow()
+		#S convert the radian sideral time from the site to hours
+		lst_hours = self.rads_to_hours(self.site.obs.sidereal_time())
+		#S i have no idea what this magic does
+		if 'ra' in target.keys():
+			ha = lst_hours - target['ra']
+		elif telnum <> None:
+			telescopeStatus = self.telescopes[telnum-1].getStatus()
+			ra = utils.ten(telescopeStatus.mount.ra_2000)
+			ha = lst_hours - ra
+		else:
+			self.logger.info(target['name']+' does not have an RA for Hour Angle calc; assuming HA=0')
+			ha = 0.
+		#S put HA in range (0,24)
+		if ha<0.:
+			ha+=24.
+		if ha>24.:
+			ha-=24.
+		#S put HA in range (-12,12)
+		if ha>12.:
+			ha = ha-24
+
 	def jnow_to_j2000_pyephem(self, ra_rads, dec_rads):
 		"""
 		A bastardized version from Kevin, edited by Sam. The telescope 
@@ -827,15 +733,22 @@ class control:
 
 		# if after end time, return
 		if datetime.datetime.utcnow() > target['endtime']:
-			self.logger.info(telescope_name + "Target " + target['name'] + " past its endtime (" + str(target['endtime']) + "); skipping")
+			self.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + "); skipping")
 			return
 
 		# if before start time, wait
 		if datetime.datetime.utcnow() < target['starttime']:
 			waittime = (target['starttime']-datetime.datetime.utcnow()).total_seconds()
-			self.logger.info(telescope_name + "Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
+			self.logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
 			time.sleep(waittime)
 
+		# if the dome isn't open, wait for it to open
+		for dome in self.domes:
+			while not dome.isOpen():
+				if datetime.datetime.utcnow() > target['endtime']:
+					self.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
+					return
+				time.sleep(60)
 
 		# acquire the target and begin guiding on each telescope
                 if type(tele_list) is int:
@@ -846,9 +759,10 @@ class control:
                 threads = [None] * len(tele_list)
                 for t in range(len(tele_list)):
                         if self.telcom_enabled[tele_list[t]-1]:
-                                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement                                
-                                #S i think this might act up due to being a dictionary, but well see.                               
+                                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
+                                #S i think this might act up due to being a dictionary, but well see.
                                 threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
                                 threads[t].start()
 
 		self.logger.info("Waiting for all telescopes to acquire")
@@ -874,24 +788,61 @@ class control:
 
 		# begin exposure(s)
 		for i in range(target['num'][0]):
-			# should have dome checks
+			# make sure we're not past the end time
+			if datetime.datetime.utcnow() > target['endtime']: 
+				self.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
+				self.stopFAU(tele_list)
+				return
+			
+			while not self.domes[0].isOpen():
+				self.logger.info("Waiting for dome to open")
+				time.sleep(60.0)
+				if datetime.datetime.utcnow() > target['endtime']: 
+					self.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
+					self.stopFAU(tele_list)
+					return
+
 			self.takeSpectrum(target)
 
+		self.stopFAU(tele_list)
+		return
+
+	def stopFAU(self,tele_list):
+
 		# set camera.fau.guiding == False to stop guiders
+		self.logger.info("Stopping the guiding loop for all telescopes")
 		for i in range(len(tele_list)):
 			self.cameras[tele_list[i]-1].fau.guiding = False
 
 		return
 
 
-	def pointAndGuide(self, target, tel_num):
+	def pointAndGuide(self, target, tel_num, backlight=False):
 
-		self.logger.info("T" + str(tel_num) + ": pointing to target")
-		self.telescopes[tel_num-1].acquireTarget(target)
-		self.logger.info("T" + str(tel_num) + ": beginning guiding")
-		self.cameras[tel_num-1].fau.guiding=True
-		self.fauguide(target,tel_num)
+		try:
+			self.telescopes[tel_num-1].logger.info('Beginning autofocus on '+target['name'])
+			newauto.autofocus(self, tel_num, target=target)
+			self.logger.info("T" + str(tel_num) + ": pointing to target")
+			self.telescopes[tel_num-1].acquireTarget(target, derotate=False)
 
+			if backlight:
+				rv_control.backlight(self)
+				backlit = glob.glob('/Data/t' + str(tel_num) + '/' + self.night + '/*backlight*.fits')
+				if len(backlit) > 1:
+					xfiber, yfiber = rv_control.find_fiber(backlit[-1])
+					self.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ")")
+					camera.fau.xfiber = xfiber
+					camera.fau.yfiber = yfiber
+				else:
+					self.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+
+
+			self.logger.info("T" + str(tel_num) + ": beginning guiding")
+			self.cameras[tel_num-1].fau.guiding=True
+			self.fauguide(target,tel_num)
+		except:
+			self.logger.exception("T" + str(tel_num) + ": Pointing and guiding failed")
+#			mail.send("Pointing and guiding failed","",level="serious")
 
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
@@ -953,9 +904,23 @@ class control:
 
 				ndx = np.argmax(stars[:,2])
 
+				self.logger.info("T" + str(tel_num) + ": Found " + str(len(stars)) + " stars, using the star at (x,y)=(" + str(stars[ndx][0]) + "," + str(stars[ndx][1]) + ")")
 
-				self.logger.info("Found " + str(len(stars)) + " stars, using the star at (x,y)=(" + str(stars[ndx][0]) + "," + str(stars[ndx][1]) + ")")
-#				ipdb.set_trace()
+				# include an arbitrary offset from the nominal position (experimental)
+				offset_file = '/home/minerva/minerva-control/t' + str(tel_num) + '_fiber_offset.txt'
+				if os.path.exists(offset_file):
+					with open(offset_file) as fh:
+						entries = fh.readline().split()
+						xoffset = float(entries[0])
+						yoffset = float(entries[1])
+						self.logger.info("T" + str(tel_num) + ": offset file found, applying offset to fiber position (" + str(xoffset) + "," + str(yoffset) + ")")
+				else:
+					xoffset = 0.0
+					yoffset = 0.0
+
+				p.setPoint((camera.fau.xfiber+xoffset,camera.fau.yfiber+yoffset))
+				pfast.setPoint((camera.fau.xfiber+xoffset,camera.fau.yfiber+yoffset))
+
 				curpos = np.array([stars[ndx][0],stars[ndx][1]])
 				tvals = np.append(tvals,i)
 				xvals = np.append(xvals, curpos[0])
@@ -964,9 +929,10 @@ class control:
 				filterx=camera.fau.filterdata(xvals, N=camera.fau.smoothing)
 				filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
 				filtercurpos=np.array([filterx, filtery])
-				separation = camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1])*camera.fau.platescale
-				self.logger.info("T" + str(tel_num) + ": Target is " + str(separation) + '" away from the fiber -- tolerance is ' + str(camera.fau.acquisition_tolerance) + '"')
-				if separation < camera.fau.acquisition_tolerance:
+				separation = camera.fau.dist(camera.fau.xfiber+xoffset-curpos[0], camera.fau.yfiber+yoffset-curpos[1])*camera.fau.platescale
+				self.logger.info("T%i: Target is at (%f,%f), %f'' away from the fiber (%f,%f) -- tolerance is %f'"%(tel_num,curpos[0],curpos[1],separation,camera.fau.xfiber+xoffset,camera.fau.yfiber+yoffset,camera.fau.acquisition_tolerance))
+#				self.logger.info("T" + str(tel_num) + ": Target is at (" + str(curpos[0]) + ',' + str(curpos[1]) + "), " + str(separation) + '" away from the fiber (' + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) ") -- tolerance is " + str(camera.fau.acquisition_tolerance) + '"')
+ 				if separation < camera.fau.acquisition_tolerance:
 					self.logger.info("T" + str(tel_num) + ": Target acquired")
 					camera.fau.acquired = True
 					if acquireonly: return
@@ -984,7 +950,7 @@ class control:
 
 				# position angle on the sky
 				# PA = parallactic angle - mechanical rotator position + field rotation offset
-				parangle = telescope.parangle(target, useCurrent=True)
+				parangle = telescope.parangle(useCurrent=True)
 				offset = float(telescope.rotatoroffset[telescope.port['FAU']])
 				PA = parangle - float(telescope.getStatus().rotator.position) + offset
 				self.logger.info('T' + str(tel_num) + ': PA = '+str(PA))
@@ -999,7 +965,9 @@ class control:
 
 				if guiding == True:
 				#telescope.increment_alt_az_balanced(telupdateval[0],telupdateval[1])
-					telescope.mountOffsetRaDec(-telupdateval[0],-telupdateval[1])
+					telescopeStatus = telescope.getStatus()
+					dec = utils.ten(telescopeStatus.mount.dec_2000)
+					telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
 
 					if fast:
 						time.sleep(5)
@@ -1020,7 +988,7 @@ class control:
 
 				self.logger.debug("T" + str(tel_num) + ": Curpos " + str(curpos[0])+"   "+str(curpos[1]))
 				#self.logger.debug("Filtercurpos " +  filtercurpos)
-				self.logger.debug("T" + str(tel_num) + ": distance from target: " +str(round(camera.fau.dist(camera.fau.xfiber-curpos[0], camera.fau.yfiber-curpos[1]),2)))
+				self.logger.debug("T" + str(tel_num) + ": distance from target: " +str(round(camera.fau.dist(camera.fau.xfiber+xoffset-curpos[0], camera.fau.yfiber+yoffset-curpos[1]),2)))
 				self.logger.debug("T" + str(tel_num) + ": Updatevalue: " + str(updateval[0])+" "+str(updateval[1]))
 				self.logger.debug("T" + str(tel_num) + ": Commanding update: " + str(telupdateval[0])+" "+str(telupdateval[1]))
 				if i >50:
@@ -1341,6 +1309,7 @@ class control:
                         #S Move the I2 stage out of the way of the slit.
 			kwargs['locationstr'] = 'out'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.name = "I2Stage"
                         i2stage_move_thread.start()
                         
                         #self.spectrograph.i2stage_move('out')
@@ -1372,7 +1341,7 @@ class control:
                         #S Move the LED in place with the Iodine stage
 			kwargs['locationstr'] = 'flat'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-
+			i2stage_move_thread.name = "I2Stage"
                         i2stage_move_thread.start()
 
                         # Configure the lamps
@@ -1403,8 +1372,8 @@ class control:
 			else:
 				kwargs['locationstr'] = 'out'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.name = "I2Stage"
                         i2stage_move_thread.start()
-
 
                         #Configure the lamps
 #                        self.spectrograph.thar_turn_off()
@@ -1443,6 +1412,7 @@ class control:
                         #S and will at least make things orderly.
 			kwargs['locationstr'] = 'in'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.name = "I2Stage"
                         i2stage_move_thread.start()
                         #TODO Calibration shutter closed
                         self.logger.info('Waiting on i2stage_move_thread')
@@ -1463,6 +1433,7 @@ class control:
 			else:
 				kwargs['locationstr'] = 'out'
 			i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+			i2stage_move_thread.name = "I2Stage"
 			i2stage_move_thread.start()
 				
                         #Configure the lamps
@@ -1500,6 +1471,7 @@ class control:
 	def takeSpecDark(self, num, exptime):
 		target = {}
 		target['exptime'] = [exptime]
+		target['spectroscopy'] = True
 		if exptime == 0.0:
 			target['name'] = 'Bias' 
 		else: target['name'] = 'Dark'
@@ -1509,6 +1481,7 @@ class control:
 		target = {}
 		target['name'] = 'slitFlat'
 		target['exptime'] = [exptime]
+		target['spectroscopy'] = True
 		for i in range(num):
 			self.takeSpectrum(target, tele_list = [])
 
@@ -1522,33 +1495,81 @@ class control:
 			kwargs = {'expmeter':target['expmeter']}
 		else:
 			kwargs = {'expmeter':None}
+		kwargs['exptime'] = target['exptime'][0]
+		kwargs['objname'] = target['name']
 
 #		self.spectrograph.take_image(target['exptime'][0],target['name'])
-		imaging_thread = threading.Thread(target = self.spectrograph.take_image, args = (target['exptime'][0], target['name']), kwargs=kwargs)
+		imaging_thread = threading.Thread(target = self.spectrograph.take_image, kwargs=kwargs)
+		imaging_thread.name = "SI"
 		imaging_thread.start()
                         
-                # Get status info for headers while exposing/reading out
-                # (needs error handling)
-                while self.site.getWeather() == -1: pass
+		f = self.getHdr(target,[1,2,3,4],[1,2])
 
-                #S Get facts about the moon, used for avoidance later I'm assuming.
- 		# JDE 2016-01-21: Just for the header info
-                moonpos = self.site.moonpos()
-                moonra = moonpos[0]
-                moondec = moonpos[1]
-                moonphase = self.site.moonphase()
+		header = json.dumps(f)
 
-                #S Path for good stuff online
-		if socket.gethostname() == 'Main':
-			gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
-		else: gitNum = 'UNKNOWN'
+		self.spectrograph.logger.info('Waiting for spectrograph imaging thread')
+		# wait for imaging process to complete
+		imaging_thread.join()
 		
-                # emulate MaximDL header for consistency
-		f = collections.OrderedDict()
+		# write header for image
+		if self.spectrograph.write_header(header):
+			self.spectrograph.logger.info('Finished writing spectrograph header')
 
+			# rewrite the image to make it standard
+			self.spectrograph.logger.info("Standardizing the FITS image")
+			night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+			dataPath = '/Data/kiwispec/' + night + '/'
+			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
+			fix_fits_thread.name = 'SI'
+			fix_fits_thread.start()
+			
+			return self.spectrograph.file_name
+                #ipdb.set_trace()
 
-                #S I'm guessing this is the dictionary definition for the header.
+		self.spectrograph.logger.error('takeSpectrum failed: ' + self.spectrograph.file_name)
+		return 'error'
+
+	#take one image based on parameter given, return name of the image, return 'error' if fail
+	#image is saved on remote computer's data directory set by imager.set_data_path()
+	#TODO camera_num is actually telescope_num
+	def takeFauImage(self,target,telescope_num=0):
+		telescope_name = 'T' + str(telescope_num) +': '
+
+		#check camera number is valid
+		if telescope_num > len(self.telescopes) or telescope_num < 0:
+			return 'error'
+		if telescope_num > 2: dome = 2
+		else: dome = 1
+
+		#S assign the camera.
+		imager = self.cameras[telescope_num-1]
+		imager.logger.info('starting the FAU imaging thread')
+
+		#start imaging process in a different thread
+		kwargs = {'exptime':target['fauexptime'],'objname':target['name']}
+		imaging_thread = threading.Thread(target = imager.take_fau_image, kwargs = kwargs)
+		imaging_thread.name = "T" + str(imager.telnum)
+		imaging_thread.start()
 		
+		# Prepare header while waiting for imager to finish taking image
+		f = self.getHdr(target, telescope_num, dome)
+		header = json.dumps(f)
+		
+		imager.logger.info('waiting for imaging thread')
+		# wait for imaging process to complete
+		imaging_thread.join()
+		
+		# write header for image 
+		if imager.write_header(header):
+			imager.logger.info('finish writing image header')
+			return imager.image_name()
+
+		imager.logger.error('takeImage failed: ' + imager.image_name())
+		return 'error'	
+
+	def addSpectrographKeys(self, f):
+
+		# blank keys will be filled in from the image when it's taken
 #                f['SIMPLE'] = 'True'
 #                f['BITPIX'] = (16,'8 unsigned int, 16 & 32 int, -32 & -64 real')
 #                f['NAXIS'] = (2,'number of axes')
@@ -1559,11 +1580,11 @@ class control:
 #                f['DATE-OBS'] = ("","UTC at exposure start")
                 f['EXPTIME'] = ("","Exposure time in seconds")                  # PARAM24/1000
 #                f['EXPSTOP'] = ("","UTC at exposure end")
-                f['SET-TEMP'] = ("",'CCD temperature setpoint in C')            # PARAM62 (in comments!)
-                f['CCD-TEMP'] = ("",'CCD temperature at start of exposure in C')# PARAM0
-                f['BACKTEMP'] = ("","Backplace Temperature in C")               # PARAM1
-                f['XPIXSZ'] = ("",'Pixel Width in microns (after binning)')
-                f['YPIXSZ'] = ("",'Pixel Height in microns (after binning)')
+                f['SET-TEMP'] = ("",'CCD temperature setpoint (C)')            # PARAM62 (in comments!)
+                f['CCD-TEMP'] = ("",'CCD temperature at start of exposure (C)')# PARAM0
+                f['BACKTEMP'] = ("","Camera backplate temperature (C)")        # PARAM1
+                f['XPIXSZ'] = ("",'Pixel Width (microns after binning)')
+                f['YPIXSZ'] = ("",'Pixel Height (microns after binning)')
                 f['XBINNING'] = ("","Binning factor in width")                  # PARAM18
                 f['YBINNING'] = ("","Binning factor in height")                 # PARAM22
                 f['XORGSUBF'] = (0,'Subframe X position in binned pixels')      # PARAM16
@@ -1572,10 +1593,7 @@ class control:
                 f['SITELAT'] = (str(self.site.obs.lat),"Site Latitude")
                 f['SITELONG'] = (str(self.site.obs.lon),"East Longitude of the imaging location")
                 f['SITEALT'] = (self.site.obs.elevation,"Site Altitude (m)")
-                f['JD'] = (0.0,"Julian Date at the start of exposure")
-                f['FOCALLEN'] = (4560.0,"Focal length of the telescope in mm")
-                f['APTDIA'] = ("700","")
-                f['APTAREA'] = ("490000","")
+                f['JD'] = (0.0,"Julian Date at the start of exposure (UTC)")
                 f['SWCREATE'] = ("SI2479E 2011-12-02","Name of the software that created the image")
                 f['INSTRUME'] = ('KiwiSpec','Name of the instrument')
                 f['OBSERVER'] = ('MINERVA Robot',"Observer")
@@ -1603,10 +1621,9 @@ class control:
                 f['PARDLY'] = ("","Parallel Shift Delay, ns")   # PARAM57
                 f['NPORTS'] = ("","Number of Ports")            # PARAM58
                 f['SHUTDLY'] = ("","Shutter Close Delay, ms")   # PARAM59
-                f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
-                f['MOONRA'] = (moonra,"Moon RA (J2000)")
-                f['MOONDEC'] = (moondec,"Moon DEC (J2000)")
-                f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")
+                f['GAIN'] = (1.30,"Detector gain (e-/ADU)")
+                f['RDNOISE'] = (3.63,"Detector read noise (e-)")
+
                                         
         #PARAM60 =                   74 / CCD Temp. Setpoint Offset,0.1 C               
         #PARAM61 =               1730.0 / Low Temp Limit,(-100.0 C)                      
@@ -1621,188 +1638,44 @@ class control:
                                      
                                          
                 # need object for each telescope
-
-                # loop over each telescope and insert the appropriate keywords
-                for telescope in self.telescopes:
-			
-                    telnum = telescope.num
-		    imager = self.cameras[int(telnum)-1]
-                    #S Getting this mysterious status dict (I believe).
-                    telescopeStatus = telescope.getStatus()
-                    #S The telescopes current ra.
-                    #S NOTE: telescopestatus.mount.ra_2000 in hours. 
-                    telra = self.ten(telescopeStatus.mount.ra_2000)*15.0
-                    #S Telescopes mounts current dec from status
-                    teldec = self.ten(telescopeStatus.mount.dec_2000)
-
-                    #S The targets current ra, hours again
-		    if 'ra' in target.keys(): ra = target['ra']*15.0
-		    else: ra = 'N/A'
-                    #S the targets dec, degrees
-		    if 'dec' in target.keys(): dec = target['dec']
-		    else: dec = 'N/A'
-                    #S Fixes an unforetold but legendary bug in PWI. You probably have heard about it. Wait, you haven't?! Get with the picture, dammit!
-                    #S My guess is that PWI will return a wrap arund for declination sometimes. 
-		    
-                    if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI
-                    #S Fill out header information based on each telescope.
-
-		    # State can be:
-		    # INACTIVE -- Telescope is not requested for spectroscopy
-		    # FAILED -- Telescope was requested for spectroscopy but has failed
-		    # ACQUIRING -- Telescope was requested for spectroscopy but is still acquiring
-		    # GUIDING -- Telescope was requested for spectroscopy and is guiding
-		    # UNKNOWN -- We don't know; something went wrong
-		    if not imager.fau.guiding:
-			    state = 'INACTIVE'
-		    elif imager.fau.failed:
-			    state = 'FAILED'
-		    elif imager.fau.acquired and imager.fau.guiding:
-			    state = 'GUIDING'
-		    elif not imager.fau.acquired and imager.fau.guiding:
-			    state = 'ACQUIRING'
-		    else: state = 'UNKNOWN'
-			    
-		    f['T' + telnum + 'STATE'] = (state,"State of T" + telnum + " at start of exposure")
-		    
-
-                    f['TELRA' + telnum] = (telra,"Telescope RA (J2000 deg)")
-                    f['TELDEC' + telnum] = (teldec,"Telescope Dec (J2000 deg)")
-                    f['RA' + telnum] = (ra, "Solved RA (J2000 deg)")
-                    f['DEC'+ telnum] = (dec,"Solved Dec (J2000 deg)")
-                    f['TARGRA' + telnum] = (ra, "Target RA (J2000 deg)")
-                    f['TARGDEC'+ telnum] = (dec,"Target Dec (J2000 deg)")
-		    
-		    if 'pmra' in target.keys(): pmra = target['pmra']
-		    else: pmra = 'UNKNOWN' 
-		    f['PMRA' + telnum] = (pmra, "Target Proper Motion in RA (mas/yr)")  
-		    
-		    if 'pmdec' in target.keys(): pmdec = target['pmdec']
-		    else: pmdec = "UNKNOWN"
-		    f['PMDEC' + telnum] = (pmdec, "Target Proper Motion in DEC (mas/yr)")  
-
-		    if 'parallax' in target.keys(): parallax = target['parallax']
-		    else: parallax = "UNKNOWN"
-		    f['PARLAX' + telnum] = (parallax, "Target Parallax (mas)")  
-
-		    f['FLUXMID' + telnum] = ("UNKNOWN","Flux-weighted midtime for T" + telnum + " (JD_UTC)")
-
-                    #S Get that moon seperation, put in in a header
-                    moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
-                    f['MOONDIS' + telnum] = (moonsep, "Distance between pointing and moon (deg)")
-                    #TODO Now this, where are we storing pointing model? How is it set?
-                    #TODO Obviously it's in status, but where does status get it? Is it just
-                    #TODO not on this computer?
-                    f['PMODEL' + telnum] = (telescope.model[telescopeStatus.m3.port],"Pointing Model File")
-                    #S Focus stuff
-                    f['FOCPOS' + telnum] = (telescopeStatus.focuser.position,"Focus Position (microns)")
-                    #S Rotator stuff, only needed for photometry?
-                    f['ROTPOS' + telnum] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
-                    #S So we do have access to port info, keep this in mind!!!
-                    #SNOTE 
-                    # M3 Specific
-                    f['PORT' + telnum] = (telescopeStatus.m3.port,"Selected port for T" + telnum)
-                    #S Ahh, the otafan. Obtuse telescope ass fan, obviously.
-		    #J Or "Optical Tube Assembly"
-                    f['OTAFAN' + telnum] = (telescopeStatus.fans.on,"OTA Fans on?")
-                    #S Get mirror temps
-                    try: m1temp = telescopeStatus.temperature.primary
-                    except: m1temp = 'UNKNOWN'
-                    f['M1TEMP'+telnum] = (m1temp,"Primary Mirror Temp (C)")
-
-                    try: m2temp = telescopeStatus.temperature.secondary
-                    except: m2temp = 'UNKNOWN'
-                    f['M2TEMP'+telnum] = (m2temp,"Secondary Mirror Temp (C)")
-
-                    try: m3temp = telescopeStatus.temperature.m3
-                    except: m3temp = 'UNKNOWN'
-                    f['M3TEMP'+telnum] = (m3temp,"Tertiary Mirror Temp (C)")
-                    #S Outside temp
-                    try: ambtemp = telescopeStatus.temperature.ambient
-                    except: ambtemp = 'UNKNOWN'
-                    f['AMBTEMP'+telnum] = (ambtemp,"Ambient Temp (C)")
-                    #S Whats the backplate?           
-                    try: bcktemp = telescopeStatus.temperature.backplate
-                    except: bcktemp = 'UNKNOWN'
-                    f['BCKTEMP'+telnum] = (bcktemp,"Backplate Temp (C)")
-
-
-
-                # loop over each aqawan and insert the appropriate keywords
-                for aqawan in self.domes:
-                    aqStatus = aqawan.status()
-
-                    aqnum = aqawan.num
-                    f['AQSOFTV'+aqnum] = (aqStatus['SWVersion'],"Aqawan software version number")
-                    f['AQSHUT1'+aqnum] = (aqStatus['Shutter1'],"Aqawan shutter 1 state")
-                    f['AQSHUT2'+aqnum] = (aqStatus['Shutter2'],"Aqawan shutter 2 state")
-                    f['INHUMID'+aqnum] = (aqStatus['EnclHumidity'],"Humidity inside enclosure")
-                    f['DOOR1'  +aqnum] = (aqStatus['EntryDoor1'],"Door 1 into aqawan state")
-                    f['DOOR2'  +aqnum] = (aqStatus['EntryDoor2'],"Door 2 into aqawan state")
-                    f['PANELDR'+aqnum] = (aqStatus['PanelDoor'],"Aqawan control panel door state")
-                    f['HRTBEAT'+aqnum] = (aqStatus['Heartbeat'],"Heartbeat timer")
-                    f['AQPACUP'+aqnum] = (aqStatus['SystemUpTime'],"PAC uptime (seconds)")
-                    f['AQFAULT'+aqnum] = (aqStatus['Fault'],"Aqawan fault present?")
-                    f['AQERROR'+aqnum] = (aqStatus['Error'],"Aqawan error present?")
-                    f['PANLTMP'+aqnum] = (aqStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
-                    f['AQTEMP' +aqnum] = (aqStatus['EnclTemp'],"Enclosure temperature (C)")
-                    f['AQEXTMP'+aqnum] = (aqStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
-                    f['AQINTMP'+aqnum] = (aqStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
-                    f['AQLITON'+aqnum] = (aqStatus['LightsOn'],"Aqawan lights on?")
-		    if aqnum == '1':
-			    pdu = self.pdus[0]
-		    elif aqnum == '2':
-			    pdu = self.pdus[2]
-		    f['MONITOR'+aqnum] = 	(pdu.monitor.status(),"Monitor on?")
-
-
-                # Weather station
-		while self.site.getWeather() == -1: pass
-                f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
-                f['RAIN'] = (self.site.weather['wxt510Rain'],"Current Rain since UT 00:00 (mm)")
-                f['TOTRAIN'] = (self.site.weather['totalRain'],"Total yearly rain (mm)")
-                f['OUTTEMP'] = (self.site.weather['outsideTemp'], "Outside Temperature (C)")
-                f['MCLOUD'] = (str(self.site.weather['MearthCloud']),"Mearth Cloud Sensor (C)")
-                f['HCLOUD'] = (str(self.site.weather['HATCloud']),"HAT Cloud Sensor (C)")
-                f['ACLOUD'] = (str(self.site.weather['AuroraCloud']),"Aurora Cloud Sensor (C)")
-                f['DEWPOINT'] = (self.site.weather['outsideDewPt'],"Dewpoint (C)")
-                f['WINDSPD'] = (self.site.weather['windSpeed'],"Wind Speed (mph)")
-                f['WINDGUST'] = (self.site.weather['windGustSpeed'],"Wind Gust Speed (mph)")
-                f['WINDIR'] = (self.site.weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
-                f['PRESSURE'] = (self.site.weather['barometer'],"Outside Pressure (mbar)")
-                f['SUNALT'] = (self.site.weather['sunAltitude'],"Sun Altitude (deg)")
+                f['CCDMODE'] = ('UNKNOWN','CCD Readout Mode')
+                f['FIBER'] = ('4-legged','Fiber Bundle Used')
+                f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
+		f['DETECTOR'] = ('SI850','Detector Name')
 
                 '''
                 # spectrograph information
                 EXPTYPE = 'Time-Based'         / Exposure Type                                  
-                DETECTOR= 'SI850'              / Detector Name                                  
                 '''
 
-                f['CCDMODE'] = ('UNKNOWN','CCD Readout Mode')
-                f['FIBER'] = ('4-legged, T4 Broken','Fiber Bundle Used')
-                f['ATM_PRES'] = ('UNKNOWN','Atmospheric Pressure (mbar)')
-                #TODOTDOTDO
-                #S TESTING trying to isolate errors, need to remove
-#		specpressure = self.spectrograph.get_spec_pressure()
+
+		# pressure in the spectrograph
 		specpressure = -999.0
 		night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
-		with open('/Data/kiwilog/' + night + '/spec_pressure.log') as fh:
-			fh.seek(-1024,2)
-			line = fh.readlines()[-1].decode()
-			specpressure = float(line.split(',')[-1].strip())
-#		pumppressure = self.spectrograph.get_spec_pressure()
+		try:
+			with open('/Data/kiwilog/' + night + '/spec_pressure.log') as fh:
+				fh.seek(-1024,2)
+				line = fh.readlines()[-1].decode()
+				specpressure = float(line.split(',')[-1].strip())
+		except:
+			self.logger.error("Error reading the spectrograph pressure")
 
+		# pressure at the pump
 		pumppressure = -999.0
-		with open('/Data/kiwilog/' + night + '/pump_pressure.log') as fh:
-			fh.seek(-1024,2)
-			line = fh.readlines()[-1].decode()
-			pumppressure = float(line.split(',')[-1].strip())
+		try:
+			with open('/Data/kiwilog/' + night + '/pump_pressure.log') as fh:
+				fh.seek(-1024,2)
+				line = fh.readlines()[-1].decode()
+				pumppressure = float(line.split(',')[-1].strip())
+		except:
+			self.logger.error("Error reading the pump pressure")
+			
 
-                f['SPECPRES'] = (str(specpressure),"spectrograph pressure (mbars)")
-                f['PUMPPRES'] = (str(pumppressure),"vacuum pump pressure (mbars)")
+                f['SPECPRES'] = (specpressure,"spectrograph pressure (mbars)")
+                f['PUMPPRES'] = (pumppressure,"vacuum pump pressure (mbars)")
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
 
-		## TODO -- add pump valves and pump from PDUs
+		# which valves are open; is the pump on?
 		pumpvalve = self.pdus[5].pumpvalve.status()
 		ventvalve = self.pdus[5].ventvalve.status()
 		pump = self.pdus[4].pump.status()
@@ -1811,33 +1684,46 @@ class control:
 		f['VENTVALV'] = (ventvalve,'Vent valve open?')
 		f['PUMPON'] = (pump,'Vacuum pump on?')
 
+		# add the temperatures we log
 		temp_controllers = ['A','B','C','D']
 		for cont in temp_controllers:
 			for i in range(4):
 				filename = '%s/log/%s/temp.%s.%s.log'%(self.base_directory,night,cont,str(i+1))
-				with open(filename,'r') as fh:
-					lineList = fh.readlines()
-					temps = lineList[-1].split(',')
-					if temps[1] == "None" : temp = 'UNKNOWN'
-					else: temp = float(temps[1])
-					f['TEMP'+cont+str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
+				try:
+					with open(filename,'r') as fh:
+						lineList = fh.readlines()
+						temps = lineList[-1].split(',')
+						if temps[1] == "None" : temp = 'UNKNOWN'
+						else: temp = float(temps[1])
+						f['TEMP'+cont+str(i+1)] = (temp,temps[2].strip() + ' Temperature (C)')
+				except:
+					f['TEMP'+cont+str(i+1)] = ('UNKNOWN','Temperature (C)')
+					
 
 		# add the temperatures from the thermal enclosure log
 		filename = self.base_directory + '/config/thermal_enclosure.ini'
 		with open(filename,'rb') as fh:
 			header = fh.readlines()[0].strip().split(',')
-	
 		filename = '/Data/thermallog/Thermal Enclosure Log ' + \
 		    datetime.datetime.utcnow().strftime('%Y-%m-%d') + ' UTC.csv'
-		with open(filename,'rb') as fh:
-			temps = fh.readlines()[-1].strip().split(',')
-			for i in range(12):
-				f['TEMPE'+str(i+1).zfill(2)] = (float(temps[i+4]), header[i] + ' Temperature (C)')
-			f['ENCSETP'] = (float(temps[3]),'Thermal enclosure set point (C)')
+		
+		if os.path.exists(filename):
+			with open(filename,'rb') as fh:
+				temps = fh.readlines()[-1].strip().split(',')
+				for i in range(12):
+					f['TEMPE'+str(i+1).zfill(2)] = (float(temps[i+4]), header[i] + ' Temperature (C)')
+				f['ENCSETP'] = (float(temps[3]),'Thermal enclosure set point (C)')
+			self.thermalenclosureemailsent = False
+		else:
+			if self.thermalenclosureemailsent:
+				mail.send("Thermal enclosure logging died","Please restart me!")
+			self.thermalenclosureemailsent = True
 
+		# iodine temperature and set point
                 f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
                 f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
 
+		# iodine stage positions
 		i2stagepos = self.spectrograph.i2stage_get_pos()
 		try:
 			f['I2POSAF'] = (i2stagepos[0],'Iodine Stage Actual Position (mm)')
@@ -1849,107 +1735,234 @@ class control:
 		f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
                 f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
 		
-		
+		# is the exposure meter and slit flat LED on?
 		f['EXPMETER'] = (self.pdus[4].expmeter.status(),'Exposure meter powered?')
 		f['LEDLAMP'] = (self.pdus[4].ledlamp.status(),'LED lamp powered?')
 		
+		f['XFIBER1'] = (self.cameras[0].fau.xfiber,'X position of fiber on FAU')
+		f['YFIBER1'] = (self.cameras[0].fau.yfiber,'Y position of fiber on FAU')
+		f['XFIBER2'] = (self.cameras[1].fau.xfiber,'X position of fiber on FAU')
+		f['YFIBER2'] = (self.cameras[1].fau.yfiber,'Y position of fiber on FAU')
+		f['XFIBER3'] = (self.cameras[2].fau.xfiber,'X position of fiber on FAU')
+		f['YFIBER3'] = (self.cameras[2].fau.yfiber,'Y position of fiber on FAU')
+		f['XFIBER4'] = (self.cameras[3].fau.xfiber,'X position of fiber on FAU')
+		f['YFIBER4'] = (self.cameras[3].fau.yfiber,'Y position of fiber on FAU')
 
-		"""
-                #S PDU Header info
-                self.spectrograph.update_dynapower1()
-                self.spectrograph.update_dynapower2()
-                dyna1keys  = ['tharLamp','flatLamp','expmeter','i2heater']
-                for key in dyna1keys:
-                        f[key] = (self.spectrograph.dynapower1_status[key],"Outlet for "+key)
-                dyna2keys = ['i2stage','slitflat']
-                for key in dyna2keys:
-                        f[key] = (self.spectrograph.dynapower2_status[key],"Outlet for "+key)
-		"""	
-                
-		header = json.dumps(f)
-		self.logger.info('Waiting for spectrograph imaging thread')
-		# wait for imaging process to complete
-		imaging_thread.join()
+		return f
+
+
+	def addWeatherKeys(self, f):
+
+		# other threads can overwrite the weather
+		weather = -1
+		while weather == -1:
+			self.site.getWeather()
+			weather = copy.deepcopy(self.site.weather)
+
+		# Weather station information
+		f['WJD'] = (str(weather['date']),"Last update of weather (UTC)")
+		f['RAIN'] = (weather['wxt510Rain'],"Current Rain since UT 00:00 (mm)")
+		f['TOTRAIN'] = (weather['totalRain'],"Total yearly rain (mm)")
+		f['OUTTEMP'] = (weather['outsideTemp'],"Outside Temperature (C)")
+		f['MCLOUD'] = (weather['MearthCloud'],"Mearth Cloud Sensor (C)")
+		f['HCLOUD'] = (weather['HATCloud'],"HAT Cloud Sensor (C)")
+		f['ACLOUD'] = (weather['AuroraCloud'],"Aurora Cloud Sensor (C)")
+		f['MINCLOUD'] = (weather['MINERVACloud'],"MINERVA Cloud Sensor (C)")
+		f['DEWPOINT'] = (weather['outsideDewPt'],"Dewpoint (C)")
+		f['WINDSPD'] = (weather['windSpeed'],"Wind Speed (mph)")
+		f['WINDGUST'] = (weather['windGustSpeed'],"Wind Gust Speed (mph)")
+		f['WINDIR'] = (weather['windDirectionDegrees'],"Wind Direction (Deg E of N)")
+		f['PRESSURE'] = (weather['barometer'],"Outside Pressure (mbar)")
+		f['SUNALT'] = (weather['sunAltitude'],"Sun Altitude (deg)")
 		
-		# write header for image
-		if self.spectrograph.write_header(header):
-			self.logger.info('Finished writing spectrograph header')
+		return f
 
-			# rewrite the image to make it standard
-			self.logger.info("Standardizing the FITS image")
-			night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
-			dataPath = '/Data/kiwispec/' + night + '/'
-			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
-			fix_fits_thread.start()
-			
-			return self.spectrograph.file_name
-                #ipdb.set_trace()
-
-		self.logger.error('takeSpectrum failed: ' + self.spectrograph.file_name)
-		return 'error'
-
-	#take one image based on parameter given, return name of the image, return 'error' if fail
-	#image is saved on remote computer's data directory set by imager.set_data_path()
-	#TODO camera_num is actually telescope_num
-#	def takeImage(self, exptime, filterInd, objname, telescope_num=0):
-	def takeFauImage(self,target,telescope_num=0):
-		telescope_name = 'T' + str(telescope_num) +': '
-
-		#check camera number is valid
-		if telescope_num > len(self.telescopes) or telescope_num < 0:
-			return 'error'
-		if telescope_num > 2:
-			dome = self.domes[1]
-			pdu = self.pdus[2]
-		elif telescope_num > 0:
-			dome = self.domes[0]
-			pdu = self.pdus[0]
-
-		###TELESCOPE DEPENDENT STUFF###
-		#S Get the current status of the telescope.
-		telescope = self.telescopes[telescope_num-1]
-		telescopeStatus = telescope.getStatus()
-
-		#S assign the camera.
-		imager = self.cameras[telescope_num-1]
-		self.logger.info(telescope_name + 'starting the FAU imaging thread')
-
-		#start imaging process in a different thread
-		#TODO for new takeimage
-		imaging_thread = threading.Thread(target = imager.take_fau_image, args = (target['fauexptime'],))
-		imaging_thread.start()
+	def addAqawanKeys(self,dome_list,f):
 		
-		#Prepare header while waiting for imager to finish taking image
-		while self.site.getWeather() == -1: pass
-		telescopeStatus = telescope.getStatus()
-		domeStatus = dome.status()
+		if type(dome_list) is int:
+			dome_list = [dome_list]
 
-		#TODO for new takeimage		
-		#S try and get the target ra and dec from the dict, but if not default to the telescope status values.
-		#S this should only hopefully happen for darks, biases, and flats, but we'll see. as autofocus
-		try:
-			telra = str(target['ra']*15.0)
-			teldec = str(target['dec'])
-			useCurrent=False
-		except:
-			#S get current ra and dec from telescope mount. this is reported in the status as radians, which we use for the 
-			#S conversion from jnow to j2000 coords. has been tested and checked for a few cases. see our bastarized functinos from
-			#S Kevin at PlaneWave for the conversion using pyephem.
-			telra, teldec = self.jnow_to_j2000_pyephem(float(telescopeStatus.mount.ra_radian),float(telescopeStatus.mount.dec_radian))
-			useCurrent=True
+		for dome in dome_list:
 
-		ra = telra 
-		dec = teldec
+			if len(dome_list) == 1:
+				domestr = ""
+			else: domestr = str(dome)
 
-		az = str(float(telescopeStatus.mount.azm_radian)*180.0/math.pi)
-		alt = str(float(telescopeStatus.mount.alt_radian)*180.0/math.pi)
-		airmass = str(1.0/math.cos((90.0 - float(alt))*math.pi/180.0))
+			if dome <> 1 and dome <> 2:
+				self.logger.error("Invalid dome selected (" + str(dome) + ")")
+				return f
 
+			domeStatus = self.domes[dome-1].status()
+
+			# Enclosure Specific
+			f['AQSOFTV' + domestr] = (domeStatus['SWVersion'],"Aqawan software version number")
+			f['AQSHUT1' + domestr] = (domeStatus['Shutter1'],"Aqawan shutter 1 state")
+			f['AQSHUT2' + domestr] = (domeStatus['Shutter2'],"Aqawan shutter 2 state")
+			f['INHUMID' + domestr] = (float(domeStatus['EnclHumidity']),"Humidity inside enclosure")
+			f['DOOR1'   + domestr] = (domeStatus['EntryDoor1'],"Door 1 into aqawan state")
+			f['DOOR2'   + domestr] = (domeStatus['EntryDoor2'],"Door 2 into aqawan state")
+			f['PANELDR' + domestr] = (domeStatus['PanelDoor'],"Aqawan control panel door state")
+			f['HRTBEAT' + domestr] = (int(domeStatus['Heartbeat']),"Heartbeat timer")
+			f['AQPACUP' + domestr] = (domeStatus['SystemUpTime'],"PAC uptime (seconds)")
+			f['AQFAULT' + domestr] = (domeStatus['Fault'],"Aqawan fault present?")
+			f['AQERROR' + domestr] = (domeStatus['Error'],"Aqawan error present?")
+			f['PANLTMP' + domestr] = (float(domeStatus['PanelExhaustTemp']),"Aqawan control panel exhaust temp (C)")
+			f['AQTEMP'  + domestr] = (float(domeStatus['EnclTemp']),"Enclosure temperature (C)")
+			f['AQEXTMP' + domestr] = (float(domeStatus['EnclExhaustTemp']),"Enclosure exhaust temperature (C)")
+			f['AQINTMP' + domestr] = (float(domeStatus['EnclIntakeTemp']),"Enclosure intake temperature (C)")
+			f['AQLITON' + domestr] = (domeStatus['LightsOn'],"Aqawan lights on?")
+
+			# is the monitor powered on?
+			f['MONITOR' + domestr] = (self.pdus[(dome-1)*2].monitor.status(),"Monitor on?")
+
+		return f
+
+	def addTelescopeKeys(self, target, tele_list, f):
+
+		if type(tele_list) is int:
+			tele_list = [tele_list]
+		
+                # loop over each telescope and insert the appropriate keywords
 		moonpos = self.site.moonpos()
-		moonra = str(moonpos[0])
-		moondec = str(moonpos[1])
-		moonsep = str(ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi)
-		moonphase = str(self.site.moonphase())
+		moonra = moonpos[0]
+		moondec = moonpos[1]
+		moonphase = self.site.moonphase()
+		f['MOONRA'] = (moonra, "Moon RA (J2000)")    
+		f['MOONDEC'] =  (moondec, "Moon Dec (J2000)")
+		f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")    
+
+                for telnum in tele_list:
+			
+			# if there's only one telescope (i.e., imager), no need to specify
+			if len(tele_list) == 1:
+				telstr = ""
+			else:
+				telstr = str(telnum)
+
+			if telnum < 1 or telnum > 4:
+				self.logger.error("Invalid telscope number (" + str(telnum) + ")")
+				return f
+
+			telescope = self.telescopes[int(telnum)-1]
+			imager = self.cameras[int(telnum)-1]
+
+			telescopeStatus = telescope.getStatus()
+			telra =utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
+			teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
+			if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
+
+			az = float(telescopeStatus.mount.azm_radian)*180.0/math.pi
+			alt = float(telescopeStatus.mount.alt_radian)*180.0/math.pi
+			airmass = 1.0/math.cos((90.0 - float(alt))*math.pi/180.0)
+			moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
+
+			m3port = telescopeStatus.m3.port
+			try:
+				if m3port == '0': defocus = "UNKNOWN"
+				else: defocus = (float(telescopeStatus.focuser.position) - float(telescope.focus[m3port]))/1000.0
+			except:
+				defocus = "UNKNOWN"
+				self.logger.exception("What is going on?")
+
+			rotpos = float(telescopeStatus.rotator.position)
+			parang = telescope.parangle(useCurrent=True)
+			rotoff = float(telescope.rotatoroffset[m3port])
+			try: skypa = float(parang) + float(rotoff) - float(rotpos)
+			except: skypa = "UNKNOWN"
+			hourang = self.hourangle_calc(target,telnum=telnum)
+			#hourang = telescope.hourangle(useCurrent=True)
+			moonsep = ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi
+
+			# target ra, J2000 degrees
+			if 'ra' in target.keys(): ra = target['ra']*15.0 
+			else: ra = telra
+                        
+                        # target dec, J2000 degrees
+			if 'dec' in target.keys(): dec = target['dec']
+			else: dec = teldec
+
+			if 'pmra' in target.keys(): pmra = target['pmra']
+			else: pmra = 'UNKNOWN' 
+
+			if 'pmdec' in target.keys(): pmdec = target['pmdec']
+			else: pmdec = "UNKNOWN"
+
+			if 'parallax' in target.keys(): parallax = target['parallax']
+			else: parallax = "UNKNOWN"
+
+			if 'rv' in target.keys(): rv = target['rv']
+			else: rv = "UNKNOWN"
+
+			# State can be:
+			# INACTIVE -- Telescope is not requested for spectroscopy
+			# FAILED -- Telescope was requested for spectroscopy but has failed
+			# ACQUIRING -- Telescope was requested for spectroscopy but is still acquiring
+			# GUIDING -- Telescope was requested for spectroscopy and is guiding
+			# UNKNOWN -- We don't know; something went wrong
+			if not imager.fau.guiding:
+				state = 'INACTIVE'
+			elif imager.fau.failed:
+				state = 'FAILED'
+			elif imager.fau.acquired and imager.fau.guiding:
+				state = 'GUIDING'
+			elif not imager.fau.acquired and imager.fau.guiding:
+				state = 'ACQUIRING'
+			else: state = 'UNKNOWN'
+
+                        #S Get telescope temps
+			try: m1temp = float(telescopeStatus.temperature.primary)
+			except: m1temp = 'UNKNOWN'
+			try: m2temp = float(telescopeStatus.temperature.secondary)
+			except: m2temp = 'UNKNOWN'
+			try: m3temp = float(telescopeStatus.temperature.m3)
+			except: m3temp = 'UNKNOWN'
+			try: ambtemp = float(telescopeStatus.temperature.ambient)
+			except: ambtemp = 'UNKNOWN'
+			try: bcktemp = float(telescopeStatus.temperature.backplate)
+			except: bcktemp = 'UNKNOWN'
+			    
+			f['LST'] = (telescopeStatus.status.lst,"Local Sidereal Time")
+			f['OBJECT'  + telstr] = target['name'] 
+			f['FAUSTAT' + telstr] = (state,"State of the FAU at start of exposure")
+			f['TELRA'   + telstr] = (telra,"Telescope RA (J2000 deg)")
+			f['TELDEC'  + telstr] = (teldec,"Telescope Dec (J2000 deg)")
+			f['RA'      + telstr] = (ra, "Solved RA (J2000 deg)")
+			f['DEC'     + telstr] = (dec,"Solved Dec (J2000 deg)")
+			f['TARGRA'  + telstr] = (ra, "Target RA (J2000 deg)")
+			f['TARGDEC' + telstr] = (dec,"Target Dec (J2000 deg)")
+			f['ALT'     + telstr] = (alt,'Telescope altitude (deg)')
+			f['AZ'      + telstr] = (az,'Telescope azimuth (deg E of N)')
+			f['AIRMASS' + telstr] = (airmass,"airmass (plane approximation)")
+			f['HOURANG' + telstr] = (hourang,"Hour angle")
+			f['PMRA'    + telstr] = (pmra, "Target Proper Motion in RA (mas/yr)")  
+			f['PMDEC'   + telstr] = (pmdec, "Target Proper Motion in DEC (mas/yr)")  
+			f['PARLAX'  + telstr] = (parallax, "Target Parallax (mas)")  
+			f['RV'      + telstr] = (rv, "Target RV (km/s)")  
+			
+			# This will likely need to be calculated by the pipeline
+			f['FLUXMID' + telstr] = ("UNKNOWN","Flux-weighted mid exposure time (JD_UTC)")
+
+			f['PMODEL'  + telstr] = (telescope.model[m3port],"Pointing Model File")
+			f['FOCPOS'  + telstr] = (float(telescopeStatus.focuser.position),"Focus Position (microns)")
+			f['DEFOCUS' + telstr] = (defocus,"Intentional defocus (mm)")
+			f['ROTPOS'  + telstr] = (rotpos,"Mechanical rotator position (degrees)")
+			f['ROTOFF'  + telstr] = (rotoff,"Mechanical rotator offset (degrees)")
+			f['PARANG'  + telstr] = (parang,"Parallactic Angle (degrees)")
+			f['SKYPA'   + telstr] = (skypa,"Position angle on the sky (degrees E of N)")
+			f['PORT'    + telstr] = (int(m3port),"Selected port on the telescope")
+			f['OTAFAN'  + telstr] = (telescopeStatus.fans.on,"OTA Fans on?")			
+			f['M1TEMP'  + telstr] = (m1temp,"Primary Mirror Temp (C)")
+			f['M2TEMP'  + telstr] = (m2temp,"Secondary Mirror Temp (C)")
+			f['M3TEMP'  + telstr] = (m3temp,"Tertiary Mirror Temp (C)")
+			f['AMBTEMP' + telstr] = (ambtemp,"Ambient Temp (C)")
+			f['BCKTEMP' + telstr] = (bcktemp,"Backplate Temp (C)")
+
+			f['MOONDIS' + telstr] = (moonsep, "Distance between pointing and moon (deg)")
+
+		return f
+
+			
+	def getHdr(self,target,tele_list,dome_list):
 
 		#get header info into json format and pass it to imager's write_header method
 		f = collections.OrderedDict()
@@ -1958,169 +1971,78 @@ class control:
 		f['SITELAT'] = str(self.site.obs.lat)
 		f['SITELONG'] = (str(self.site.obs.lon),"East Longitude of the imaging location")
 		f['SITEALT'] = (str(self.site.obs.elevation),"Site Altitude (m)")
-		f['OBSID'] = ("696","Minor Planet Center Observatory ID for Mt. Hopkins")
 		f['OBSERVER'] = ('MINERVA Robot',"Observer")
-		f['TELESCOP'] = "T" + str(telescope_num)
-		f['OBJECT'] = target['name'] #objname
-		f['APTDIA'] = "700"
-		f['APTAREA'] = "490000"
+
+		if type(tele_list) is int:
+			tel = "T" + str(tele_list)
+		else: 
+			if len(tele_list) == 1:
+				tel = "T" + str(tele_list[0])
+			else: tel = 'ALL'
+
+		f['TELESCOP'] = (tel,"Telescope name")
+		f['APTDIA'] = (700,"Diameter of the telescope in mm")
+		f['APTAREA'] = (490000,"Collecting area of the telescope in mm^2")
+                f['FOCALLEN'] = (4560.0,"Focal length of the telescope in mm")
 
                 gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
 		f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
 
-		# Site Specific
-		f['LST'] = (telescopeStatus.status.lst,"Local Sidereal Time")
+		# add either the keywords specific to the spectrograph or imager
+		if 'spectroscopy' in target.keys():
+			if target['spectroscopy']:
+				f = self.addSpectrographKeys(f)
+			else: f = self.addImagerKeys(tele_list, f)
+		else: f = self.addImagerKeys(tele_list, f)
 
-		# Enclosure Specific
-		f['AQSOFTV'] = (domeStatus['SWVersion'],"Aqawan software version number")
-		f['AQSHUT1'] = (domeStatus['Shutter1'],"Aqawan shutter 1 state")
-		f['AQSHUT2'] = (domeStatus['Shutter2'],"Aqawan shutter 2 state")
-		f['INHUMID'] = (domeStatus['EnclHumidity'],"Humidity inside enclosure")
-		f['DOOR1'] = (domeStatus['EntryDoor1'],"Door 1 into aqawan state")
-		f['DOOR2'] = (domeStatus['EntryDoor2'],"Door 2 into aqawan state")
-		f['PANELDR'] = (domeStatus['PanelDoor'],"Aqawan control panel door state")
-		f['HRTBEAT'] = (domeStatus['Heartbeat'],"Heartbeat timer")
-		f['AQPACUP'] = (domeStatus['SystemUpTime'],"PAC uptime (seconds)")
-		f['AQFAULT'] = (domeStatus['Fault'],"Aqawan fault present?")
-		f['AQERROR'] = (domeStatus['Error'],"Aqawan error present?")
-		f['PANLTMP'] = (domeStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
-		f['AQTEMP'] = (domeStatus['EnclTemp'],"Enclosure temperature (C)")
-		f['AQEXTMP'] = (domeStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
-		f['AQINTMP'] = (domeStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
-		f['AQLITON'] = (domeStatus['LightsOn'],"Aqawan lights on?")
-		f['MONITOR'] = 	(pdu.monitor.status(),"Monitor on?")
+		# telescope Specific
+		f = self.addTelescopeKeys(target, tele_list, f)
 
-		# Mount specific
-		f['TELRA'] = (telra,"Telescope RA (J2000 deg)")
-		f['TELDEC'] = (teldec,"Telescope Dec (J2000 deg)")
-		f['RA'] = (ra, "Solved RA (J2000 deg)") # this will be overwritten by astrometry.net
-		f['DEC'] =  (dec, "Solved Dec (J2000 deg)") # this will be overwritten by astrometry.net
-		f['TARGRA'] = (ra, "Target RA (J2000 deg)")
-		f['TARGDEC'] =  (dec, "Target Dec (J2000 deg)")
-		f['ALT'] = (alt,'Telescope altitude (deg)')
-		f['AZ'] = (az,'Telescope azimuth (deg E of N)')
+		# enclosure Specific
+		f = self.addAqawanKeys(dome_list, f)
 
-		hourang = telescope.hourangle(target,useCurrent=useCurrent)
-		f['HOURANG'] = (hourang,'Telescope hour angle (hours)')
-		f['AIRMASS'] = (airmass,"airmass (plane approximation)")
+		# add the header keys from the weather station
+		f = self.addWeatherKeys(f)
 
-		f['MOONRA'] = (moonra, "Moon RA (J2000)")    
-		f['MOONDEC'] =  (moondec, "Moon Dec (J2000)")
-		f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")    
-		f['MOONDIST'] =  (moonsep, "Distance between pointing and moon (deg)")
-		f['PMODEL'] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
+		return f
 
-		# Focuser Specific
-		f['FOCPOS'] = (telescopeStatus.focuser.position,"Focus Position (microns)")
-		defocus = (float(telescopeStatus.focuser.position) - telescope.focus)/1000.
-		f['DEFOCUS'] = (str(defocus),"Intentional defocus (mm)")
 
-		# Rotator Specific
-		f['ROTPOS'] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
+	def addImagerKeys(self, imagernum, f):
 
+		if type(imagernum) is not int:
+			self.logger.error("invalid imager specified")
+			return f			
+		if imagernum < 1 or imagernum > 4:
+			self.logger.error("invalid imager specified (" + str(imagernum) + ")")
+			return f
+		else: 
+			imager = self.cameras[imagernum-1]
+			telescope = self.telescopes[imagernum-1]
+			
 		# WCS
-		platescale = imager.fau.platescale/3600.0*imager.xbin # deg/pix
+		platescale = imager.platescale/3600.0*imager.xbin # deg/pix
 		PA = 0.0#float(telescopeStatus.rotator.position)*math.pi/180.0
-		f['PIXSCALE'] = str(platescale*3600.0)
+		f['PIXSCALE'] = (str(platescale*3600.0),"Platescale in arc/pix, as binned")
 		f['CTYPE1'] = ("RA---TAN","TAN projection")
 		f['CTYPE2'] = ("DEC--TAN","TAN projection")
 		f['CUNIT1'] = ("deg","X pixel scale units")
 		f['CUNIT2'] = ("deg","Y pixel scale units")
-		f['CRVAL1'] = (telra,"RA of reference point")
-		f['CRVAL2'] = (teldec,"DEC of reference point")
-		f['CRPIX1'] = (str(imager.fau.xfiber),"X reference pixel")
-		f['CRPIX2'] = (str(imager.fau.yfiber),"Y reference pixel")
+		
+		telescopeStatus = telescope.getStatus()
+		telra = utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
+		teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
+		if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
+
+		f['CRVAL1'] = (str(telra),"RA of reference point")
+		f['CRVAL2'] = (str(teldec),"DEC of reference point")
+		f['CRPIX1'] = (str(imager.xcenter),"X reference pixel")
+		f['CRPIX2'] = (str(imager.ycenter),"Y reference pixel")
 		f['CD1_1'] = str(-platescale*math.cos(PA))
 		f['CD1_2'] = str(platescale*math.sin(PA))
 		f['CD2_1'] = str(platescale*math.sin(PA))
 		f['CD2_2'] = str(platescale*math.cos(PA))
-		'''
-		f['WCSAXES'] = 2
-		f['EQUINOX'] = 2000.0
-		f['LONPOLE'] = 180.0
-		f['LATPOLE'] = 0.0
-		f['IMAGEW'] = 0.0
-		f['IMAGEH'] = 0.0
-		f['A_ORDER'] = 2
-		f['A_0_2'] = 0.0
-		f['A_1_1'] = 0.0
-		f['A_2_0'] = 0.0
-		f['B_ORDER'] = 2
-		f['B_0_2'] = 0.0
-		f['B_1_1'] = 0.0
-		f['B_2_0'] = 0.0
-		f['AP_ORDER'] = 2
-		f['AP_0_1'] = 0.0
-		f['AP_0_2'] = 0.0
-		f['AP_1_0'] = 0.0
-		f['AP_1_1'] = 0.0
-		f['AP_2_0'] = 0.0
-		f['BP_ORDER'] = 2
-		f['BP_0_1'] = 0.0
-		f['BP_0_2'] = 0.0
-		f['BP_1_0'] = 0.0
-		f['BP_1_1'] = 0.0
-		f['BP_2_0'] = 0.0
-		f['WCSSOLVE'] = ''
-		'''
 
-		# M3 Specific
-		f['PORT'] = (telescopeStatus.m3.port,"Selected port")
-		
-		# Fans
-		f['OTAFAN'] = (telescopeStatus.fans.on,"OTA Fans on?")    
-
-		# Telemetry
-		try: f['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
-		except: f['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
-		try: f['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
-		except: f['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
-		try: f['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
-		except: f['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
-		try: f['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
-		except: f['AMBTMP'] = ("UNKNOWN","Ambient Temp (C)")
-		try: f['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
-		except: f['BCKTMP'] = ("UNKNOWN","Backplate Temp (C)")
-
-		if self.site.weather != -1:
-			# Weather station
-			f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
-			f['RAIN'] = (str(self.site.weather['wxt510Rain']),"Current Rain since UT 00:00 (mm)")
-			f['TOTRAIN'] = (str(self.site.weather['totalRain']),"Total yearly rain (mm)")
-			f['OUTTEMP'] = (str(self.site.weather['outsideTemp']),"Outside Temperature (C)")
-			f['MCLOUD'] = (str(self.site.weather['MearthCloud']),"Mearth Cloud Sensor (C)")
-			f['HCLOUD'] = (str(self.site.weather['HATCloud']),"HAT Cloud Sensor (C)")
-			f['ACLOUD'] = (str(self.site.weather['AuroraCloud']),"Aurora Cloud Sensor (C)")
-			f['DEWPOINT'] = (str(self.site.weather['outsideDewPt']),"Dewpoint (C)")
-			f['WINDSPD'] = (str(self.site.weather['windSpeed']),"Wind Speed (mph)")
-			f['WINDGUST'] = (str(self.site.weather['windGustSpeed']),"Wind Gust Speed (mph)")
-			f['WINDIR'] = (str(self.site.weather['windDirectionDegrees']),"Wind Direction (Deg E of N)")
-			f['PRESSURE'] = (str(self.site.weather['barometer']),"Outside Pressure (mbar)")
-			f['SUNALT'] = (str(self.site.weather['sunAltitude']),"Sun Altitude (deg)")
-		
-		header = json.dumps(f)
-		
-		self.logger.info(telescope_name + 'waiting for imaging thread')
-		# wait for imaging process to complete
-		imaging_thread.join()
-		
-		# write header for image 
-		if imager.write_header(header):
-			self.logger.info(telescope_name + 'finish writing image header')
-
-#			#S if the objname is not in the list of calibration or test names
-#			no_pa_list = ['bias','dark','skyflat','autofocus','testbias','test']
-#			if target['name'].lower() not in no_pa_list:
-#				# run astrometry asynchronously
-#				self.logger.info(telescope_name + "Running astrometry to find PA on " + imager.image_name())
-#				dataPath = '/Data/t' + str(telescope_num) + '/' + self.site.night + '/'
-#				astrometryThread = threading.Thread(target=self.getPA, args=(dataPath + imager.image_name(),), kwargs={})
-#			astrometryThread.start()
-			return imager.image_name()
-
-		self.logger.error(telescope_name + 'takeImage failed: ' + imager.image_name())
-		return 'error'	
-
+		return f
 
 	def takeImage(self, target, telescope_num=0):
 		telescope_name = 'T' + str(telescope_num) +': '
@@ -2128,223 +2050,45 @@ class control:
 		if telescope_num > len(self.telescopes) or telescope_num < 0:
 			return 'error'
 		if telescope_num > 2:
-			dome = self.domes[1]
+			dome = 2
 		elif telescope_num > 0:
-			dome = self.domes[0]
-
-
-		###TELESCOPE DEPENDENT STUFF###
-		#S Get the current status of the telescope.
-		imagingport = '1'
-		telescope = self.telescopes[telescope_num-1]
-		telescopeStatus = telescope.getStatus()
+			dome = 1
 
 		#S assign the camera.
 		imager = self.cameras[telescope_num-1]
-		self.logger.info(telescope_name + 'starting imaging thread')
+		imager.logger.info("starting imaging thread")
 
 		#start imaging process in a different thread
-		#TODO for new takeimage
 		imaging_thread = threading.Thread(target = imager.take_image, args = (target['exptime'], target['filter'], target['name']))
-#		imaging_thread = threading.Thread(target = imager.take_image, args = (exptime, filterInd, objname))
+		imaging_thread.name = 'T' + str(imager.telnum)
 		imaging_thread.start()
 		
 		#Prepare header while waiting for imager to finish taking image
-		while self.site.getWeather() == -1: pass
-		telescopeStatus = telescope.getStatus()
-		domeStatus = dome.status()
+		f = self.getHdr(target, telescope_num, dome)
 
-		#TODO for new takeimage		
-		#S try and get the target ra and dec from the dict, but if not default to the telescope status values.
-		#S this should only hopefully happen for darks, biases, and flats, but we'll see. as autofocus
-		try:
-			telra = str(target['ra']*15.)
-			teldec = str(target['dec'])
-		except:
-			#S get current ra and dec from telescope mount. this is reported in the status as radians, which we use for the 
-			#S conversion from jnow to j2000 coords. has been tested and checked for a few cases. see our bastarized functinos from
-			#S Kevin at PlaneWave for the conversion using pyephem.
-			telra, teldec = self.jnow_to_j2000_pyephem(float(telescopeStatus.mount.ra_radian),float(telescopeStatus.mount.dec_radian))
-
-		ra = telra 
-		dec = teldec
-
-		az = str(float(telescopeStatus.mount.azm_radian)*180.0/math.pi)
-		alt = str(float(telescopeStatus.mount.alt_radian)*180.0/math.pi)
-		airmass = str(1.0/math.cos((90.0 - float(alt))*math.pi/180.0))
-
-		moonpos = self.site.moonpos()
-		moonra = str(moonpos[0])
-		moondec = str(moonpos[1])
-		moonsep = str(ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi)
-		moonphase = str(self.site.moonphase())
-
-		#get header info into json format and pass it to imager's write_header method
-		f = collections.OrderedDict()
-
-		# Static Keywords
-		f['SITELAT'] = str(self.site.obs.lat)
-		f['SITELONG'] = (str(self.site.obs.lon),"East Longitude of the imaging location")
-		f['SITEALT'] = (str(self.site.obs.elevation),"Site Altitude (m)")
-		f['OBSERVER'] = ('MINERVA Robot',"Observer")
-		f['TELESCOP'] = "T" + str(telescope_num)
-		f['OBJECT'] = target['name'] #objname
-		f['APTDIA'] = "700"
-		f['APTAREA'] = "490000"
-
-
-                gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
-		f['ROBOVER'] = (gitNum,"Git commit number for robotic control software")
-
-		# Site Specific
-		f['LST'] = (telescopeStatus.status.lst,"Local Sidereal Time")
-
-		# Enclosure Specific
-		f['AQSOFTV'] = (domeStatus['SWVersion'],"Aqawan software version number")
-		f['AQSHUT1'] = (domeStatus['Shutter1'],"Aqawan shutter 1 state")
-		f['AQSHUT2'] = (domeStatus['Shutter2'],"Aqawan shutter 2 state")
-		f['INHUMID'] = (domeStatus['EnclHumidity'],"Humidity inside enclosure")
-		f['DOOR1'] = (domeStatus['EntryDoor1'],"Door 1 into aqawan state")
-		f['DOOR2'] = (domeStatus['EntryDoor2'],"Door 2 into aqawan state")
-		f['PANELDR'] = (domeStatus['PanelDoor'],"Aqawan control panel door state")
-		f['HRTBEAT'] = (domeStatus['Heartbeat'],"Heartbeat timer")
-		f['AQPACUP'] = (domeStatus['SystemUpTime'],"PAC uptime (seconds)")
-		f['AQFAULT'] = (domeStatus['Fault'],"Aqawan fault present?")
-		f['AQERROR'] = (domeStatus['Error'],"Aqawan error present?")
-		f['PANLTMP'] = (domeStatus['PanelExhaustTemp'],"Aqawan control panel exhaust temp (C)")
-		f['AQTEMP'] = (domeStatus['EnclTemp'],"Enclosure temperature (C)")
-		f['AQEXTMP'] = (domeStatus['EnclExhaustTemp'],"Enclosure exhaust temperature (C)")
-		f['AQINTMP'] = (domeStatus['EnclIntakeTemp'],"Enclosure intake temperature (C)")
-		f['AQLITON'] = (domeStatus['LightsOn'],"Aqawan lights on?")
-
-		# Mount specific
-		f['TELRA'] = (telra,"Telescope RA (J2000 deg)")
-		f['TELDEC'] = (teldec,"Telescope Dec (J2000 deg)")
-		f['RA'] = (ra, "Solved RA (J2000 deg)") # this will be overwritten by astrometry.net
-		f['DEC'] =  (dec, "Solved Dec (J2000 deg)") # this will be overwritten by astrometry.net
-		f['TARGRA'] = (ra, "Target RA (J2000 deg)")
-		f['TARGDEC'] =  (dec, "Target Dec (J2000 deg)")
-		f['ALT'] = (alt,'Telescope altitude (deg)')
-		f['AZ'] = (az,'Telescope azimuth (deg E of N)')
-#		print airmass
-#		ipdb.set_trace()
-		f['AIRMASS'] = (airmass,"airmass (plane approximation)")
-
-		f['MOONRA'] = (moonra, "Moon RA (J2000)")    
-		f['MOONDEC'] =  (moondec, "Moon Dec (J2000)")
-		f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")    
-		f['MOONDIST'] =  (moonsep, "Distance between pointing and moon (deg)")
-		f['PMODEL'] = (telescopeStatus.mount.pointing_model,"Pointing Model File")
-
-		# Focuser Specific
-		f['FOCPOS'] = (telescopeStatus.focuser.position,"Focus Position (microns)")
-		defocus = (float(telescopeStatus.focuser.position) - telescope.focus)/1000.
-		f['DEFOCUS'] = (str(defocus),"Intentional defocus (mm)")
-
-		# Rotator Specific
-		f['ROTPOS'] = (telescopeStatus.rotator.position,"Rotator Position (degrees)")
-
-		# WCS
-		platescale = imager.platescale/3600.0*imager.xbin # deg/pix
-		PA = 0.0#float(telescopeStatus.rotator.position)*math.pi/180.0
-		f['PIXSCALE'] = str(platescale*3600.0)
-		f['CTYPE1'] = ("RA---TAN","TAN projection")
-		f['CTYPE2'] = ("DEC--TAN","TAN projection")
-		f['CUNIT1'] = ("deg","X pixel scale units")
-		f['CUNIT2'] = ("deg","Y pixel scale units")
-		f['CRVAL1'] = (telra,"RA of reference point")
-		f['CRVAL2'] = (teldec,"DEC of reference point")
-		f['CRPIX1'] = (str(imager.xcenter),"X reference pixel")
-		f['CRPIX2'] = (str(imager.ycenter),"Y reference pixel")
-		f['CD1_1'] = str(-platescale*math.cos(PA))
-		f['CD1_2'] = str(platescale*math.sin(PA))
-		f['CD2_1'] = str(platescale*math.sin(PA))
-		f['CD2_2'] = str(platescale*math.cos(PA))
-		'''
-		f['WCSAXES'] = 2
-		f['EQUINOX'] = 2000.0
-		f['LONPOLE'] = 180.0
-		f['LATPOLE'] = 0.0
-		f['IMAGEW'] = 0.0
-		f['IMAGEH'] = 0.0
-		f['A_ORDER'] = 2
-		f['A_0_2'] = 0.0
-		f['A_1_1'] = 0.0
-		f['A_2_0'] = 0.0
-		f['B_ORDER'] = 2
-		f['B_0_2'] = 0.0
-		f['B_1_1'] = 0.0
-		f['B_2_0'] = 0.0
-		f['AP_ORDER'] = 2
-		f['AP_0_1'] = 0.0
-		f['AP_0_2'] = 0.0
-		f['AP_1_0'] = 0.0
-		f['AP_1_1'] = 0.0
-		f['AP_2_0'] = 0.0
-		f['BP_ORDER'] = 2
-		f['BP_0_1'] = 0.0
-		f['BP_0_2'] = 0.0
-		f['BP_1_0'] = 0.0
-		f['BP_1_1'] = 0.0
-		f['BP_2_0'] = 0.0
-		f['WCSSOLVE'] = ''
-		'''
-
-		# M3 Specific
-		f['PORT'] = (telescopeStatus.m3.port,"Selected port")
-		
-		# Fans
-		f['OTAFAN'] = (telescopeStatus.fans.on,"OTA Fans on?")    
-
-		# Telemetry
-		try: f['M1TEMP'] = (telescopeStatus.temperature.primary,"Primary Mirror Temp (C)")
-		except: f['M1TEMP'] = ("UNKNOWN","Primary Mirror Temp (C)")
-		try: f['M2TEMP'] = (telescopeStatus.temperature.secondary,"Secondary Mirror Temp (C)")
-		except: f['M2TEMP'] = ("UNKNOWN","Secondary Mirror Temp (C)")
-		try: f['M3TEMP'] = (telescopeStatus.temperature.m3,"Tertiary Mirror Temp (C)")
-		except: f['M3TEMP'] = ("UNKNOWN","Tertiary Mirror Temp (C)")
-		try: f['AMBTMP'] = (telescopeStatus.temperature.ambient,"Ambient Temp (C)")
-		except: f['AMBTMP'] = ("UNKNOWN","Ambient Temp (C)")
-		try: f['BCKTMP'] = (telescopeStatus.temperature.backplate,"Backplate Temp (C)")
-		except: f['BCKTMP'] = ("UNKNOWN","Backplate Temp (C)")
-
-		if self.site.weather != -1:
-			# Weather station
-			f['WJD'] = (str(self.site.weather['date']),"Last update of weather (UTC)")
-			f['RAIN'] = (str(self.site.weather['wxt510Rain']),"Current Rain since UT 00:00 (mm)")
-			f['TOTRAIN'] = (str(self.site.weather['totalRain']),"Total yearly rain (mm)")
-			f['OUTTEMP'] = (str(self.site.weather['outsideTemp']),"Outside Temperature (C)")
-			f['MCLOUD'] = (str(self.site.weather['MearthCloud']),"Mearth Cloud Sensor (C)")
-			f['HCLOUD'] = (str(self.site.weather['HATCloud']),"HAT Cloud Sensor (C)")
-			f['ACLOUD'] = (str(self.site.weather['AuroraCloud']),"Aurora Cloud Sensor (C)")
-			f['DEWPOINT'] = (str(self.site.weather['outsideDewPt']),"Dewpoint (C)")
-			f['WINDSPD'] = (str(self.site.weather['windSpeed']),"Wind Speed (mph)")
-			f['WINDGUST'] = (str(self.site.weather['windGustSpeed']),"Wind Gust Speed (mph)")
-			f['WINDIR'] = (str(self.site.weather['windDirectionDegrees']),"Wind Direction (Deg E of N)")
-			f['PRESSURE'] = (str(self.site.weather['barometer']),"Outside Pressure (mbar)")
-			f['SUNALT'] = (str(self.site.weather['sunAltitude']),"Sun Altitude (deg)")
-		
 		header = json.dumps(f)
-		
-		self.logger.info(telescope_name + 'waiting for imaging thread')
+
+		imager.logger.info("waiting for imaging thread")
+
 		# wait for imaging process to complete
 		imaging_thread.join()
 		
 		# write header for image 
 		if imager.write_header(header):
-			self.logger.info(telescope_name + 'finish writing image header')
+			imager.logger.info("finish writing image header")
 
 			#S if the objname is not in the list of calibration or test names
 			no_pa_list = ['bias','dark','skyflat','autofocus','testbias','test']
 			if target['name'].lower() not in no_pa_list:
 				# run astrometry asynchronously
-				self.logger.info(telescope_name + "Running astrometry to find PA on " + imager.image_name())
+				imager.logger.info("Running astrometry to find PA on " + imager.image_name())
 				dataPath = '/Data/t' + str(telescope_num) + '/' + self.site.night + '/'
 				astrometryThread = threading.Thread(target=self.getPA, args=(dataPath + imager.image_name(),), kwargs={})
+				astrometryThread.name = "T" + str(imager.telnum)
 				astrometryThread.start()
 			return imager.image_name()
 
-		self.logger.error(telescope_name + 'takeImage failed: ' + imager.image_name())
+		imager.logger.error("takeImage failed: " + imager.image_name())
 		return 'error'
 	
 	def doBias(self,num=11,telescope_num=0,objectName = 'Bias'):
@@ -2357,11 +2101,10 @@ class control:
 			biastarget['name'] = objectName
 		biastarget['filter'] = 'V'
 		biastarget['exptime'] = 0
-		telescope_name = 'T' + str(telescope_num) +': '
 		for x in range(num):
 			filename = 'error'
 			while filename =='error':
-				self.logger.info(telescope_name + 'Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + '0' + ')')
+				self.cameras[telescope_num-1].logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + '0' + ')')
 				#filename = self.takeImage(0,'V',objectName,telescope_num)
 				#TODO for new takeimage
 				filename = self.takeImage(biastarget,telescope_num)
@@ -2379,7 +2122,7 @@ class control:
 			for x in range(num):
 				filename = 'error'
 				while filename == 'error':
-					self.logger.info(telescope_name + 'Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(time) + ')')
+					self.cameras[telescope_num-1].logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + str(time) + ')')
 					#filename = self.takeImage(time,'V',objectName,telescope_num)
 					#TODO for new takeimage
 					filename = self.takeImage(darktarget,telescope_num)
@@ -2446,7 +2189,7 @@ class control:
 			time.sleep(secondsUntilTwilight)
 
 		# wait for the dome to open
-		while not dome.isOpen:
+		while not dome.isOpen():
 			# exit if outside of twilight
 			if self.site.sunalt() > maxSunAlt or self.site.sunalt() < minSunAlt: return
 			self.logger.info("Dome closed; waiting for conditions to improve")
@@ -2475,7 +2218,7 @@ class control:
 				firstImage = True
 				#S While the number of flats in the filter is less than required AND the dome is still open
 				#TODO needs testing, watch out for this.
-				while i < num and dome.isOpen:
+				while i < num and dome.isOpen():
 
 					# Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
 					Alt = 75.0 # degrees (somewhat site dependent)
@@ -2483,7 +2226,7 @@ class control:
 					if Az > 360.0: Az = Az - 360.0
 
 					inPosition = False
-					while not inPosition and dome.isOpen:
+					while not inPosition and dome.isOpen():
 
 						self.logger.info(telescope_name + 'Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
 						telescope.mountGotoAltAz(Alt,Az)
@@ -2502,7 +2245,7 @@ class control:
 					target['exptime'] = exptime
 					#while filename == 'error': filename = self.takeImage(exptime, filterInd, 'SkyFlat',telescope_num)
 					#S new target dict implementation
-					while filename == 'error' and dome.isOpen: filename = self.takeImage(target,telescope_num)
+					while filename == 'error' and dome.isOpen(): filename = self.takeImage(target,telescope_num)
 					
 					# determine the mode of the image (mode requires scipy, use mean for now...)
 					mode = imager.getMode()
@@ -2663,7 +2406,7 @@ class control:
 			dome = self.domes[0]
 
 		#used for testing
-#		dome.isOpen = True
+#		dome.isOpen() = True
 		telescope = self.telescopes[telescope_num-1]
 		
 		# if after end time, return
@@ -2681,7 +2424,7 @@ class control:
 #		else: pa = None
 		pa = None
 
-      		if target['name'] == 'autofocus':
+      		if target['name'] == 'pwi_autofocus':
                         #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 #			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 			try: telescope.acquireTarget(target,pa=pa)
@@ -2690,23 +2433,31 @@ class control:
 			telescope.autoFocus()
 			return
 		
-		if target['name'] == 'newauto':
-                        #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
-#			try: telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
-			try: telescope.acquireTarget(target,pa=pa)
-			except: pass
+		if target['name'] == 'autofocus':
+#			try: telescope.acquireTarget(target,pa=pa)
+#			except: pass
+			if 'spectroscopy' in target.keys():
+				fau = True
+			else: 
+				fau = False
 			telescope.inPosition(m3port=telescope.port['IMAGER'])
 			try:
-				self.autofocus(telescope_num)
+				newauto.autofocus(self,telescope_num,fau=fau,target=target)
 			except:
-				self.logger.error('T'+str(telescope_num)+': failed autofocus')
+				self.telescopes[telscope_num-1].logger.exception('Failed in autofocus')
 			return
 		
                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
 		# slew to the target
 #		telescope.acquireTarget(target['ra'],target['dec'],pa=pa)
 		telescope.acquireTarget(target,pa=pa)
-		newfocus = telescope.focus + target['defocus']*1000.0
+		if 'spectroscopy' in target.keys():
+			if target['spectroscopy']:
+				newfocus = telescope.focus['FAU'] + target['defocus']*1000.0
+			else:
+				newfocus = telescope.focus['IMAGER'] + target['defocus']*1000.0
+		else:
+			newfocus = telescope.focus['IMAGER'] + target['defocus']*1000.0
 		status = telescope.getStatus()
 		if newfocus <> status.focuser.position:
 			self.logger.info(telescope_name + "Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
@@ -2731,8 +2482,8 @@ class control:
 				for j in range(len(target['filter'])):
 					filename = 'error'
 					while filename == 'error':
-						if dome.isOpen == False:
-							while dome.isOpen == False:
+						if dome.isOpen() == False:
+							while dome.isOpen() == False:
 								self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
 								time.sleep(30)
 								if datetime.datetime.utcnow() > target['endtime']: return
@@ -2770,8 +2521,8 @@ class control:
 				for i in range(target['num'][j]):
 					filename = 'error'
 					while filename == 'error':
-						if dome.isOpen == False:
-							while dome.isOpen == False:
+						if dome.isOpen() == False:
+							while dome.isOpen() == False:
 								self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
 								time.sleep(30)
 								if datetime.datetime.utcnow() > target['endtime']: return
@@ -2844,7 +2595,10 @@ class control:
 			shutil.copyfile(f, backupPath + os.path.basename(f))
 
 
-	def endNight(self, num=0, email=True, night=None):
+	def endNight(self, num=0, email=True, night=None, kiwispec=True):
+
+		if os.path.exists('aqawan1.request.txt'): os.remove('aqawan1.request.txt')
+		if os.path.exists('aqawan2.request.txt'): os.remove('aqawan2.request.txt')
 		
 		#S This implementation should allow you to specify a night you want to 'clean-up',
 		#S or just run end night on the current night. I'm not sure how it will act
@@ -2854,7 +2608,12 @@ class control:
 		if night == None:
 			night = self.site.night
 
-		dataPath = '/Data/t' + str(num) + '/' + night + '/'
+		if kiwispec: 
+			dataPath = '/Data/kiwispec/' + night + '/'
+			objndx = 1
+		else: 
+			dataPath = '/Data/t' + str(num) + '/' + night + '/'
+			objndx = 2
 
 		# park the scope
 		self.logger.info("Parking Telescope")
@@ -2863,20 +2622,34 @@ class control:
 
 		# Compress the data
 		self.logger.info("Compressing data")
-		self.imager_compressData(num,night=night)
+		if kiwispec: pass
+		else: self.imager_compressData(num,night=night)
 
 		# Turn off the camera cooler, disconnect
 #		self.logger.info("Disconnecting imager")
 # 		self.imager_disconnect()
 
                 #TODO: Back up the data
-		self.backup(num,night=night)
+		if kiwispec: pass
+		else: self.backup(num,night=night)
 
 		# copy schedule to data directory
-		schedulename = self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt"
+		if kiwispec: 
+			schedulename = self.base_directory + "/schedule/" + night + ".kiwispec.txt"
+			scheduleDest = dataPath + night + '.kiwispec.txt'
+		else: 
+			schedulename = self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt"
+			scheduleDest = dataPath + night + '.T' + str(num) + '.txt'
 		self.logger.info("Copying schedule file from " + schedulename + " to " + dataPath)
-		try: shutil.copyfile(schedulename, dataPath + night + ".T" + str(num) + ".txt")
-		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + dataPath)
+		try: shutil.copyfile(schedulename, scheduleDest)
+		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + scheduleDest)
+
+		# copy server logs to data directory
+		logs = glob.glob('/Data/serverlogs/t?/' + night + '/*.log')
+		for log in logs:
+			self.logger.info("Copying log file " + log + " to " + dataPath)
+			try: shutil.copyfile(log, dataPath + os.path.basename(log))
+			except: pass
 
 		# copy logs to data directory
 		logs = glob.glob(self.base_directory + "/log/" + night + "/*.log")
@@ -2884,6 +2657,7 @@ class control:
 			self.logger.info("Copying log file " + log + " to " + dataPath)
 			try: shutil.copyfile(log, dataPath + os.path.basename(log))
 			except: pass
+		logs = glob.glob(dataPath + "/*.log")
 
                 #### create an observing report ####
 
@@ -2891,8 +2665,8 @@ class control:
 		filenames = glob.glob(dataPath + '/*.fits*')
 		objects = {}
 		for filename in filenames:
-			obj = filename.split('.')[2]
-			if obj <> 'Bias' and obj <> 'Dark':
+			obj = filename.split('.')[objndx]
+			if not kiwispec and obj <> 'Bias' and obj <> 'Dark':
 				obj += ' ' + filename.split('.')[3]
 			if obj not in objects.keys():
 				objects[obj] = 1
@@ -2911,6 +2685,7 @@ class control:
 			'MearthCloud':[],
 			'HATCloud':[],
 			'AuroraCloud':[],
+			'MINERVACloud':[],
 			'outsideTemp':[],
 			'windSpeed':[],
 			'windDirectionDegrees':[],
@@ -2918,9 +2693,48 @@ class control:
 			#        'sunAltitude':[],
 			}
 #		ipdb.set_trace()
+
+		# these messages contain variables; trim them down so they can be consolidated
+		toospecific = [('The camera was unable to reach its setpoint','in the elapsed time'),
+			       ('The process "MaxIm_DL.exe" with PID','could not be terminated'),
+			       ("Stars are too elliptical, can't use",''),
+			       ('The process "python.exe" with PID','could not be terminated'),
+			       ('Slew failed to alt','az'),
+			       ('Slew failed to J2000',''),
+			       ('Telescope reports it is','away from the target postion'),
+			       ('Not a valid JSON line',''),
+			       ('malformed JSON',''),
+			       ('Required key (filter) not present',''),
+			       ('No schedule file',''),
+			       ('Aqawan failed to close after ','seconds'),
+			       ('The server has failed','times'),
+			       ('Camera failed','times'),
+			       ('taking image failed, image not saved',''),
+			       ('Failed to open shutter 1: Success=FALSE, Estop active',''),
+			       ('Required key (cycleFilter) not present',''),
+			       ('Required key (nflatEnd) not present',''),
+			       ('Required key (ndarkEnd) not present',''),
+			       ('Required key (nbiasEnd) not present',''),
+			       ('failed to save image',''),
+			       ('Required key (guide) not present',''),
+			       ('Required key (exptime) not present',''),
+			       ('Required key (num) not present',''),
+			       ('Failed to get hfr value',''),
+			       ('Failed to open shutter 1: Success=FALSE, Unknown command',''),
+			       ('Telescope reports it is','arcsec away from the requested postion'),
+			       ('Coordinates out of bounds; object not acquired!',''),
+			       ('File does not exist',''),
+			       ('takeImage failed',''),
+			       ('Failed to open shutter 2: Success=FALSE, Heartbeat timer expired',''),
+			       ('The process "PWI.exe" with PID ','could not be terminated.'),
+			       ('Could not copy schedule file',''),
+			       ('Failed to open shutter 1: Success=FALSE, Heartbeat timer expired',''),
+			       ('Failed to open shutter 2: Success=FALSE, Heartbeat timer expired','')]
+
 		for log in logs:
 			with open(log,'r') as f:
 				for line in f:
+					# search for WARNINGs or ERRORs
 					if re.search('WARNING: ',line) or re.search("ERROR: ",line):
 						if re.search('WARNING: ',line): errmsg = line.split('WARNING: ')[1].strip()
 						else: errmsg = line.split('ERROR: ')[1].strip()
@@ -2928,9 +2742,15 @@ class control:
 						if len(errmsg.split('active ')) > 1:
 							errmsg = errmsg.split('active')[0] + 'active'
 
+						# consolidate error messages with variables
+						for genmsg in toospecific:
+							if genmsg[0] in errmsg and genmsg[1] in errmsg:
+								errmsg = genmsg[0] + ' ' + genmsg[1]
+
 						if errmsg not in errors.keys():
 							errors[errmsg] = 1
 						else: errors[errmsg] += 1
+					# Search for weather lines
 					elif re.search('=',line):
 						try: key = line.split('=')[-2].split()[-1]
 						except: key = 'fail'
@@ -2952,21 +2772,39 @@ class control:
 		for key in errors.keys():
 			body += key + ': ' + str(errors[key]) + '\n'
 
-		body += '\nThe weather for tonight was:\n\n'
-		for key in weatherstats:
-			arr = [x[1] for x in weatherstats[key]]
-			if len(arr) > 0:
-				body += key + ': min=' + str(min(arr)) + \
-				    ', max=' + str(max(arr)) + \
-				    ', ave=' + str(sum(arr)/float(len(arr))) + '\n'
+		body += "\nSee the attached plot for tonight's weather. "+\
+		    "The yellow shaded regions denote when the sun is up "+\
+		    "(sunalt > -12 deg), the red shaded regions denote our "+\
+		    "limits for closing when we're already open, the horizontal "+\
+		    "lines next to the red regions are our limits for opening "+\
+		    "when we're closed (the region in between is the deadband "+\
+		    "to prevent rapid cycling of the roof when the weather "+\
+		    "conditions are on the edge), the grey shaded regions are "+\
+		    "when the dome was actually closed, and the blue line is the "+\
+		    "value of the weather parameter denoted on the y axis.\n"
+
+#		for key in weatherstats:
+#			arr = [x[1] for x in weatherstats[key]]
+#			if len(arr) > 0:
+#				body += key + ': min=' + str(min(arr)) + \
+#				    ', max=' + str(max(arr)) + \
+#				    ', ave=' + str(sum(arr)/float(len(arr))) + '\n'
 
 		body += "\nPlease see the webpage for movies and another diagnostics:\n" + \
 		    "https://www.cfa.harvard.edu/minerva/site/" + night + "/movie.html\n\n" + \
 		    "Love,\n" + \
 		    "MINERVA"
 
+		weatherplotname = plotweather(self,night=night)
+		
 		# email observing report
-		if email: mail.send("T" + str(num) + ' done observing',body)
+		if email: 
+			if num == 0: subject="MINERVA done observing"
+			else: subject = "T" + str(num) + ' done observing'
+			mail.send(subject,body,attachment=weatherplotname)
+
+		print body
+
 
 	def parseTarget(self,line):
 		try:
@@ -3047,7 +2885,7 @@ class control:
 		if telescope_num > 2: dome = self.domes[1]
 		else: dome = self.domes[0]
 
-		while not dome.isOpen and datetime.datetime.utcnow() < self.site.NautTwilBegin():
+		while not dome.isOpen() and datetime.datetime.utcnow() < self.site.NautTwilBegin():
 			self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
 			time.sleep(60)
 
@@ -3065,7 +2903,7 @@ class control:
 			else: spectroscopy=False
 
 #			self.telescope_autoFocus(telescope_num)
-			self.autofocus(telescope_num, spectroscopy=spectroscopy)
+			newauto.autofocus(self,telescope_num,fau=spectroscopy)
 
 		# read the target list
 		with open(self.base_directory + '/schedule/' + self.site.night + '.T' + str(telescope_num) + '.txt', 'r') as targetfile:
@@ -3074,63 +2912,15 @@ class control:
 			for line in targetfile:
 				target = self.parseTarget(line)
 				if target <> -1:
-					# check if the end is after morning twilight begins
-					if target['endtime'] > self.site.NautTwilBegin(): 
-						target['endtime'] = self.site.NautTwilBegin()
-					# check if the start is after evening twilight ends
-					if target['starttime'] < self.site.NautTwilEnd(): 
-						target['starttime'] = self.site.NautTwilEnd()
 
-					# compute the rise/set times of the target
-					#S I think something with coordinates is screwing us up here
-					#S We are still going below 20 degrees.
-					self.site.obs.horizon = '21.0'
-					body = ephem.FixedBody()
-					body._ra = str(target['ra'])
-					body._dec = str(target['dec'])
-					#S using UTC now for the epoch, shouldn't make a siginificant 
-					#S difference from using local time
-					body._epoch = datetime.datetime.utcnow()
-					body.compute()
-
-					try:
-						risetime = self.site.obs.next_rising(body,start=self.site.NautTwilEnd()).datetime()
-					except ephem.AlwaysUpError:
-						# if it's always up, don't modify the start time
-						risetime = target['starttime']
-					except ephem.NeverUpError:
-						# if it's never up, skip the target
-						risetime = target['endtime']
-					try:
-						settime = self.site.obs.next_setting(body,start=self.site.NautTwilEnd()).datetime()
-					except ephem.AlwaysUpError:
-						# if it's always up, don't modify the end time
-						settime = target['endtime']
-					except ephem.NeverUpError:
-						# if it's never up, skip the target
-						settime = target['starttime']
-
-					if risetime > settime:
-						try:
-							risetime = self.site.obs.next_rising(body,start=self.site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
-						except ephem.AlwaysUpError:
-							# if it's always up, don't modify the start time
-							risetime = target['starttime']
-						except ephem.NeverUpError:
-							# if it's never up, skip the target
-							risetime = target['endtime']
-						
-					# make sure the target is always above the horizon
-					if target['starttime'] < risetime:
-						target['starttime'] = risetime
-					if target['endtime'] > settime:
-						target['endtime'] = settime
+					# truncate the start and end times so it's observable
+					utils.truncate_observable_window(self,target)
 
 					if target['starttime'] < target['endtime']:
 						if 'spectroscopy' in target.keys():
 							if target['spectroscopy']:
 								# only one telescope for now...
-								self.doSpectra(target,[telescope_num])
+								rv_control.doSpectra(self,target,[telescope_num])
 							else:
 								self.doScience(target,telescope_num)
 						else:
@@ -3154,7 +2944,10 @@ class control:
 		#S I think we need a way to check if both telescopes are done observing, even if one has
 		#S ['waitformorning']==false
 		self.telescope_park(telescope_num)
-		self.observing = False
+
+		# all done; close the domes
+		if os.path.exists('aqawan1.request.txt'): os.remove('aqawan1.request.txt')
+		if os.path.exists('aqawan2.request.txt'): os.remove('aqawan2.request.txt')
 
 		if CalibEndInfo['nbiasEnd'] <> 0 or CalibEndInfo['ndarkEnd']:
 			self.imager_connect(telescope_num) # make sure the cooler is on
@@ -3173,7 +2966,7 @@ class control:
 			else: dome = self.domes[0]
 
 			# wait for the dome to close (the heartbeat thread will update its status)
-			while dome.isOpen and (datetime.datetime.utcnow()-t0).total_seconds() < timeout:
+			while dome.isOpen() and (datetime.datetime.utcnow()-t0).total_seconds() < timeout:
 				self.logger.info(telescope_name + 'Waiting for dome to close')
 				time.sleep(60)
 				
@@ -3212,7 +3005,7 @@ class control:
 			mail.send("DomeControl thread died",body,level='serious')
 			sys.exit()
 
-	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=4):
+	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1):
 		self.takeSpecBias(nbias)
 		self.takeSpecDark(ndark, darkexptime)
 		self.takeSlitFlat(nflat, flatexptime)
@@ -3232,8 +3025,14 @@ class control:
                         sys.exit()
 
 	def observingScript_all(self):
-		self.domeControlThread()
-		
+		with open('aqawan1.request.txt','w') as fh:
+			fh.write(str(datetime.datetime.utcnow()))
+
+		with open('aqawan2.request.txt','w') as fh:
+			fh.write(str(datetime.datetime.utcnow()))
+
+
+
 		# python bug work around -- strptime not thread safe. Must call this once before starting threads
 		junk = datetime.datetime.strptime('2000-01-01 00:00:00','%Y-%m-%d %H:%M:%S')
 
@@ -3241,6 +3040,7 @@ class control:
 		self.logger.info('Starting '+str(len(self.telescopes))+ ' telecopes.')
 		for t in range(len(self.telescopes)):
 			threads[t] = threading.Thread(target = self.observingScript_catch,args = (t+1,))
+			threads[t].name = 'T' + str(self.telescopes[t].num)
 			threads[t].start()
 
 #		speccalib_thread = threading.Thread(target=self.specCalib_catch)
@@ -3438,12 +3238,12 @@ class control:
 		imagenum = (imagename.split('.')[4])
 		#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 		try: 
-			catalog = newauto.sextract(datapath,imagename)
+			catalog = utils.sextract(datapath,imagename)
 			self.logger.debug('T' + str(telescope_number) + ': Sextractor success on '+catalog)
 		except: 
 			self.logger.exception('T' + str(telescope_number) + ': Sextractor failed on '+catalog)
 		try:
-			median, stddev, numstar = newauto.get_hfr_med(datapath+catalog)
+			median, stddev, numstar = newauto.get_hfr_med(catalog)
 			self.logger.info('T'+str(telescope_number)+': Got hfr value from '+catalog)
 			return median, stddev, numstar, imagenum
 		except:
@@ -3468,7 +3268,7 @@ class control:
 		"""
 #		
 		#S Loop to wait for dome to open, cancels afeter ten minutes 
-		while dome.isOpen == False:
+		while dome.isOpen() == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
 			if timeelapsed > 600: 
@@ -3672,8 +3472,16 @@ class control:
 
 
 
-	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",spectroscopy=False):
+	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",fau=False,target=None):
 
+		#XXX I think that this code is ready to removed. 
+
+
+		#S This is gonna look stupid, but I'm just going to place the call to newauto.autofocus in here
+		newauto.autofocus(self,telescope_number,num_steps=num_steps,defocus_step=defocus_step,\
+					  af_exptime=af_exptime,af_filter=af_filter,\
+					  fau=fau,target=target)
+		return
 		if spectroscopy: return
 
 		#S get the telescope we plan on working with
@@ -3684,7 +3492,7 @@ class control:
 		af_target['name'] = 'autofocus'
 		af_target['exptime'] = af_exptime
 		af_target['filter'] = af_filter
-		af_target['spectroscopy'] = spectroscopy
+		af_target['spectroscopy'] = fau
 
 		# select the appropriate port (default to imager)
 		if 'spectroscopy' in af_target.keys():
@@ -3707,7 +3515,7 @@ class control:
 		t0 = datetime.datetime.utcnow()
 #		"""
 		#S Loop to wait for dome to open, cancels afeter ten minutes
-		while dome.isOpen == False:
+		while dome.isOpen() == False:
 			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
 			if timeelapsed > 600: 
@@ -3762,14 +3570,14 @@ class control:
 
 			#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
 			try: 
-				catalog = newauto.sextract(datapath,imagename)
+				catalog = utils.sextract(datapath,imagename)
 				self.logger.debug('T' + str(telescope_number) + ': Sextractor success on '+catalog)
 			except: 
 				self.logger.exception('T' + str(telescope_number) + ': Sextractor failed on '+catalog)
 
 			#S get focus measure value, as well as standard deviation of the mean
 			try:
-				median, stddev, numstar = newauto.get_hfr_med(datapath+catalog)
+				median, stddev, numstar = newauto.get_hfr_med(catalog,fau=fau,telescope=telescope)
 				self.logger.info('T'+str(telescope_number)+': Got hfr value from '+catalog)
 				focusmeas_list.append(median)
 				stddev_list.append(stddev)

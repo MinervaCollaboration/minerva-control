@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import sys
 sys.dont_write_bytecode = True
 from minerva_library import control
@@ -7,17 +9,27 @@ import ipdb, datetime, time, socket
 import threading
 import math
 import numpy as np
+from minerva_library import rv_control
+from minerva_library import newauto
 
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+
+	ipdb.set_trace()
+
+#	minerva.cameras[0].take_image(5,'V','testexp')
+
+	minerva.endNight(night='n20160314',kiwispec=True)
+	sys.exit()
+
 	ipdb.set_trace()
 #	minerva.spectrograph.i2stage_move('flat')
 #	ipdb.set_trace()
 
-#	'''
+	'''
 #	ipdb.set_trace()
 #	target = {'name':'fiberflat_T3','ra':0,'dec':0,'i2':True,'exptime':[15]}
 #	minerva.takeSpectrum(target)
@@ -76,16 +88,17 @@ if __name__ == '__main__':
 		minerva.fauguide(target,telnum,acquireonly=False)
 		ipdb.set_trace()
 #	'''	
+	"""
 	target = {
 		"name" : "HD19373", 
 		"ra" : 3.15111666667, 
 		"dec" : 49.6132777778, 
-		"starttime" : "2015-01-01 00:00:00", 
-		"endtime" : "2018-01-01 00:00:00", 
+		"starttime" : datetime.datetime(2015,01,01,0,0,0), 
+		"endtime" : datetime.datetime(2018,01,01,0,0,0), 
 		"spectroscopy": True, 
 		"filter": ["rp"], 
-		"num": [10], 
-		"exptime": [300], 
+		"num": [1], 
+		"exptime": [10], 
 		"fauexptime": 1, 
 		"defocus": 0.0, 
 		"selfguide": True, 
@@ -98,7 +111,31 @@ if __name__ == '__main__':
 		"template" : False, 
 		"i2": False,
 		"comment":"RV standard star"}
-	minerva.doSpectra(target,[1,2,3,4])
+
+	minerva.autofocus(4,fau=True,target=target)
+	"""
+	target = {
+		"name" : "HD125455", 
+		"ra" : 20.5,#14.3263513,
+		"dec" : -5.15119,
+		"starttime" : datetime.datetime(2015,01,01,0,0,0), 
+		"endtime" : datetime.datetime(2018,01,01,0,0,0), 
+		"spectroscopy": True, 
+		"filter": ["rp"], 
+		"num": [1], 
+		"exptime": [10], 
+		"fauexptime": 20, 
+		"defocus": 0.0, 
+		"selfguide": True, 
+		"guide": False, 
+		"cycleFilter": True, 
+		"positionAngle": 0.0, 
+		"template" : False, 
+		"i2": False,
+		"comment":"RV standard star"}
+	ipdb.set_trace()
+	newauto.autofocus(minerva,3,target=target)
+	rv_control.doSpectra(minerva,target,[1,2,3,4])
 	ipdb.set_trace()
 
 #	target['name'] = 'ThAr_T1'

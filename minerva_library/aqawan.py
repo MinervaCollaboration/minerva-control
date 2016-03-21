@@ -12,7 +12,8 @@ import time
 import mail
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
-
+from filelock import FileLock
+import utils
 
 class aqawan:
 
@@ -22,7 +23,7 @@ class aqawan:
 		self.base_directory = base
 		self.config_file = config
 		self.load_config()
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.setup_command_lib()
 		
 		self.initialized = False
@@ -61,35 +62,24 @@ class aqawan:
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
-		self.isOpen = False
 
-	def setup_logger(self):
-			
-		log_path = self.base_directory + '/log/' + self.night
-		if os.path.exists(log_path) == False:os.mkdir(log_path)
-		
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
+	def isOpen(self):
+		filename = self.base_directory + '/minerva_library/aqawan' + str(self.num) + '.stat'
+		#with FileLock(filename):
+		if True:	
+			with open(filename,'r') as fh:
+				line = fh.readline().split()
+				try:
+					lastUpdate = datetime.datetime.strptime(' '.join(line[0:2]),'%Y-%m-%d %H:%M:%S.%f')
+					if (datetime.datetime.utcnow() - lastUpdate).total_seconds() > 300:
+						self.logger.error("Dome status hasn't updated in 5 minutes; assuming closed")
+						return False
+					return line[2] == 'True'
+				except:
+					self.logger.exception("Failed to read aqawan status file")
+					return False
+		return False
 
-		self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-		
-                #clear handlers before setting new ones                                                                                                                                                 
-                self.logger.handlers = []
-		
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-		
-                # add a separate logger for the terminal (don't display debug-level messages)                                                                                                           
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
-		
 	def setup_command_lib(self):
 		self.messages = ['HEARTBEAT','STOP','OPEN_SHUTTERS','CLOSE_SHUTTERS',
 			'CLOSE_SEQUENTIAL','OPEN_SHUTTER_1','CLOSE_SHUTTER_1',

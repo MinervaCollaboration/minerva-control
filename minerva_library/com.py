@@ -4,6 +4,7 @@ import logging, ipdb
 import sys
 import time, struct, datetime
 import threading
+import utils
 
 class com:
     
@@ -63,32 +64,10 @@ class com:
         self.ser.stopbits = int(config['Setup']['STOPBITS'])
 
         #S Looks like log writing stuff, comes from configfile as well.
-        logger_name = config['Setup']['LOGNAME']
-        log_file = self.base_directory+'/log/' + night + '/' + config['Setup']['LOGFILE']
+        self.logger_name = config['Setup']['LOGNAME']
 			
-	# setting up logger
-        fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-        datefmt = "%Y-%m-%dT%H:%M:%S"
-
         #S Nead to read more into logging package, see what's going on here
-        self.logger = logging.getLogger(logger_name)
-        #S See above for formtas
-        formatter = logging.Formatter(fmt,datefmt=datefmt)
-        #S Read into logging.Formatter
-        formatter.converter = time.gmtime
-
-        #S Really just need to review logging. This is probably all good to go,
-        #S but I'd like to see how it works. Could be useful later.
-        fileHandler = logging.FileHandler(log_file, mode='a')
-        fileHandler.setFormatter(formatter)
-
-        console = logging.StreamHandler()
-        console.setFormatter(formatter)
-        console.setLevel(logging.INFO)
-        
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.addHandler(fileHandler)
-        self.logger.addHandler(console)
+        self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
         #S Ensure that the serial port is definitely closed.
         self.ser.close()

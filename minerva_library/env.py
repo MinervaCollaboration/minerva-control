@@ -11,6 +11,8 @@ sys.dont_write_bytecode = True
 import ipdb
 import mail
 import threading
+import copy
+import utils
 
 class site:
 
@@ -19,7 +21,7 @@ class site:
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.lock = threading.Lock()
 		
 	def load_config(self):
@@ -61,73 +63,63 @@ class site:
 
 		# define more conservative limits to open to prevent cycling when borderline conditions
 		#TODO Revert wxtrain
+
+
+		# the cloud sensors have an uncalibrated offset and scale
+		# apply these externally calibrated scaling factors to the limits
+		cloudScale = {
+			'mearth'  : (1.00000000,0.000000000),
+			'aurora'  : (0.89876588,6.878974400),
+			'hat'     : (0.98378265,1.289965700),
+			'minerva' : (0.74102145,0.058437186)
+#			'minerva' : (1.34948860,0.058437186)
+			}
+		openCloudLimit = -30
+		closeCloudLimit = -28
+
+
 		self.openLimits = {
-			'totalRain':[0.0,1000.0],
-			'wxt510Rain':[0.0,50.0], 
-			'barometer':[0,2000], 
-			'windGustSpeed':[0.0,35.0], 
-			'outsideHumidity':[0.0,75.0], 
-			'outsideDewPt':[-100.0,100.0],
-			'outsideTemp':[-20.0,50.0], 
-			'windSpeed':[0.0,30.0], 
-			'windDirectionDegrees':[0.0,360.0],
-			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-			'sunAltitude':[-90,0],
-			'MearthCloud':[-999,-32],
-			'HATCloud': [-999,-999],			
-			'AuroraCloud': [-999,-999],
-			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
+			'totalRain'           : [0.0,1000.0],
+			'wxt510Rain'          : [0.0,50.0], 
+			'barometer'           : [0,2000], 
+			'windGustSpeed'       : [0.0,35.0], 
+			'outsideHumidity'     : [0.0,75.0], 
+			'outsideDewPt'        : [-100.0,100.0],
+			'outsideTemp'         : [-20.0,50.0], 
+			'windSpeed'           : [0.0,30.0], 
+			'windDirectionDegrees': [0.0,360.0],
+			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
+			'sunAltitude'         : [-90,0],
+			'MearthCloud'         : [-999, openCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
+			'HATCloud'            : [-999, openCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
+			'AuroraCloud'         : [-999, openCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
+			'MINERVACloud'        : [-999, openCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
+			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
 
 		self.closeLimits = {
-			'totalRain':[0.0,1000.0],
-			'wxt510Rain':[0.0,50.0], 
-			'barometer':[0,2000], 
-			'windGustSpeed':[0.0,40.0], 
-			'outsideHumidity':[0.0,80.0], 
-			'outsideDewPt':[-100.0,100.0],
-			'outsideTemp':[-30.0,60.0], 
-			'windSpeed':[0.0,35.0], 
-			'windDirectionDegrees':[0.0,360.0],
-			'date':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-			'sunAltitude':[-90,0],
-			'MearthCloud':[-999,-30],
-			'HATCloud': [-999,-999],			
-			'AuroraCloud': [-999,-999],
-			'cloudDate':[datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)]
+			'totalRain'           : [0.0,1000.0],
+			'wxt510Rain'          : [0.0,50.0], 
+			'barometer'           : [0,2000], 
+			'windGustSpeed'       : [0.0,40.0], 
+			'outsideHumidity'     : [0.0,80.0], 
+			'outsideDewPt'        : [-100.0,100.0],
+			'outsideTemp'         : [-30.0,60.0], 
+			'windSpeed'           : [0.0,35.0], 
+			'windDirectionDegrees': [0.0,360.0],
+			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
+			'sunAltitude'         : [-90,0],
+			'MearthCloud'         : [-999, closeCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
+			'HATCloud'            : [-999, closeCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
+			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
+			'MINERVACloud'        : [-999, closeCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
+			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
-			
-	def setup_logger(self):
-			
-		log_path = self.base_directory + '/log/' + self.night
-		if os.path.exists(log_path) == False:os.mkdir(log_path)
-		
-                # setting up aqawan logger                                                                                            
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-                self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
 
 	def getWeather(self):
 
            self.logger.debug("Beginning serial communications with the weather station")
+	   pageError = False
            with self.lock:
 
 		if self.logger_name == 'site_mtHopkins':
@@ -141,13 +133,11 @@ class site:
 				response = urllib2.urlopen(request)
 			except:
 				self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
-				self.weather = -1
 				return
 			
 			data = response.read().split('\n')
 			if data[0] == '':
-				self.weather = -1
-				return -1
+				return
 			
 			# convert the date into a datetime object
 			weather = {
@@ -157,63 +147,36 @@ class site:
 			for parameter in data[1:-1]:
 				weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
 
-
-
-			'''
 			#S Acquire readings from the three cloud monitors at the address below. Order at 
-			#S website is Date, Mearth, HAT, Aurora.
-			url = 'http://linmax.sao.arizona.edu/temps/sky_temps'
+			#S website is Date, Mearth, HAT, Aurora, MINERVA.
+			# this has a reading every 5 minutes since September 2014
+			url = 'http://linmax.sao.arizona.edu/temps/sky_temps_now'
 			#S Try everything, but if anyhting fails we really want to stay closed.
 			try: 
 				#S Read the last line from the url above, and split it at the spaces.
-				cloudstr = os.popen('curl -s ' + url + ' | tail -1').read().split(' ')
-				#S Get the date from the line by concatenating the first split, then adding 7:00:00 to put in UTC.
-				weather['cloudDate'] = datetime.datetime.strptime(cloudstr[0]+' '+cloudstr[1],'%b-%d-%Y %H:%M:%S') + datetime.timedelta(hours=7)
-				#S Assign as specified.
+				cloudstr = os.popen('curl -s ' + url).read().split(' ')
 
-				weather['MearthCloud'] = float(cloudstr[2])
-				weather['HATCloud'] = float(cloudstr[3])
-				weather['AuroraCloud'] = float(cloudstr[4])
+				if len(cloudstr) == 6:
+				        #S Get the date from the line by concatenating the first split, then add 7 hours to put in UTC.
+					weather['cloudDate'] = datetime.datetime.strptime(" ".join(cloudstr[0:2]),'%b-%d-%Y %H:%M:%S') + datetime.timedelta(hours=7)
+					#S Assign as specified.
+					# if the connection is lost, it returns 0
+					weather['MearthCloud'] = float(cloudstr[2])
+					if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
+					weather['HATCloud'] = float(cloudstr[3])
+					if weather['HATCloud'] == 0.0: weather['HATCloud'] = 999
+					weather['AuroraCloud'] = float(cloudstr[4])
+					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
+					weather['MINERVACloud'] = float(cloudstr[5])
+					if weather['MINERVACloud'] == 0.0: weather['MINERVACloud'] = 999
+				else:
+					self.logger.error("Error reading the cloud page; line is: " + " ".join(cloudstr))
+
 			except: 
-				self.weather = -1
+				# error reading the cloud monitor, don't update the values
+				self.logger.error('Error reading the page for cloud temps at '+url)
 				pageError = True
-				
-#				self.logger.error('Error reading the page for cloud temps at '+url)
-#				#S We'll set everything to close essentially, and make cloudDate utcnow.
-#				weather['cloudDate'] = datetime.datetime.utcnow()
-#				weather['MearthCloud'] = 999
-#				weather['HATCloud'] = 999
-#				weather['AuroraCloud'] = 999
-'''
 
-			# add in the cloud monitor
-			url = "http://mearth.sao.arizona.edu/weather/now"
-
-			# read the webpage
-			self.logger.debug('Requesting URL: ' + url)
-			request = urllib2.Request(url)
-			try:
-				response = urllib2.urlopen(request)
-			except:
-				self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
-				site.weather = -1
-				return -1
-			data = response.read().split()
-			if data[0] == '':
-				self.logger.error('Error reading the weather page (empty response)')
-				site.weather = -1
-				return -1
-			if len(data) <> 14:
-				self.logger.error('Error reading the weather page; response: ' + str(data))
-				site.weather = -1
-				return -1
-
-			# MJD to datetime
-			weather['cloudDate'] = datetime.datetime(1858,11,17,0) + datetime.timedelta(days=float(data[0]))
-			weather['MearthCloud'] = float(data[13])
-			weather['HATCloud'] = 999
-			weather['AuroraCloud'] = 999
-			
 		elif self.logger_name == 'site_Simulate' or self.logger_name == 'site_Wellington':
                         # get values that pass through
                         weather = {}
@@ -227,6 +190,7 @@ class site:
                         weather['MearthCloud'] = 999
                         weather['AuroraCloud'] = 999
                         weather['HATCloud'] = 999
+                        weather['MINERVACloud'] = 999
                         weather['totalRain'] = 0.0
                         weather['barometer'] = 1000.0
                         weather['windGustSpeed'] = 0.0
@@ -236,23 +200,19 @@ class site:
 		weather['sunAltitude'] = self.sunalt()
 		
 		# make sure all required keys are present
-                #S Do we want to require other cloud monitors?
-		#TODO See above
-		pageError = False
 		requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
                                 'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
 				'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
-				'cloudDate', 'MearthCloud', 'HATCloud', 'AuroraCloud']
+				'cloudDate', 'MearthCloud', 'HATCloud', 'AuroraCloud', 'MINERVACloud']
 		
 		for key in requiredKeys:
 			if not key in weather.keys():
 				# if not, return an error
 				logging.error('Weather page does not have all required keys (' + key + ')')
-				self.weather = -1
 				pageError = True
 
 		# if everything checks out, store the weather
-		if not pageError: self.weather = weather
+		if not pageError: self.weather = copy.deepcopy(weather)
 
 		# record the coldest temp for snow/ice detection
 		try:
@@ -277,7 +237,7 @@ class site:
 				if not self.mailSent:
 					mail.send("Possible snow/ice on enclosures; manual inspection required",
 						  "Dear benevolent humans,\n\n"+
-						  "Recent conditions have been wet and cold (" + str(self.coldestTemp) + " C), which means ice and/or snow is likely."+ 
+						  "Recent conditions have been wet and cold (" + str(self.coldestTemp) + " C), which means ice and/or snow is likely. "+ 
 						  "I have disabled operations until someone can check the camera (http://minervacam.sao.arizona.edu) "+ 
 						  "to ensure there is no snow or ice on the roof and the snow is not deep enough (< 6 in) for the roof "+
 						  "to dig into it. If the snow on the ground is too deep, please email the site staff to ask them to shovel. "+ 
@@ -310,6 +270,7 @@ class site:
 			weatherLimits['MearthCloud'] = [-999,999]
 			weatherLimits['HATCloud'] = [-999,999]
 			weatherLimits['AuroraCloud'] = [-999,999]
+			weatherLimits['MINERVACloud'] = [-999,999]
 
 		# get the current weather, timestamp, and Sun's position
 		self.getWeather()
@@ -320,7 +281,7 @@ class site:
 
 		# MearthCloud reports 998.0 when it's raining and is much more reliable than wxt510Rain 
 		if self.weather['MearthCloud'] == 998.0:
-			self.lastrain += 0.001
+			self.lastRain += 0.001
 			self.rainChangeDate = datetime.datetime.utcnow()
 
 		# wxt510Rain uses an impact sensor and can be triggered by wind (unreliable)
@@ -352,20 +313,25 @@ class site:
 					self.logger.info('Not OK to open: there has been precipitation in the last 24 hours and it has been freezing. Manual inspection for snow/ice required')
 					return False
 
-		#S External temperature check, want to use Mearth, then Aurora if Mearth not available, and then 
-		#S HAT if niether of those two are found. Currently, we are assuming a value of 0 means disconnected
-		#S for any of the three sensors.
-		if self.weather['MearthCloud'] <> 0:
+		#S External temperature check, want to use Mearth, then HAT if Mearth not available, and then 
+		#S Aurora, and finally MINERVA. Currently, we are assuming a value of 999 means disconnected
+		#S for any of the four sensors.
+		if self.weather['MearthCloud'] <> 999:
 			key = 'MearthCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False
-		elif self.weather['AuroraCloud'] <> 0:
+		elif self.weather['HATCloud'] <> 999:
+			key = 'HATCloud'
+			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
+				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
+				retval = False
+		elif self.weather['AuroraCloud'] <> 999:
 			key = 'AuroraCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False
-		elif self.weather['HATCloud'] <> 0:
+		elif self.weather['MINERVACloud'] <> 999:
 			key = 'HATCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
@@ -386,25 +352,21 @@ class site:
 
 
 	def sunrise(self, horizon=0):
-
 		self.obs.horizon = str(horizon)
 		sunrise = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return sunrise
 	
 	def sunset(self, horizon=0):
-
 		self.obs.horizon = str(horizon)
 		sunset = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return sunset
 		
 	def NautTwilBegin(self, horizon=-8):
-
 		self.obs.horizon = str(horizon)
 		NautTwilBegin = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return NautTwilBegin
 
 	def NautTwilEnd(self, horizon=-12):
-
 		self.obs.horizon = str(horizon)
 		NautTwilEnd = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return NautTwilEnd

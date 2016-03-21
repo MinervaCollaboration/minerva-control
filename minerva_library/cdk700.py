@@ -18,6 +18,7 @@ import socket
 import shutil
 import subprocess
 import ephem
+import utils
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -68,25 +69,30 @@ class CDK700:
 		self.base_directory = base
 		#S Get values from config_file
 		self.load_config()
+
+		self.num = self.logger_name[-1]
+
 		#S Set up logger
-		self.setup_logger()
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
+
 		self.pdu = pdu.pdu(self.pdu_config,base)
 		#TODO Get reading telcom as well
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
 		
+		self.focus = {'0':'UNKNOWN'}
 		# initialize to the most recent best focus
-		if os.path.isfile('focus.' + self.logger_name + '.txt'):
-			f = open('focus.' + self.logger_name + '.txt','r')
-			self.focus = float(f.readline())
-			f.close()
-		else:
-			# if no recent best focus exists, initialize to 25000. (old: current value)
-			status = self.getStatus()
-			self.focus = 25000.0  #status.focuser.position
-
-		self.num = self.logger_name[-1]
+		for port in ['1','2']:
+			if os.path.isfile('focus.' + self.logger_name + '.port'+port+'.txt'):
+				f = open('focus.' + self.logger_name + '.port'+port+'.txt','r')
+				self.focus[port] = float(f.readline())
+				f.close()
+			else:
+				# if no recent best focus exists, initialize to 25000. (old: current value)
+				status = self.getStatus()
+				self.focus[port] = self.default_focus[port]  #status.focuser.position
+				
 			
 	#additional higher level routines
 	#tracking and detrotating should be on by default
@@ -121,11 +127,11 @@ class CDK700:
 
 		if tracking:
 			if telescopeStatus.mount.tracking <> 'True': 
-				self.logger.warning('T' + self.num + ': mount not tracking (' + telescopeStatus.mount.tracking + '), telescope not initialized')
+				self.logger.info('T' + self.num + ': mount not tracking (' + telescopeStatus.mount.tracking + '), telescope not initialized')
 				return False
 		if derotate:
 			if telescopeStatus.rotator.altaz_derotate <> 'True': 
-				self.logger.warning('T' + self.num + ': rotator not tracking (' + telescopeStatus.altaz_derotate + '), telescope not initialized')
+				self.logger.info('T' + self.num + ': rotator not tracking (' + telescopeStatus.rotator.altaz_derotate + '), telescope not initialized')
 				return False
 		
 		return True
@@ -147,9 +153,11 @@ class CDK700:
 		self.logger.info('T' + self.num + ': Homing telescope')
 		if not self.home(): return False
 
+		self.logger.info('T' + self.num + ': re-loading pointing model for the current port')
+		telescopeStatus = self.getStatus()
+		self.m3port_switch(telescopeStatus.m3.port,force=True)
+
 		# turning on mount tracking, rotator tracking
-		#S I'm defaulting this off, but including an argument in case we do want it
-		#S This could be for initializing at 4PM start, or for testing. 
 		if tracking:
 			self.logger.info('T' + self.num + ': Turning mount tracking on')
 			self.mountTrackingOn()
@@ -179,41 +187,21 @@ class CDK700:
 			self.modeldir = config['Setup']['MODELDIR']
 			self.model = config['MODEL']
 			self.rotatoroffset = config['ROTATOROFFSET']
+			self.default_focus = config['DEFAULT_FOCUS']
+			self.focus_offset = config['FOCUS_OFFSET']
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
+
+		for key in self.focus_offset:
+			try: self.focus_offset[key] = float(self.focus_offset[key])
+			except: pass
+
 
                 today = datetime.datetime.utcnow()
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
-
-	def setup_logger(self):
-			
-		log_path = self.base_directory + '/log/' + self.night
-		if os.path.exists(log_path) == False:os.mkdir(log_path)
-		
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-
-		self.logger = logging.getLogger(self.logger_name)
-                self.logger.setLevel(logging.DEBUG)
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                formatter.converter = time.gmtime
-
-                #clear handlers before setting new ones                                                                                                                                                 
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '/' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                                                                                           
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                console.setLevel(logging.INFO)
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
 
 	# SUPPORT FUNCITONS
 	def makeUrl(self, **kwargs):
@@ -376,14 +364,14 @@ class CDK700:
 	
 	#S i think we should make targets classes for functions like this, not in telescope.
 	#S i did that in scheduler sim, but could be a bit of an overhaul here....
-	def hourangle(self,target, useCurrent=False):
+	def hourangle(self,target=None, useCurrent=False):
 		#S calculate the current hour angle of the target
 		#TODO need to incorporate the updated RA, will be off by a few degrees
 		#TODO similar to caluclating the angle from target set check in observing script
 		lst = self.lst()
 		if useCurrent:
 			status = self.getStatus()
-			ra = self.ten(status.mount.ra)
+			ra = utils.ten(status.mount.ra)
 		else:
 			ra = target['ra']
 		return lst - ra
@@ -392,23 +380,16 @@ class CDK700:
 	# this is a bit of a hack...
         def lst(self):
                 status = self.getStatus()
-                return self.ten(status.status.lst)
-
-
-        def ten(self,string):
-                array = string.split()
-                if "-" in array[0]:
-                        return float(array[0]) - float(array[1])/60.0 - float(array[2])/3600.0
-                return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
+                return utils.ten(status.status.lst)
 	
         # calculate the parallactic angle (for guiding)
-        def parangle(self, target, useCurrent=False):
+        def parangle(self, target=None, useCurrent=False):
 
 		
-		ha = self.hourangle(target, useCurrent=useCurrent)
+		ha = self.hourangle(target=target, useCurrent=useCurrent)
 		if useCurrent:
 			status = self.getStatus()
-			dec = self.ten(status.mount.dec)
+			dec = utils.ten(status.mount.dec)
 		else:
 			dec = target['dec']
                 #stolen from parangle.pro written by Tim Robinshaw
@@ -422,7 +403,7 @@ class CDK700:
 		else:
 			desiredPA = 0.0
 
-		parangle = self.parangle(target)
+		parangle = self.parangle(target=target)
 
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy'] == True :
@@ -691,8 +672,8 @@ class CDK700:
 
 		# if ra/dec is specified, make sure we're close to the right position
 		if ra <> None and dec <> None:
-			ActualRa = self.ten(telescopeStatus.mount.ra_2000)*math.pi/12.0
-			ActualDec = self.ten(telescopeStatus.mount.dec_2000)*math.pi/180.0
+			ActualRa = utils.ten(telescopeStatus.mount.ra_2000)*math.pi/12.0
+			ActualDec = utils.ten(telescopeStatus.mount.dec_2000)*math.pi/180.0
 			DeltaPos = math.acos( math.sin(ActualDec)*math.sin(dec*math.pi/180.0)+math.cos(ActualDec)*math.cos(dec*math.pi/180.0)\
 						      *math.cos(ActualRa-ra*math.pi/12.0) )*(180.0/math.pi)*3600.0
 			if DeltaPos > pointingTolerance:
@@ -741,7 +722,7 @@ class CDK700:
 	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
         #S This has not been incorporated anywhere yet, and if it is all calls on the function will
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
-	def acquireTarget(self,target,pa=None):
+	def acquireTarget(self,target,pa=None, tracking=True, derotate=True, m3port=None):
 
 		telescopeStatus = self.getStatus()
 
@@ -823,7 +804,7 @@ class CDK700:
                         ra_corrected = np.degrees(ra_intermed)/15.
 
 		# make sure the coordinates are within the telescope's limits
-		alt,az = self.radectoaltaz(ra,dec)
+		alt,az = self.radectoaltaz(ra_corrected,dec_corrected)
 		if alt < 20.5:
 			self.logger.error("Coordinates out of bounds; object not acquired! (Alt,Az) = (" + str(alt) + "," + str(az) + ")")
 			return False
@@ -831,72 +812,68 @@ class CDK700:
 		#S make sure the m3 port is in the correct orientation
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
-				m3port = self.port['FAU']
+				if m3port <> None: m3port = self.port['FAU']
 				#S Initialize the telescope
 				self.initialize(tracking=True,derotate=False)
 			else: 
-				m3port = self.port['IMAGER']
+				if m3port <> None: m3port = self.port['IMAGER']
 				#S Initialize the telescope
 				self.initialize(tracking=True,derotate=True)
 				rotator_angle = self.solveRotatorPosition(target)
 				self.rotatorMove(rotator_angle,port=m3port)
 
 		else:
-			m3port = self.port['IMAGER']
+			if m3port <> None: m3port = self.port['IMAGER']
 			self.initialize(tracking=True,derotate=True)
 			rotator_angle = self.solveRotatorPosition(target)
 			self.rotatorMove(rotator_angle,port=m3port)
 
-
-
-                	
 		self.m3port_switch(m3port)
-
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
 
 
 ### check on this; m3port not defined ####
-		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected):
+		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected, tracking=tracking, derotate=derotate):
 #		if self.inPosition():
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 			self.recover()
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
-			self.acquireTarget(target,pa=pa)
+			self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
 			return
 
-	def radectoaltaz(self,ra,dec):
+	def radectoaltaz(self,ra,dec,date=datetime.datetime.utcnow()):
 		obs = ephem.Observer()
 		obs.lat = str(self.latitude)
 		obs.long = str(self.longitude)
 		obs.elevation = self.elevation
-		obs.date = str(datetime.datetime.utcnow())
+		obs.date = str(date)
 		star = ephem.FixedBody()
 		star._ra = ephem.hours(str(ra))
 		star._dec = ephem.degrees(str(dec))
 		star.compute(obs)
-		alt = self.ten(" ".join(str(star.alt).split(':')))
-		az = self.ten(" ".join(str(star.az).split(':')))
+		alt = utils.ten(str(star.alt))
+		az = utils.ten(str(star.az))
 		return alt,az
 
-	def m3port_switch(self,m3port):
+	def m3port_switch(self,m3port, force=False):
 
 		#S want to make sure we are at the right port before mount, focuser, rotator slew.
-		#S If an allowable port is specified
+		#S If an allowable port is specified	
+		telescopeStatus = self.getStatus()
 		if (str(m3port)=='1') or (str(m3port)=='2'):
 			self.logger.info('T%s: Ensuring m3 port is at port %s.'%(self.num,str(m3port)))
-			telescopeStatus = self.getStatus()
-			if telescopeStatus.m3.port != str(m3port):
-				self.logger.info('T%s: Port changed, loading pointing model'%(self.num))
+			if telescopeStatus.m3.port != str(m3port) or force:
+				if telescopeStatus.m3.port != str(m3port):
+					self.logger.info('T%s: Port changed, loading pointing model'%(self.num))
 				# load the pointing model and settingsxml
 				modelfile = self.modeldir + self.model[m3port]
 				if os.path.isfile(modelfile):
 					self.logger.info('changing model file')
 					self.mountSetPointingModel(self.model[m3port])
-
 				else:
 					self.logger.error('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile))
 					mail.send('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile),'',level='serious')
@@ -942,20 +919,17 @@ class CDK700:
 
 	def park(self):
 		# park the scope (no danger of pointing at the sun if opened during the day)
-		self.initialize(tracking=True)
+		self.initialize(tracking=True, derotate=False)
 		parkAlt = 45.0
 		parkAz = 0.0 
 
 		self.logger.info('T' + self.num + ': Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
 		self.mountGotoAltAz(parkAlt, parkAz)
-		if not self.inPosition(alt=parkAlt,az=parkAz, pointingTolerance=3600.0):
+		if not self.inPosition(alt=parkAlt,az=parkAz, pointingTolerance=3600.0,derotate=False):
 			if self.recover(): self.park()
 
 		self.logger.info('T' + self.num + ': Turning mount tracking off')
 		self.mountTrackingOff()
-	
-		self.logger.info('T' + self.num + ': Turning rotator tracking off')
-		self.rotatorStopDerotating()
 
 	def recoverFocuser(self):
 		timeout = 60.0

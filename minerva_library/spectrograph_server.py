@@ -21,6 +21,7 @@ import json
 import numpy as np
 import pdu
 import mail
+import utils
 
 # minerva library dependency
 #S Put copy of dynapwoer.py in spectrograph_modules for power stuff on expmeter
@@ -41,7 +42,7 @@ class server:
                 self.load_config()
 
                 #S Defined later.
-                self.setup_logger()
+                self.logger = utils.setup_logger(self.base_directory,self.night(),self.logger_name)
                 #S Defined later.
 #                self.set_data_path()
                 self.file_name = ''
@@ -82,6 +83,7 @@ class server:
         def night(self):
 		return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 	
+<<<<<<< HEAD
 	#create logger object and link to log file
 	def setup_logger(self):
                 #S Looks for existing log path, and creates one if none exist.
@@ -140,6 +142,8 @@ class server:
 			os.mkdir(data_path)
 		return data_path
 	
+=======
+>>>>>>> origin/develop
         #S Finds path for data, creates if none exist. What is the point of the
 	#S night arguement though? Doesn;t go into self., as that's defined
 	#S earlier.
