@@ -43,8 +43,8 @@ class server:
                 #S Defined later.
                 self.setup_logger()
                 #S Defined later.
-                self.set_data_path()
-#                self.file_name = ''
+#                self.set_data_path()
+                self.file_name = ''
                 #S Create all class objects
                 self.create_class_objects()
 
@@ -60,7 +60,7 @@ class server:
 		configfile = self.base_directory + '/config/spectrograph_server.ini'
 		#S Tries all the configuration materials. 
 		try:
-			config = ConfigObj(configfile)
+        		config = ConfigObj(configfile)
 			self.port = int(config['PORT'])
 			self.ip = config['HOST']
                         self.logger_name = config['LOGNAME']
@@ -133,17 +133,26 @@ class server:
 		self.logger.addHandler(fileHandler)
 		self.logger.addHandler(streamHandler)
 		'''
+
+	def data_path(self):
+                data_path = self.data_path_base + '\\' + self.night()
+		if not os.path.exists(data_path):
+			os.mkdir(data_path)
+		return data_path
+	
         #S Finds path for data, creates if none exist. What is the point of the
 	#S night arguement though? Doesn;t go into self., as that's defined
-	#S earlier. 
-	def set_data_path(self):
-		self.data_path = self.data_path_base + '\\' + self.night()
-		if not os.path.exists(self.data_path):
-			os.makedirs(self.data_path)
-		return 'success'
+	#S earlier.
+#	def set_data_path(self):
+#		self.data_path = self.data_path_base + '\\' + self.night()
+#		if not os.path.exists(self.data_path):
+#			os.makedirs(self.data_path)
+#		return 'success'
 
 	#S Create class objects
 	def create_class_objects(self):
+                #S I would home here, or maybe it would be better to put it in the self.i2stage_connect()?
+                #S I would say it makes sense to put in the the stage connect
                 self.i2stage_connect()
 		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
                 self.gaugeController = com.com('gaugeController',self.base_directory,self.night())
@@ -209,9 +218,11 @@ class server:
 		elif tokens[0] == 'i2stage_get_pos':
 			response = self.i2stage_get_pos()
 		elif tokens[0] == 'i2stage_home':
-			response == self.i2stage_home()
+			response = self.i2stage_home()
 		elif tokens[0] == 'i2stage_move':
 			response = self.i2stage_move(tokens[1])
+		elif tokens[0] == 'i2stage_movef':
+			response = self.i2stage_movef(float(tokens[1]))
 		elif tokens[0] == 'thar_turn_on':
 			response = self.thar_turn_on()
 		elif tokens[0] == 'thar_turn_off':
@@ -281,7 +292,7 @@ class server:
 			self.logger.error('parameter mismatch')
 			return 'fail'
 		self.logger.info('setting name to:' + param)
-		self.file_name = self.data_path + '\\' + param                
+		self.file_name = self.data_path() + '\\' + param                
                 return 'success'
 		
 	def save_image(self):
@@ -296,7 +307,7 @@ class server:
 		except: return 'fail'
 
         def get_index(self,param):
-                files = glob.glob(self.data_path + "/*.fits*")
+                files = glob.glob(self.data_path() + "/*.fits*")
                 return 'success ' + str(len(files)+1)
 		
 	def write_header(self,param):		
@@ -315,16 +326,12 @@ class server:
 		try:
 			header_info = self.header_buffer + param
 			self.header_buffer = ''
-#			f = pyfits.open(self.file_name, uint16=True, mode='update', ignore_missing_end=True)
 			f = pyfits.open(self.file_name, mode='update')
 			for key,value in json.loads(header_info,object_pairs_hook=collections.OrderedDict).iteritems():
 				if isinstance(value, (str, unicode)):
 					f[0].header[key] = value
 				else:
 					f[0].header[key] = (value[0],value[1])
-
-#                       f[0].header['SIMPLE'] = True
-#			f[0].header['BITPIX'] = 16
 
 			# convert DATE-OBS from local time to UTC
 			fmt = '%Y-%m-%dT%H:%M:%S.%f'
@@ -427,6 +434,13 @@ class server:
                 except Exception as e:
                         print e
                         self.logger.error("ERROR: did not connect to the Iodine stage.")
+                        return 'fail'
+
+                # home the stage then move to the nominal (in) position
+                self.logger.info("Iodine stage connected; homing and moving to 'in' position")
+                self.i2stage_home()
+                self.i2stage_move('in')
+        
                 return 'success'
         #S Disconnect gracefully from Iodine stage. Not sure if we want to log last position
         #S as I don't see a need for it, but just uncomment sections to do so. Included a try:
@@ -452,10 +466,15 @@ class server:
                         return 'fail'
                 try:
 			self.motorI2.go_home()
+                        return 'success'
 		except ValueError as e:
-			pass
+                        # Bug in the pyAPT dll causes an exception here, but it's successful
+                        self.logger.info('Successfully homed iodine stage')
+			return 'success'
 		except:
                         self.logger.exception('Failed to home, unexpected error')
+                        return 'fail'
+                return 'success'
 
         #S Get the position of the I2 stage
         def i2stage_get_pos(self):
@@ -486,21 +505,40 @@ class server:
                 prev_pos = self.motorI2.getPos()
 
                 #S Try to get locationstr from dictionary in config.
-                try:
-                        pass
-                                                        
+                try:                       
                         i2stage_move_thread = threading.Thread(target = self.motorI2.mAbs, args = (self.i2positions[locationstr.lower()],))
                         i2stage_move_thread.start()
-                        #S need to log position, stuff, andything else?
+                        #S need to log position, stuff, anything else?
                         self.logger.info("Iodine stage moving from %0.5f mm to %0.5f mm"%(prev_pos,self.i2positions[locationstr.lower()]))
+                        return 'success'
+                except:
+                        #throw and log error on bad position
+                        self.logger.error("ERROR: Iodine failed to move or invalid location (" + locationstr+ ")")
+                        return 'fail'
+                        
+
+        #S Move the stage around, needs to be initialized first
+        #? Do we need to worry about max velocities or anyhting?
+        def i2stage_movef(self, position):
+
+                if position < 0.0 or position > 150.0:
+                        self.logger.error("Requested position out of range")
+                        return "fail"
+
+                #S Get previous position
+                prev_pos = self.motorI2.getPos()
+
+                #S Try to get locationstr from dictionary in config.
+                try:                       
+                        i2stage_move_thread = threading.Thread(target = self.motorI2.mAbs, args = (position,))
+                        i2stage_move_thread.start()
+                        #S need to log position, stuff, anything else?
+                        self.logger.info("Iodine stage moving from %0.5f mm to %0.5f mm"%(prev_pos,position))
                         return 'success'
                 except:
                         #throw and log error on bad position
                         self.logger.error("ERROR: Iodine failed to move or invalid location.")
                         return 'fail'
-                        
-
-
 
 
 
@@ -980,7 +1018,7 @@ class server:
 if __name__ == '__main__':
 
 	base_directory = 'C:\\minerva-control'
-	test_server = server('spectrograph.ini',base_directory)
+	test_server = server('spectrograph_server.ini',base_directory)
 
 #        ipdb.set_trace()
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
