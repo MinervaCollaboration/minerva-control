@@ -89,50 +89,8 @@ class server:
 		
                 if os.path.exists(log_path) == False:
                         os.mkdir(log_path)
-                #S the log's format for entries.
-                fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(message)s"
-                #S The log's date format for entries.
-                datefmt = "%Y-%m-%dT%H:%M:%S"
-                #S Gets logger name form config file entry. 
-                self.logger = logging.getLogger(self.logger_name)
-                #S From later on, setting level to DEBUG just
-                #S ignores debug meesages that occur, those from
-                #S ipdb?
-                self.logger.setLevel(logging.DEBUG)
-                #S Makes log entries conform to those formats above.
-                formatter = logging.Formatter(fmt,datefmt=datefmt)
-                #S Not sure how this converter works, but just takes GMT to
-                #S local I bleieve.
-                formatter.converter = time.gmtime
 
-                #clear handlers before setting new ones                                                                               
-                self.logger.handlers = []
-
-                fileHandler = logging.FileHandler(log_path + '\\' + self.logger_name + '.log', mode='a')
-                fileHandler.setFormatter(formatter)
-                self.logger.addHandler(fileHandler)
-
-                # add a separate logger for the terminal (don't display debug-level messages)                                         
-                console = logging.StreamHandler()
-                console.setFormatter(formatter)
-                #? What is INFO level?
-                console.setLevel(logging.INFO)
-                #? Purpossely redone?
-                self.logger.setLevel(logging.DEBUG)
-                self.logger.addHandler(console)
-
-		'''
-		self.logger = logging.getLogger(self.name)
-		formatter = logging.Formatter(fmt="%(asctime)s [%(filename)s:%(lineno)s - %(funcName)20s()] %(levelname)s: %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
-		fileHandler = logging.FileHandler(self.base_directory + '/log/' + folder + '/telecom_server.log', mode='a')
-		fileHandler.setFormatter(formatter)
-		streamHandler = logging.StreamHandler()
-		streamHandler.setFormatter(formatter)
-
-		self.logger.setLevel(logging.DEBUG)
-		self.logger.addHandler(fileHandler)
-		self.logger.addHandler(streamHandler)
-		'''
+		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
 	def data_path(self):
                 data_path = self.data_path_base + '\\' + self.night()
