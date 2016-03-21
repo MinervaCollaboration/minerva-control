@@ -91,7 +91,7 @@ class server:
                 if os.path.exists(log_path) == False:
                         os.mkdir(log_path)
 
-		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
+		self.logger = utils.setup_logger(self.base_directory,self.night(),self.logger_name)
 
 	def data_path(self):
                 data_path = self.data_path_base + '\\' + self.night()
