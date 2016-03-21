@@ -466,6 +466,7 @@ class server:
                 #S Try to get locationstr from dictionary in config.
                 try:                       
                         i2stage_move_thread = threading.Thread(target = self.motorI2.mAbs, args = (self.i2positions[locationstr.lower()],))
+			i2stage_move_thread.name = 'Kiwispec'
                         i2stage_move_thread.start()
                         #S need to log position, stuff, anything else?
                         self.logger.info("Iodine stage moving from %0.5f mm to %0.5f mm"%(prev_pos,self.i2positions[locationstr.lower()]))
@@ -490,6 +491,7 @@ class server:
                 #S Try to get locationstr from dictionary in config.
                 try:                       
                         i2stage_move_thread = threading.Thread(target = self.motorI2.mAbs, args = (position,))
+                        i2stage_move_thread.name = 'Kiwispec'
                         i2stage_move_thread.start()
                         #S need to log position, stuff, anything else?
                         self.logger.info("Iodine stage moving from %0.5f mm to %0.5f mm"%(prev_pos,position))
@@ -983,9 +985,11 @@ if __name__ == '__main__':
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
         pressure_thread = threading.Thread(target=test_server.log_pressures)
+	pressure_thread.name = 'Kiwispec'
         pressure_thread.start()
 	
 	expmeter_thread = threading.Thread(target=test_server.logexpmeter)
+	expmeter_thread.name = 'Kiwispec'
         expmeter_thread.start()
 	
 	#	test_server.logexpmeter()
@@ -994,6 +998,7 @@ if __name__ == '__main__':
 #        test_server.cell_heater_get_set_temp()
 #        ipdb.set_trace()
 	serverThread = threading.Thread(target = test_server.run_server())
+	serverThread.name = 'Kiwispec'
 #	ipbd.set_trace()
         serverThread.start()
 	
