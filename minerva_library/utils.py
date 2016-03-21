@@ -10,7 +10,10 @@ import ipdb
 import logging
 
 def night():
-    return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+    today = datetime.datetime.utcnow()
+    if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+        today = today + datetime.timedelta(days=1)
+    return 'n' + today.strftime('%Y%m%d')
 
 def setup_logger(base_dir, night, logger_name):
 

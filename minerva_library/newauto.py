@@ -528,42 +528,46 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             af_target['spectroscopy'] = False
 
     else:
+        status = telescope.getStatus()
+        m3port = status.m3.port
+        if m3port == telescope.port['FAU']:
+            spectroscopy = True
+        else:
+            spectroscopy = False
+
         af_target = {'name':'autofocus',
                      'exptime':[5],
                      'fauexptime':10,
                      'filter':["V"],
-                     'spectroscopy':False}
-        m3port = telescope.port['IMAGER']
-
+                     'spectroscopy':spectroscopy}
+        
     #S Initialize telescope, we want tracking ON
-    if not telescope.isInitialized(tracking=True,derotate=\
-                                       (not af_target['spectroscopy'])):
+    if not telescope.isInitialized(tracking=True,derotate=
+                                   (not af_target['spectroscopy'])):
         if not telescope.initialize(tracking=True,derotate=\
                                         (not af_target['spectroscopy'])):
             telescope.recover(tracking=True,derotate=\
                                   (not af_target['spectroscopy']))
-        
+            
     if 'ra' in af_target.keys() and 'dec' in af_target.keys():
         telescope.acquireTarget(af_target)
         #TODO Need to think about incorporating guiding for FAU
-
     else:
         telescope.logger.info('No ra and dec, using current position')
 
-    #S our data path
+    # S our data path
     datapath = '/Data/t' + str(telescope_number) + '/' + \
         control.site.night + '/'
 
-    #wait for dome to be open
+    # wait for dome to be open
     if telescope_number > 2:
         dome = control.domes[1]
     else:
         dome = control.domes[0]
-    #S Get current time for measuring timeout
+    # S Get current time for measuring timeout
     t0 = datetime.datetime.utcnow()
 
-    
-    #S Loop to wait for dome to open, cancels afeter ten minutes
+    # S Loop to wait for dome to open, cancels afeter ten minutes
     while (not dome.isOpen()) and (not dome_override):
         telescope.logger.info('Enclosure closed; waiting for dome to open')
         timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
@@ -586,7 +590,6 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     stddev_list = []
     numstar_list = []
 
-
     for step in defsteps:
         #S set the new focus, and move there if necessary
         newfocus = telescope.focus[m3port] + step*1000.0
@@ -605,13 +608,13 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             status = telescope.focuserMove(newfocus,port=m3port)
             #S Needed a bit longer to recognize focuser movement, changed
             #S from 0.3
-            time.sleep(.5)
+            time.sleep(0.5)
             #XXX What to do if we can't move the autofocus... most likely
             #S try and recover, but I'm not sure. I have tested that this 
-            #S get's the postion of the currently selected port, but could
+            #S gets the postion of the currently selected port, but could
             #S still see problems with the ambiguity. we may want to find a 
             #S a way to select focuser with port, but it gets a bit tricky as
-            #S the telescope.status has attributes of '.focuse1' and 
+            #S the telescope.status has attributes of '.focuser1' and 
             #S '.focuser2', so it would be a bunch of conditionals. 
             if (datetime.datetime.utcnow()-fm_start).total_seconds()>120.:
                 telescope.logger.exception('Failed to move focuser')
@@ -626,7 +629,6 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                                               telescope_number)
         if imagename == 'error':
             telescope.logger.exception('Failed to save image')
-#                    control.imager[telescope_number-1].recover()
             focusmeas_list.append(-999)
             stddev_list.append(999)
             numstar_list.append(0)
@@ -689,11 +691,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         #S find the best focus
         control.logger.debug('T'+str(telescope_number) +': fitting '+\
                                  'to '+str(len(goodind))+' points.')
-#        if fau:
-#            new_best_focus,fitcoeffs = fitquadfindmin(\
-#                poslist[goodind],focusmeas_list[goodind],\
-#                    logger=telescope.logger,telescope_num=telescope_number)
-#        else:
+
         new_best_focus,fitcoeffs = fitquadfindmin(\
             poslist[goodind],focusmeas_list[goodind],\
                 weight_list=stddev_list[goodind],\
@@ -734,11 +732,13 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     control.logger.info('T' + str(telescope_number) + ': New best '+\
                             'focus: ' + str(new_best_focus))
 
-    # if no sensible focus value measured, use the old value
-    if new_best_focus == None: new_best_focus = telescope.focus[m3port]
 
     # want to record old best focus
     old_best_focus = telescope.focus[m3port]
+
+    # if no sensible focus value measured, use the old value
+    if new_best_focus == None: new_best_focus = old_best_focus
+
     # update the telescope focus
     telescope.focus[m3port] = new_best_focus
     # move to the best focus
@@ -751,12 +751,12 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                                   telescope.focus_offset[m3port],port=m3port)
         # wait for focuser to finish moving
         status = telescope.getStatus()
+        time.sleep(0.3)
         while status.focuser.moving == 'True':
             telescope.logger.info('Focuser moving'+\
-                                 ' (' + str(status.focuser.position) + ')')
+                                      ' (' + str(status.focuser.position) + ')')
             time.sleep(0.3)
             status = telescope.getStatus()
-
 
     # record values in the header
     try: alt = str(float(status.mount.alt_radian)*180.0/math.pi)

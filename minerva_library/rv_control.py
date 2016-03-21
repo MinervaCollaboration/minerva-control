@@ -228,7 +228,8 @@ def doSpectra(minerva, target, tele_list):
         #TODOACQUIRETARGET Needs to be switched to take dictionary argument
         #S i think this might act up due to being a dictionary, but well see.                
         threads[t] = threading.Thread(target = minerva.pointAndGuide,args=(target,tele_list[t]))
-        thread.name= "T" + str(minerva.telescopes[tele_list[t]].num)
+        minerva.logger.info('len of tele_list:'+str(len(tele_list))+' len of teles:'+str(len(minerva.telescopes)))
+        thread.name= "T" + str(minerva.telescopes[tele_list[t]-1].num)
         threads[t].start()
         
     # wait for all telescopes to put target on their fibers (or timeout)
@@ -458,10 +459,11 @@ def get_rv_target(minerva, bstar=False):
     return goodtargets
         
 def mkschedule(minerva):
-#    night = datetime.datetime.utcnow().strftime('%Y%m%d')
-    scheduleFile = minerva.base_directory + '/schedule/' + minerva.night + '.kiwispec.txt' 
+    night = (datetime.datetime.utcnow() + datetime.timedelta(days=1)).strftime('n%Y%m%d')
+    scheduleFile = minerva.base_directory + '/schedule/' + night + '.kiwispec.txt' 
 
-
+    
+    print scheduleFile
     sunset = minerva.site.sunset(horizon=-18)
     sunrise = minerva.site.sunrise(horizon=-18)
 
@@ -481,6 +483,7 @@ def mkschedule(minerva):
 
     print ((sunrise-sunset).total_seconds() + 3600.0)/3600.0
 
+    print scheduleFile
     fh = open(scheduleFile,'w')
     while ((sunrise-sunset).total_seconds() + 3600.0) > elapsedTime:
         for target in targets:
@@ -524,6 +527,7 @@ def mkschedule(minerva):
             print "no targets at sunset"
             break
 
+    print scheduleFile
     fh.close()
 
 

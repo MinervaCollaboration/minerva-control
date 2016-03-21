@@ -762,7 +762,7 @@ class control:
                                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
                                 #S i think this might act up due to being a dictionary, but well see.
                                 threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
-				threads[t].name = 'T' + str(self.telescopes[tele_list[t]].num)
+				threads[t].name = 'T' + str(self.telescopes[tele_list[t]-1].num)
                                 threads[t].start()
 
 		self.logger.info("Waiting for all telescopes to acquire")
@@ -820,10 +820,13 @@ class control:
 	def pointAndGuide(self, target, tel_num, backlight=False):
 
 		try:
-			self.telescopes[tel_num-1].logger.info('Beginning autofocus on '+target['name'])
-			newauto.autofocus(self, tel_num, target=target)
+#			self.telescopes[tel_num-1].logger.info('Beginning autofocus on '+target['name'])
+#			newauto.autofocus(self, tel_num, target=target)
 			self.logger.info("T" + str(tel_num) + ": pointing to target")
 			self.telescopes[tel_num-1].acquireTarget(target, derotate=False)
+			self.telescopes[tel_num-1].logger.info('Beginning autofocus on '+target['name'])
+#			newauto.autofocus(self, tel_num, target=target)
+			newauto.autofocus(self, tel_num)
 
 			if backlight:
 				rv_control.backlight(self)
@@ -1866,7 +1869,8 @@ class control:
 
 			rotpos = float(telescopeStatus.rotator.position)
 			parang = telescope.parangle(useCurrent=True)
-			rotoff = float(telescope.rotatoroffset[m3port])
+			try: rotoff = float(telescope.rotatoroffset[m3port])
+			except: rotoff = "UNKNOWN"
 			try: skypa = float(parang) + float(rotoff) - float(rotpos)
 			except: skypa = "UNKNOWN"
 			hourang = self.hourangle_calc(target,telnum=telnum)

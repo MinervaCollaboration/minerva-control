@@ -40,16 +40,16 @@ if __name__ == '__main__':
 
 	# create the sunOverride.txt file
 	# force manual creation of this file??
-	with open('sunOverride.txt','w') as fh:
+	with open(minerva.base_directory + '/minerva_library/sunOverride.txt','w') as fh:
 		fh.write(str(datetime.datetime.utcnow()))
 
 #	# open the north roof segment only if the weather is ok
 #	minerva.domeControlThread(day=True)
 
-	with open('minerva_library/aqawan1.request.txt','w') as fh:
+	with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
 		fh.write(str(datetime.datetime.utcnow()))
 		
-	with open('minerva_library/aqawan2.request.txt','w') as fh:
+	with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
 		fh.write(str(datetime.datetime.utcnow()))
 		
 
@@ -136,8 +136,8 @@ if __name__ == '__main__':
 			time.sleep(60)
 
 	# all done; close the dome
-	if os.path.exists('minerva_library/aqawan1.request.txt'): os.remove('minerva_library/aqawan1.request.txt')
-	if os.path.exists('minerva_library/aqawan2.request.txt'): os.remove('minerva_library/aqawan2.request.txt')
+	if os.path.exists(minerva.base_directory + '/minerva_library/aqawan1.request.txt'): os.remove(minerva.base_directory + '/minerva_library/aqawan1.request.txt')
+	if os.path.exists(minerva.base_directory + '/minerva_library/aqawan2.request.txt'): os.remove(minerva.base_directory + '/minerva_library/aqawan2.request.txt')
 
 	# wait for domes to close
 	t0 = datetime.datetime.utcnow()
@@ -152,7 +152,7 @@ if __name__ == '__main__':
 			status = dome.status()
 
 	# remove the sun override
-	if os.path.exists('sunOverride.txt'): os.remove('sunOverride.txt')
+	if os.path.exists(minerva.base_directory + '/minverva_library/sunOverride.txt'): os.remove(minerva.base_directory + '/minerva_library/sunOverride.txt')
 
 	# change to the spectrograph imaging port for calibrations
 	for telescope in minerva.telescopes:

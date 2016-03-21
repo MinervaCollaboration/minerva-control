@@ -20,6 +20,63 @@ if __name__ == '__main__':
 
 	ipdb.set_trace()
 
+
+	target = {
+		"name": "HD62613", 
+		"ra": 7.9381193, 
+		"dec": 80.26554, 
+		"starttime": datetime.datetime(2016,3,18,2,54,33), 
+		"endtime": datetime.datetime(2016,3,18,12,8,2), 
+		"spectroscopy": True, 
+		"filter": ["rp"], 
+		"num": [3], 
+		"exptime": [1800.0], 
+		"fauexptime": 5.0, 
+		"defocus": 0.0, 
+		"positionAngle": 0.0, 
+		"pmra": 0.0, 
+		"pmdec": 0.0, 
+		"parallax": 0.0, 
+		"rv": 0.0, 
+		"i2": True,
+		}
+
+	target = {
+		"name": "HR4828", 
+		"ra": 12.6980833, 
+		"dec": 10.2355556, 
+		"starttime": datetime.datetime(2016,3,18,3,34,30),
+		"endtime": datetime.datetime(2016,3,18,12,8,2), 
+		"spectroscopy": True, 
+		"filter": ["rp"], 
+		"num": [3], 
+		"exptime": [1800.0], 
+		"fauexptime": 5.0, 
+		"defocus": 0.0, 
+		"selfguide": True, 
+		"guide": False, 
+		"cycleFilter": True, 
+		"positionAngle": 0.0, 
+		"pmra": 0.0, 
+		"pmdec": 0.0, 
+		"parallax": 0.0, 
+		"rv": 0.0, 
+		"i2": True, 
+		"vmag": 4.88, 
+		"comment": "", 
+		"expectedStart": "2016-03-18 04:30:39.042731", 
+		"expectedEnd": "2016-03-18 06:06:44.142731",
+		}
+
+#	minerva.telescopes[0].radectoaltaz(target['ra'],target['dec'],date=datetime.datetime(2016,3,19,9,19,43))
+#	ipdb.set_trace()
+
+	minerva.telescopes[0].acquireTarget(target,tracking=False,derotate=False)
+
+	ipdb.set_trace()
+
+	
+
 #	minerva.cameras[0].take_image(5,'V','testexp')
 
 	minerva.endNight(night='n20160314',kiwispec=True)

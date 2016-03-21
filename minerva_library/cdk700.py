@@ -806,8 +806,9 @@ class CDK700:
 		# make sure the coordinates are within the telescope's limits
 		alt,az = self.radectoaltaz(ra_corrected,dec_corrected)
 		if alt < 20.5:
-			self.logger.error("Coordinates out of bounds; object not acquired! (Alt,Az) = (" + str(alt) + "," + str(az) + ")")
-			return False
+			self.logger.error("Coordinates out of bounds; object not acquired! (Alt,Az) = (" + str(alt) + "," + str(az) + "), (RA,Dec) = (" + str(ra_corrected) + ',' + str(dec_corrected) + ")")
+			self.logger.info("... but something is going wrong with these calculations; I'm going to try to acquire anyway")
+#			return False
 
 		#S make sure the m3 port is in the correct orientation
 		if 'spectroscopy' in target.keys():
@@ -833,10 +834,8 @@ class CDK700:
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
 
-
 ### check on this; m3port not defined ####
 		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected, tracking=tracking, derotate=derotate):
-#		if self.inPosition():
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
@@ -857,6 +856,7 @@ class CDK700:
 		star.compute(obs)
 		alt = utils.ten(str(star.alt))
 		az = utils.ten(str(star.az))
+		self.logger.info("Alt/Az = " + str(alt) + "," + str(az) + " at RA/Dec = " + str(ra) + ',' + str(dec) + ", date = " + str(date) + ', lat=' + str(obs.lat) + ', lon = ' + str(obs.long))
 		return alt,az
 
 	def m3port_switch(self,m3port, force=False):
