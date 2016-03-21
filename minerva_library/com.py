@@ -16,6 +16,7 @@ class com:
         self.lock = threading.Lock()
         self.id = id
         self.base_directory = base
+        self.night = night
         
         #S Parses configfile into List based on id
         #? Not sure if this is how id is working, but makes sense. Need to look
@@ -31,6 +32,7 @@ class com:
                 self.id, " was not found in the configuration file", configfile)
             return
         
+
         #? Not really sure what is going on, need to look into com.ini
         self.flowcontrol = str(config['Setup']['FLOWCONTROL'])
         #self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
