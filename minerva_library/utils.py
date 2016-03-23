@@ -20,26 +20,26 @@ def setup_logger(base_dir, night, logger_name):
     path = base_dir + '/log/' + night
 
     if os.path.exists(path) == False:os.mkdir(path)
-
-    fmt = "%(asctime)s [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(threadName)s: %(message)s"
+    fmt = "%(asctime)s.%(msecs).03d [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(threadName)s: %(message)s"
     datefmt = "%Y-%m-%dT%H:%M:%S"
 
     logger = logging.getLogger(logger_name)
-    logger.setLevel(logging.DEBUG)
     formatter = logging.Formatter(fmt,datefmt=datefmt)
     formatter.converter = time.gmtime
 
-    #clear handlers before setting new ones
-    logger.handlers = []
+#    #clear handlers before setting new ones
+#    logger.handlers = []
+
     fileHandler = logging.FileHandler(path + '/' + logger_name + '.log', mode='a')
     fileHandler.setFormatter(formatter)
-    logger.addHandler(fileHandler)
 
-    # add a separate logger for the terminal (don't display debug-level messages)
     console = logging.StreamHandler()
     console.setFormatter(formatter)
     console.setLevel(logging.INFO)
+
+    # add a separate logger for the terminal (don't display debug-level messages)
     logger.setLevel(logging.DEBUG)
+    logger.addHandler(fileHandler)
     logger.addHandler(console)
 
     return logger

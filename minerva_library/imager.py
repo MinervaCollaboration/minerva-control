@@ -356,27 +356,23 @@ class imager:
 			return 'fail'
 
 	#start exposure
-	def expose(self, exptime=1, exptype=0, filterInd=1):
+	def expose(self, exptime=1, exptype=0, filterInd=1,guider=False):
 		self.logger.info('Starting exposure')
-		if (self.send('expose ' + str(exptime) + ' ' + str(exptype) + ' ' + str(filterInd),30)).split()[0] == 'success': return True
-		else: return False
+		cmd = 'expose'
+		if guider: cmd += 'Guider'
+		cmd += " " + str(exptime)
+		if not guider: cmd += ' ' + str(exptype) + ' ' + str(filterInd)
 
-	#start exposure
-	def exposeGuider(self, exptime=1):
-		if (self.send('exposeGuider ' + str(exptime),30)).split()[0] == 'success': return True
+		if (self.send(cmd,30)).split()[0] == 'success': return True
 		else: return False
 
 	#block until image is ready, then save it to file_name
-	def save_image(self,file_name):
-		if self.send('save_image ' + file_name,30) == 'success': return True
+	def save_image(self,file_name,fau=False):
+		cmd = 'save_image ' + file_name
+		if fau: cmd += " fau"
+		if self.send(cmd,30) == 'success': return True
 		else: return False
 
-	def save_fau_image(self,file_name):
-		if self.send('save_image ' + file_name + ' fau',30) == 'success': return True
-		else: return False
-
-	def image_name(self):
-		return self.file_name
 	#write fits header for self.file_name, header_info must be in json format
 	def write_header(self, header_info):
 		if self.file_name == '':
@@ -397,75 +393,51 @@ class imager:
 			self.logger.error('Failed to finish writing header')			
 			return False
 
-	def take_fau_image(self, exptime=1, objname='test'):
+	# returns file name of the image saved, return 'error' if error occurs
+	def take_image(self,exptime=1,filterInd='zp',objname = 'test' , fau=False):		
 		telescope_name = 'T' + self.telnum + ': '
 		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
 		ndx = self.get_index()
 		if ndx == -1:
 			self.logger.error(telescope_name + "Error getting the filename index")
-			if self.recover(): return self.take_fau_image(exptime=exptime, objname=objname)
-			return False
+			if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=fau)
+			self.file_name = ''
+			return 'error'
 
-		self.file_name = self.night + "." + self.telescope_name + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
+		if fau:	
+			self.file_name = self.night + "." + self.telescope_name + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
+			exptype = 1
+		else: 
+			self.file_name = self.night + "." + self.telescope_name + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
+			# chose exposure type
+			if objname in self.exptypes.keys():
+				exptype = self.exptypes[objname] 
+			else: exptype = 1 # science exposure
 
-		if self.exposeGuider(exptime):
+			# chose appropriate filter
+			if filterInd not in self.filters:
+				self.logger.error(telescope_name + "Requested filter (" + filterInd + ") not present")
+				self.file_name = ''
+				return 'error'
+
+		self.logger.info(telescope_name + 'start taking image: ' + self.file_name)
+		
+		if self.expose(exptime,exptype,self.filters[filterInd],guider=fau):
 			self.write_status()
 			time.sleep(exptime)
-			if self.save_fau_image(self.file_name):
+			if self.save_image(self.file_name, fau=fau):
 				self.logger.info(telescope_name + 'finish taking image: ' + self.file_name)
-				self.nfailed = 0 # success; reset the failed counter
+				self.nfailed = 0 
 				return self.file_name
 			else: 
 				self.logger.error(telescope_name + 'failed to save image: ' + self.file_name)
 				self.file_name = ''
-				if self.recover(): return self.take_fau_image(exptime=exptime, objname=objname)
-				return False
+				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=fau)
+
 		self.logger.error(telescope_name + 'taking image failed, image not saved: ' + self.file_name)
 		self.file_name = ''
-		return 'false'		
-
-	#returns file name of the image saved, return 'false' if error occurs
-	def take_image(self,exptime=1,filterInd='zp',objname = 'test' ):
-		
-		telescope_name = 'T' + self.telnum + ': '
-
-		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
-		#put together file name for the image
-		ndx = self.get_index()
-		if ndx == -1:
-			self.logger.error(telescope_name + "Error getting the filename index")
-			if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname)
-			return False
-
-		self.file_name = self.night + "." + self.telescope_name + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
-		self.logger.info(telescope_name + 'start taking image: ' + self.file_name)
-		#chose exposure type
-		if objname in self.exptypes.keys():
-			exptype = self.exptypes[objname] 
-		else: exptype = 1 # science exposure
-
-		#chose appropriate filter
-		if filterInd not in self.filters:
-			self.logger.error(telescope_name + "Requested filter (" + filterInd + ") not present")
-			return 'false'
-		
-		
-		if self.expose(exptime,exptype,self.filters[filterInd]):
-			self.write_status()
-			time.sleep(exptime)
-			if self.save_image(self.file_name):
-				self.logger.info(telescope_name + 'finish taking image: ' + self.file_name)
-				self.nfailed = 0 # success; reset the failed counter
-				return
-			else: 
-				self.logger.error(telescope_name + 'failed to save image: ' + self.file_name)
-				self.file_name = ''
-				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname)
-				return False
-		self.logger.error(telescope_name + 'taking image failed, image not saved: ' + self.file_name)
-		self.file_name = ''
-		return 'false'		
+		return 'error'		
 
 	def compress_data(self,night=None):
 		#S I think we've given this too short of a time to reasonably compress

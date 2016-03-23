@@ -10,7 +10,7 @@ import env
 import time
 import utils
 import numpy as np
-
+import math
 
 def rv_observing(minerva):
 
@@ -182,21 +182,24 @@ def doSpectra(minerva, target, tele_list):
     minerva.logger.info("Locating Fiber")
     backlight(minerva)
     for t in range(len(tele_list)):
+
         tel_num = tele_list[t]
-        telescope = minerva.telescopes[tel_num-1]
-        camera = minerva.cameras[tel_num-1]
-        
-        backlit = glob.glob('/Data/t' + str(tel_num) + '/' + minerva.night + '/*backlight*.fits')
-        if len(backlit) > 0:
-            xfiber, yfiber = find_fiber(backlit[-1])
+        for telescope in minerva.telescopes:
+            if telscope.num == str(tel_num): break
+        for camera in minerva.cameras:
+            if camera.telnum == str(tel_num): break
+
+        if 'backlight' not in camera.file_name:
+            minerva.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+        else:
+            xfiber, yfiber = find_fiber(camera.file_name, camera)
             if xfiber <> None:
                 minerva.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + str(backlit[-1]))
                 camera.fau.xfiber = xfiber
                 camera.fau.yfiber = yfiber
             else:
-                minerva.logger.error("T" + str(tel_num) + ": failed to find fiber in image " + str(backlit[-1]) + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
-        else:
-            minerva.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+                minerva.logger.error("T" + str(tel_num) + ": failed to find fiber in image " + camera.file_name + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+
         camera.fau.guiding=True
 
 
@@ -228,8 +231,7 @@ def doSpectra(minerva, target, tele_list):
         #TODOACQUIRETARGET Needs to be switched to take dictionary argument
         #S i think this might act up due to being a dictionary, but well see.                
         threads[t] = threading.Thread(target = minerva.pointAndGuide,args=(target,tele_list[t]))
-        minerva.logger.info('len of tele_list:'+str(len(tele_list))+' len of teles:'+str(len(minerva.telescopes)))
-        thread.name= "T" + str(minerva.telescopes[tele_list[t]-1].num)
+        threads[t].name= "T" + str(minerva.telescopes[tele_list[t]-1].num)
         threads[t].start()
         
     # wait for all telescopes to put target on their fibers (or timeout)
@@ -318,7 +320,7 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
     else: kwargs = {'position':stagepos}
 
     threads = [threading.Thread(target=minerva.ctrl_i2stage_move,kwargs=kwargs)]
-    threads[0].name = 'I2Stage'
+    threads[0].name = 'Kiwispec'
         
     # turn on the slit flat LED
     minerva.spectrograph.led_turn_on()
@@ -341,6 +343,7 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
     # take an exposure with the spectrograph (to trigger the LED)
     kwargs = {'expmeter':None,"exptime":fauexptime+2,"objname":"backlight"}
     spectrum_thread = threading.Thread(target=minerva.spectrograph.take_image, kwargs=kwargs)
+    spectrum_thread.name = "Kiwispec"
     spectrum_thread.start()
 
     # take images with all FAUs
@@ -376,9 +379,9 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
     minerva.logger.info("Done with backlit images")
 
 # given a backlit FAU image, locate the fiber
-def find_fiber(image):
+def find_fiber(imagename, camera):
     
-    catname = utils.sextract('',image)
+    catname = utils.sextract('',imagename)
     cat = utils.readsexcat(catname)
 
     # readsexcat will return an empty dictionary if it fails
@@ -387,9 +390,18 @@ def find_fiber(image):
     try: brightest = np.argmax(cat['FLUX_ISO'])
     except: return None, None
 
-    # if the keys aren't present, it will be caught here
-    try: return cat['XWIN_IMAGE'][brightest], cat['YWIN_IMAGE'][brightest]
-    except: return None, None
+    try:
+        xfiber = cat['XWIN_IMAGE'][brightest]
+        yfiber = cat['YWIN_IMAGE'][brightest]
+        tolerance = 20.0
+        dist = math.sqrt(math.pow(camera.fau.xfiber - xfiber,2) + math.pow(camera.fau.yfiber-yfiber,2))
+        if dist <= tolerance:
+            camera.logger.info("Fiber found " + str(dist) + " pixels from nominal position")
+            return xfiber, yfiber
+    except:
+        camera.logger.exception("Error finding fiber position")
+
+    return None, None
 
 def rv_observing_catch(minerva):
     try:

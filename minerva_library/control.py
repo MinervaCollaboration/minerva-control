@@ -764,7 +764,7 @@ class control:
                                 threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
 				threads[t].name = 'T' + str(self.telescopes[tele_list[t]-1].num)
                                 threads[t].start()
-
+				
 		self.logger.info("Waiting for all telescopes to acquire")
 		# wait for all telescopes to put target on their fibers (or timeout)
 		acquired = False
@@ -819,12 +819,17 @@ class control:
 
 	def pointAndGuide(self, target, tel_num, backlight=False):
 
+		for camera in self.cameras:
+			if camera.telnum == str(tel_num): break
+		for telescope in self.telescopes:
+			if telescope.num == str(tel_num): break
+
 		try:
 #			self.telescopes[tel_num-1].logger.info('Beginning autofocus on '+target['name'])
 #			newauto.autofocus(self, tel_num, target=target)
 			self.logger.info("T" + str(tel_num) + ": pointing to target")
-			self.telescopes[tel_num-1].acquireTarget(target, derotate=False)
-			self.telescopes[tel_num-1].logger.info('Beginning autofocus on '+target['name'])
+			telescope.acquireTarget(target, derotate=False)
+			telescope.logger.info('Beginning autofocus on '+target['name'])
 #			newauto.autofocus(self, tel_num, target=target)
 			newauto.autofocus(self, tel_num)
 
@@ -841,7 +846,7 @@ class control:
 
 
 			self.logger.info("T" + str(tel_num) + ": beginning guiding")
-			self.cameras[tel_num-1].fau.guiding=True
+			camera.fau.guiding=True
 			self.fauguide(target,tel_num)
 		except:
 			self.logger.exception("T" + str(tel_num) + ": Pointing and guiding failed")
@@ -851,10 +856,20 @@ class control:
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
 	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False):
 
-		telescope = self.telescopes[tel_num-1]
-		camera = self.cameras[tel_num-1]
+
+		if tel_num > 2: domenum = '2'
+		else: domenum = '1'
+
+		# robustly choose telescope, camera, and dome
+		for telescope in self.telescopes:
+			if telescope.num == str(tel_num): break
+		for camera in self.cameras:
+			if camera.telnum == str(tel_num): break
+		for dome in self.domes: 
+			if dome.num == domenum: break
+
 		camera.fau.acquired = False
-		
+
 		if xfiber <> None:
 			camera.fau.xfiber = xfiber
 		if yfiber <> None: 
@@ -892,8 +907,19 @@ class control:
 			if i>npts:
 				break
                         # Grab image data from FAU
-			filename = self.takeFauImage(target, telescope_num=tel_num)
+			filename = 'error'
+			while filename == 'error': 
+				filename = self.takeFauImage(target,telescope_num=tel_num)
+				if not dome.isOpen(): 
+					# The target is no longer acquired
+					camera.fau.acquired = False
+					return
 
+			if not dome.isOpen(): 
+				self.logger.info("The dome closed while guiding; exiting guide loop")
+				camera.fau.acquired = False
+				return
+				
 			dataPath = '/Data/t' + camera.telnum + '/' + self.night + '/'
 #			imagedata = get_centroid(dataPath + filename, badpixelmask=camera.fau.badpix)
 			#derive position in pixels
@@ -1312,7 +1338,7 @@ class control:
                         #S Move the I2 stage out of the way of the slit.
 			kwargs['locationstr'] = 'out'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "I2Stage"
+			i2stage_move_thread.name = "Kiwispec"
                         i2stage_move_thread.start()
                         
                         #self.spectrograph.i2stage_move('out')
@@ -1344,7 +1370,7 @@ class control:
                         #S Move the LED in place with the Iodine stage
 			kwargs['locationstr'] = 'flat'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "I2Stage"
+			i2stage_move_thread.name = "Kiwispec"
                         i2stage_move_thread.start()
 
                         # Configure the lamps
@@ -1375,7 +1401,7 @@ class control:
 			else:
 				kwargs['locationstr'] = 'out'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "I2Stage"
+			i2stage_move_thread.name = "Kiwispec"
                         i2stage_move_thread.start()
 
                         #Configure the lamps
@@ -1415,7 +1441,7 @@ class control:
                         #S and will at least make things orderly.
 			kwargs['locationstr'] = 'in'
                         i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "I2Stage"
+			i2stage_move_thread.name = "Kiwispec"
                         i2stage_move_thread.start()
                         #TODO Calibration shutter closed
                         self.logger.info('Waiting on i2stage_move_thread')
@@ -1436,7 +1462,7 @@ class control:
 			else:
 				kwargs['locationstr'] = 'out'
 			i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "I2Stage"
+			i2stage_move_thread.name = "Kiwispec"
 			i2stage_move_thread.start()
 				
                         #Configure the lamps
@@ -1503,7 +1529,7 @@ class control:
 
 #		self.spectrograph.take_image(target['exptime'][0],target['name'])
 		imaging_thread = threading.Thread(target = self.spectrograph.take_image, kwargs=kwargs)
-		imaging_thread.name = "SI"
+		imaging_thread.name = "Kiwispec"
 		imaging_thread.start()
                         
 		f = self.getHdr(target,[1,2,3,4],[1,2])
@@ -1523,7 +1549,7 @@ class control:
 			night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 			dataPath = '/Data/kiwispec/' + night + '/'
 			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
-			fix_fits_thread.name = 'SI'
+			fix_fits_thread.name = 'Kiwispec'
 			fix_fits_thread.start()
 			
 			return self.spectrograph.file_name
@@ -1544,13 +1570,13 @@ class control:
 		if telescope_num > 2: dome = 2
 		else: dome = 1
 
-		#S assign the camera.
+		#S assign the camera
 		imager = self.cameras[telescope_num-1]
 		imager.logger.info('starting the FAU imaging thread')
 
 		#start imaging process in a different thread
-		kwargs = {'exptime':target['fauexptime'],'objname':target['name']}
-		imaging_thread = threading.Thread(target = imager.take_fau_image, kwargs = kwargs)
+		kwargs = {'exptime':target['fauexptime'],'objname':target['name'],'fau':True}
+		imaging_thread = threading.Thread(target = imager.take_image, kwargs = kwargs)
 		imaging_thread.name = "T" + str(imager.telnum)
 		imaging_thread.start()
 		
@@ -1565,9 +1591,9 @@ class control:
 		# write header for image 
 		if imager.write_header(header):
 			imager.logger.info('finish writing image header')
-			return imager.image_name()
+			return imager.file_name
 
-		imager.logger.error('takeImage failed: ' + imager.image_name())
+		imager.logger.error('takeImage failed: ' + imager.file_name)
 		return 'error'	
 
 	def addSpectrographKeys(self, f):
@@ -1789,7 +1815,7 @@ class control:
 
 			if len(dome_list) == 1:
 				domestr = ""
-			else: domestr = str(dome)
+			else: domestr = self.domes[dome-1].num
 
 			if dome <> 1 and dome <> 2:
 				self.logger.error("Invalid dome selected (" + str(dome) + ")")
@@ -2085,14 +2111,14 @@ class control:
 			no_pa_list = ['bias','dark','skyflat','autofocus','testbias','test']
 			if target['name'].lower() not in no_pa_list:
 				# run astrometry asynchronously
-				imager.logger.info("Running astrometry to find PA on " + imager.image_name())
+				imager.logger.info("Running astrometry to find PA on " + imager.file_name)
 				dataPath = '/Data/t' + str(telescope_num) + '/' + self.site.night + '/'
-				astrometryThread = threading.Thread(target=self.getPA, args=(dataPath + imager.image_name(),), kwargs={})
+				astrometryThread = threading.Thread(target=self.getPA, args=(dataPath + imager.file_name,), kwargs={})
 				astrometryThread.name = "T" + str(imager.telnum)
 				astrometryThread.start()
-			return imager.image_name()
+			return imager.file_name
 
-		imager.logger.error("takeImage failed: " + imager.image_name())
+		imager.logger.error("takeImage failed: " + imager.file_name)
 		return 'error'
 	
 	def doBias(self,num=11,telescope_num=0,objectName = 'Bias'):
@@ -2403,15 +2429,16 @@ class control:
 		if telescope_num < 1 or telescope_num > len(self.telescopes):
 			self.logger.error('invalid telescope index')
 			return
-			
-		if telescope_num > 2:
-			dome = self.domes[1]
-		else:
-			dome = self.domes[0]
 
-		#used for testing
-#		dome.isOpen() = True
-		telescope = self.telescopes[telescope_num-1]
+		
+		if telescope_num > 2: domenum = '2'
+		else: domenum = '1'
+
+		for dome in self.domes: 
+			if dome.num == domenum: break
+
+		for telescope in self.telescopes: 
+			if telescope.num == str(telescope_num): break
 		
 		# if after end time, return
 		if datetime.datetime.utcnow() > target['endtime']:
@@ -2463,16 +2490,12 @@ class control:
 		else:
 			newfocus = telescope.focus['IMAGER'] + target['defocus']*1000.0
 		status = telescope.getStatus()
+		m3port = telescope.port['IMAGER']
 		if newfocus <> status.focuser.position:
 			self.logger.info(telescope_name + "Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
-			telescope.focuserMove(newfocus)
-			time.sleep(0.5) # wait for move to register
-
-		status = telescope.getStatus()
-		while status.focuser.moving == 'True':
-			self.logger.info(telescope_name + 'Focuser moving (' + str(status.focuser.position) + ')')
-			time.sleep(0.3)
-			status = telescope.getStatus()
+			if not telescope.focuserMoveAndWait(newfocus,port=m3port):
+				self.logger.info("Focuser failed to move; beginning recovery")
+				telescope.recoverFocuser(newfocus, m3port)
 
 		reference = None
 
@@ -2759,7 +2782,8 @@ class control:
 						try: key = line.split('=')[-2].split()[-1]
 						except: key = 'fail'
 						if key in weatherstats.keys():
-							time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S")
+							try: time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S.%f")
+							except: time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S")
 							try:
 								value = float(line.split('=')[-1].strip())
 								weatherstats[key].append((time,value))
@@ -3054,49 +3078,6 @@ class control:
 			threads[t].join()
 #		speccalib_thread.join()
 			
-	#TODO:set up http server to handle manual commands
-	def run_server(self):
-		pass
-
-        #S Big batch of psuedo code starting up, trying to get a framework for the RV observing
-	#S script written down. 
-        def rv_observing(self):
-                #S Get the domes running in thread
-                self.domeControlThread()
-                #S Not really sure what prepNight does, but seems like it
-                #S takes care of some loggin stuff/names, and updates site info.
-                #S running it, but need explanation
-                #TODO I htink prepNight needs to be run for each scope
-                #XXX self.prepNight()
-                #S Initialize ALL telescopes
-                self.Telescope_initialize
-                #S Spec CCD calibration process
-#                self.spec_calib_time()
-#                self.spec_calibration()
-              
-
-		
-
-
-                #S Use a scheduler to determine the best target
-                #TODO I think we'll load in the data as a dictionary containing dictionaries for
-                #TODO each etaEarth target, so etaEarth['target_name']['attributes']
-                while nighttime:
-                        #S Better have the scheduler check validity of target as well.
-                        #S So nexttarget here is the dictionary of the next target.
-                        nexttarget = self.scheduler(etaEarth)
-                        self.telescope_aquireTarget(nexttarget['ra'],nexttarget['dec'])
-                        self.takeSpectrum(etaEarth[nexttarget])
-                
-                
-                
-
-        ###
-	# SPECTROGRAPH CALIBRATION
-	###
-
-	#S Spectrograph calibration routine. 
-
         #S Figure the (hopefully) maximum time needed for calibration sequence.
         #S This returns the time in seconds so, so be aware of that. Could return
         #S a time_diff or something though, which might be a but more useful.
@@ -3198,515 +3179,6 @@ class control:
         #S 'name','ra','dec','propermotion','parallax',weight stuff,
         def take_rv_spec(self,target):
                 pass
-
-	def ten(self,string):
-                array = string.split()
-                if "-" in array[0]:
-                        return float(array[0]) - float(array[1])/60.0 - float(array[2])/3600.0
-                return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
-                                
-
-	#S started outline for autofocus, pursuing different route.
-	###
-	#AUTOFOCUS
-	###
-	#S Small file will be needed for a few minor functions in the fitting process, etc
-	#S This also seems like an odd spot to put the function, but trust me. Lots of intertwined 
-	#S stuff we need to worry about
-	def autofocus_step(self,telescope_num,newfocus,af_exptime,af_filter="V",m3port='1'):
-		af_target={}
-		af_target['name'] = 'autofocus'
-		af_target['exptime'] = af_exptime
-		af_target['filter'] = af_filter
-		telescope = self.telescopes[telescope_num-1]
-		status = telescope.getStatus()
-		if newfocus <> status.focuser.position:
-			telescope.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " \
-						      + str(step) + ' mm, to ' + str(newfocus))
-			telescope.focuserMove(newfocus)
-			#S Needed a bit longer to recognize focuser movement, changed from 0.3
-			time.sleep(.5)
-
-		#S Make sure everythin is in position, namely that focuser has stopped moving
-		telescope.m3port_switch(m3port=m3port)
-		#S Set the name for the autofocus image
-		af_name = 'autofocus'
-
-		#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
-		#imagename = self.takeImage(af_exptime,af_filter,af_name,telescope_num=telescope_number)
-		if telescope.port['IMAGER'] == m3port:
-			imagename  = self.takeImage(af_target, telescope_num=telescope_num)
-		elif telescope.port['FAU'] == m3port:
-			imagename  = self.takeFauImage(af_target, telescope_num=telescope_num)
-
-		imagenum = (imagename.split('.')[4])
-		#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
-		try: 
-			catalog = utils.sextract(datapath,imagename)
-			self.logger.debug('T' + str(telescope_number) + ': Sextractor success on '+catalog)
-		except: 
-			self.logger.exception('T' + str(telescope_number) + ': Sextractor failed on '+catalog)
-		try:
-			median, stddev, numstar = newauto.get_hfr_med(catalog)
-			self.logger.info('T'+str(telescope_number)+': Got hfr value from '+catalog)
-			return median, stddev, numstar, imagenum
-		except:
-			self.logger.exception('T' + str(telescope_number) + ': Failed to get hfr value from '+catalog)		
-			return -999, 999, 0, imagenum
-
-
-	def new_autofocus(self,telescope_number,num_steps=5,defocus_step=0.4,af_exptime=5,af_filter="V"):
-
-		#S get the telescope we plan on working with
-		telescope = self.telescopes[telescope_number-1]
-		#S our data path
-		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
-
-		# wait for dome to be open
-		if telescope_number > 2:
-			dome = self.domes[1]
-		else:
-			dome = self.domes[0]
-		#S Get current time for measuring timeout
-		t0 = datetime.datetime.utcnow()
-		"""
-#		
-		#S Loop to wait for dome to open, cancels afeter ten minutes 
-		while dome.isOpen() == False:
-			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
-			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
-			if timeelapsed > 600: 
-				self.logger.info('T' + str(telescope_number) + ': Enclosure still closed after 10 minutes; skipping autofocus')
-				return
-			time.sleep(30)
-#		
-
-		#S Initialize telescope, we want tracking ON
-#		telescope.initialize(tracking=False)
-		telescope.initialize(tracking=True)
-
-		#S make array of af_defocus_steps
-		defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)
-		#S Array of new positions for the focuser, using this rahter than step. 
-		pos_arr = defsteps*1000 + telescope.focus
-		old_best_focus = telescope.focus
-
-		#S Just need empty np.arrays for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST 
-		#Sbecause we don't necessarily know which value we want yet.
-		imagenum_arr = np.array(())
-		focusmeas_arr = np.array(())
-		stddev_arr = np.array(())
-		numstar_arr = np.array(())
-
-		#S Actual autofocus sequence
-		for position in pos_arr:
-			med, std, numstars, imagenum = self.autofocus_step(telescope_num,position,af_exptime,af_filter)
-			focusmeas_arr = np.append(focusmeas_arr,med)
-			stddev_arr = np.append(stddev_arr,std)
-			numstar_arr = np.append(numstar_arr,numstars)
-			imagenum_arr = np.append(imagenum_arr,imagenum)
-		"""
-		#S A value for the threshold of the focus change between runs to determine a good stopping point.
-		#TODO make sure units are correct
-		MAXDELTA = 100
-		#S Want to make sure enter this loop
-		delta_focus = 2*MAXDELTA
-		#S Maximum number of steps we want to take
-		MAXSTEPS = 10
-		new_best_focus=200
-		old_best_focus=1
-		focusmeas_arr = np.array([25.,16.,9.,4.])
-		stddev_arr = np.array([1,1,1,1])
-		pos_arr = np.array([5.,4.,3.,2.])
-		numstar_arr=np.array([1,1,1,1])
-		imagenum_arr=np.array([1,1,1,1])
-		weight_list=np.array([1.,1.,1.,1.])
-		defocus_step = 1e-3
-#		ipdb.set_trace()
-		med=1
-		std=1
-		numstars=1
-		imagenum=1
-		i=1
-		while (len(pos_arr)<MAXSTEPS) and (delta_focus>MAXDELTA):
-			goodind = np.where(focusmeas_arr <> -999)[0]
-			try:
-				print 'here',len(pos_arr),len(focusmeas_arr)
-				print pos_arr
-				print focusmeas_arr
-				time.sleep(5)
-				new_best_focus,fitcoeffs = newauto.fitquadfindmin(pos_arr[goodind],focusmeas_arr[goodind],\
-											  weight_list=stddev_arr[goodind],\
-											  logger=self.logger,telescope_num=telescope_number)
-				#S Find the change in the focus from the last fit
-				delta_focus = np.absolute(old_best_focus - new_best_focus)
-
-				if delta_focus>MAXDELTA:
-					print 'in delta focus loop'
-					goodind = np.where(focusmeas_arr <> -999)[0]
-					#S if there are more points above the new focus then there are below
-					#TODO this seems sketchy, we could do flipflopping to more above and below, spending a lot of time 
-					#TODO moving the focuser around.
-					print len(np.where(pos_arr<new_best_focus)[0])<len(np.where(pos_arr>new_best_focus)[0])
-					print len(np.where(pos_arr<new_best_focus)[0])>len(np.where(pos_arr>new_best_focus)[0])
-					if len(np.where(pos_arr<new_best_focus)[0])<len(np.where(pos_arr>new_best_focus)[0]):	
-					
-						telescope.logger.info('Fewer points below focus and not within delta, adding a new min point')
-						pos_arr = np.append(pos_arr, (pos_arr[goodind].min()-defocus_step*1000.))
-						#S pos_arr.min() should be the point we just added, but need to double check this
-						#med, std, numstars, imagenum = self.autofocus_step(telescope_num,pos_arr.min(),af_exptime,af_filter)
-						continue
-
-					elif len(np.where(pos_arr<new_best_focus)[0])>len(np.where(pos_arr>new_best_focus)[0]):	
-						telescope.logger.info('Fewer points above focus and not within delta, adding a new max point')
-						pos_arr = np.append(pos_arr, (pos_arr[goodind].min()+defocus_step*1000.))
-						#S pos_arr.min() should be the point we just added, but need to double check this
-						#med, std, numstars, imagenum = self.autofocus_step(telescope_num,pos_arr.min(),af_exptime,af_filter)
-						continue
-					else:
-						print 'herheherhehrehrehe'
-
-
-				focusmeas_arr = np.append(focusmeas_arr,med)
-				stddev_arr = np.append(stddev_arr,std)
-				numstar_arr = np.append(numstar_arr,numstars)
-				imagenum_arr = np.append(imagenum_arr,imagenum)
-				continue
-			except newauto.afException as e:
-
-				#S we want to only look at good indices here, as you can imagine if we are finding a focus out of bounds,
-				#S it could be due to the endpoints not having a good hfr median value. This has the potential
-				#S to duplicate positions, but it shouldn't be an issue, as it will only duplicate those points wehre
-				#S we don't have a good hfr value. also note that this can get in an infiinte loop as is (i think)
-
-				if e.message == 'LowerLimit_Exception':
-					telescope.logger.info('New focus too low, adding a new minimum point')
-					pos_arr = np.append(pos_arr, (pos_arr[goodind].min()-defocus_step*1000.))
-					#S pos_arr.min() should be the point we just added, but need to double check this
-#					med, std, numstars, imagenum = self.autofocus_step(telescope_num,pos_arr.min(),af_exptime,af_filter)
-
-				elif e.message == 'UpperLimit_Exception':
-					telescope.logger.info('New focus too low, adding a new maximum point')
-					pos_arr = np.append(pos_arr, (pos_arr[goodind].max()+defocus_step*1000.))
-					#S pos_arr.max() should be the point we just added, but need to double check this
-#					med, std, numstars, imagenum = self.autofocus_step(telescope_num,pos_arr.max(),af_exptime,af_filter)
-				
-				elif e.message == 'NoMinimum_Exception':
-					#S Not sure what I want to do here.
-					print 'here fucked up'
-					pass
-				focusmeas_arr = np.append(focusmeas_arr,med)
-				stddev_arr = np.append(stddev_arr,std)
-				numstar_arr = np.append(numstar_arr,numstars)
-				imagenum_arr = np.append(imagenum_arr,imagenum)
-
-				#S continue just stops this iteration of the loop and starts the next one
-				continue
-
-			except:
-				telescope.logger.exception('Unhandled error in fitting autofocus')
-				
-				
-			#S Find the change in the focus from the last fit
-			delta_focus = np.absolute(old_best_focus - new_best_focus)
-			#XXX
-			if i == 1:
-				delta_focus=101
-				i =0
-			print pos_arr
-			print focusmeas_arr
-			print new_best_focus
-			if delta_focus>MAXDELTA:
-				print 'in delta focus loop'
-				goodind = np.where(focusmeas_arr <> -999)[0]
-				#S if there are more points above the new focus then there are below
-				#TODO this seems sketchy, we could do flipflopping to more above and below, spending a lot of time 
-				#TODO moving the focuser around.
-				print len(np.where(pos_arr<new_best_focus)[0])<len(np.where(pos_arr>new_best_focus)[0])
-				print len(np.where(pos_arr<new_best_focus)[0])>len(np.where(pos_arr>new_best_focus)[0])
-				if len(np.where(pos_arr<new_best_focus)[0])<len(np.where(pos_arr>new_best_focus)[0]):	
-					
-					telescope.logger.info('Fewer points below focus and not within delta, adding a new min point')
-					pos_arr = np.append(pos_arr, (pos_arr[goodind].min()-defocus_step*1000.))
-					#S pos_arr.min() should be the point we just added, but need to double check this
-					#med, std, numstars, imagenum = self.autofocus_step(telescope_num,pos_arr.min(),af_exptime,af_filter)
-					continue
-
-				elif len(np.where(pos_arr<new_best_focus)[0])>len(np.where(pos_arr>new_best_focus)[0]):	
-					telescope.logger.info('Fewer points above focus and not within delta, adding a new max point')
-					pos_arr = np.append(pos_arr, (pos_arr[goodind].min()+defocus_step*1000.))
-					#S pos_arr.min() should be the point we just added, but need to double check this
-					#med, std, numstars, imagenum = self.autofocus_step(telescope_num,pos_arr.min(),af_exptime,af_filter)
-					continue
-				else:
-					print 'herheherhehrehrehe'
-
-
-				focusmeas_arr = np.append(focusmeas_arr,med)
-				stddev_arr = np.append(stddev_arr,std)
-				numstar_arr = np.append(numstar_arr,numstars)
-				imagenum_arr = np.append(imagenum_arr,imagenum)
-				continue
-		print pos_arr
-		#S Made it through the fitting routine. Now for all the other stuff in autofocus, updating, etc.
-		#S if we went the maximum number of steps, I would consider this a fail, and it needs attention no matter what.
-		#S Maybe a little too strict on fail condition here.
-		if len(pos_arr)==MAXSTEPS:
-			#S if something went wrong, log and send email. May even want to send a text?
-			new_best_focus = None
-			self.logger.exception('T'+str(telescope_number)+' failed in finding new focus after %i, and could probably use some help'%(MAXSTEPS))
-			body = "Hey humans,\n\nI'm having trouble with autofocus, and need your assitance. You have a few options:\n"\
-			    +"-Try and figure what is going on with the newautofocus\n"\
-			    +"-Revert to PWI autofocus\n"\
-			    +"This may be tricky because a lot of this is worked into the observingScript, "\
-			    +"and you may be fighting with that for control of the telescope."\
-			    +" I would recommend stopping main.py, but it could be situational.\n\n"\
-			    +"I AM CONTINUING WITH NORMAL OPERATIONS USING OLD ''BEST'' FOCUS.\n\n"\
-			    +"Love,\nMINERVA\n\n"\
-			    +"P.S. Tips and tricks (please add to this list):\n"\
-			    +"-You could be too far off the nominal best focus, and the routine can't find a clean fit.\n"\
-			    +"-The aqawan could somehow be closed, and you're taking pictures that it can't find stars in.\n"\
-			    +"-You can now plot the results of any autofocus run, look into newauto.recordplot(). Just "\
-			    +"'python newauto.py' and enter the recordplot(path+record_name).\n"
-#			mail.send("Autofocus failed on T"+str(telescope_number),body,level='serious')
-			return
-		
-
-		print ' found focus at ',new_best_focus,fitcoeffs
-
-
-
-	def autofocus(self,telescope_number,num_steps=10,defocus_step=0.3,af_exptime=5,af_filter="V",fau=False,target=None):
-
-		#XXX I think that this code is ready to removed. 
-
-
-		#S This is gonna look stupid, but I'm just going to place the call to newauto.autofocus in here
-		newauto.autofocus(self,telescope_number,num_steps=num_steps,defocus_step=defocus_step,\
-					  af_exptime=af_exptime,af_filter=af_filter,\
-					  fau=fau,target=target)
-		return
-		if spectroscopy: return
-
-		#S get the telescope we plan on working with
-		telescope = self.telescopes[telescope_number-1]
-		
-		af_target = {}
-		#S define aftarget dict for takeImage
-		af_target['name'] = 'autofocus'
-		af_target['exptime'] = af_exptime
-		af_target['filter'] = af_filter
-		af_target['spectroscopy'] = fau
-
-		# select the appropriate port (default to imager)
-		if 'spectroscopy' in af_target.keys():
-			if af_target['spectroscopy']:
-				m3port = telescope.port['FAU']
-			else: 
-				m3port = telescope.port['IMAGER']
-		else:
-			m3port = telescope.port['IMAGER']
-
-		#S our data path
-		datapath = '/Data/t' + str(telescope_number) + '/' + self.site.night + '/'
-
-		# wait for dome to be open
-		if telescope_number > 2:
-			dome = self.domes[1]
-		else:
-			dome = self.domes[0]
-		#S Get current time for measuring timeout
-		t0 = datetime.datetime.utcnow()
-#		"""
-		#S Loop to wait for dome to open, cancels afeter ten minutes
-		while dome.isOpen() == False:
-			self.logger.info('T' + str(telescope_number) + ': Enclosure closed; waiting for dome to open')
-			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
-			if timeelapsed > 600: 
-				self.logger.info('T' + str(telescope_number) + ': Enclosure still closed after 10 minutes; skipping autofocus')
-				return
-			time.sleep(30)
-#		"""
-
-		#S Initialize telescope, we want tracking ON
-		if not telescope.initialize(tracking=True, derotate=True):
-			telescope.recover(tracking=True, derotate=True)
-
-		#S make array of af_defocus_steps
-		defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)
-		#S Array of new positions for the focuser, using this rahter than step. 
-		poslist = defsteps*1000 + telescope.focus
-
-		#S Just need an empty list for the fwhm/hfr and std to append to. made FOCUSMEASure_LIST 
-		#Sbecause we don't necessarily know which value we want yet.
-		imagenum_list = []
-		focusmeas_list = []
-		stddev_list = []
-		numstar_list = []
-
-
-		"""
-		#S Actual autofocus sequence
-		for position in poslist:
-			med, std, numstars, imagenum = self.autofocus_step(telescope_num,position,af_exptime,af_filter)
-			focusmeas_list.append(med)
-			stddev_list.append(std)
-			numstar_list.append(numstars)
-			imagenum_list.append(imagenum)
-		"""
-		for step in defsteps:
-			#S set the new focus, and move there if necessary
-			newfocus = telescope.focus + step*1000.0
-			status = telescope.getStatus()
-			
-			#S ensure we have the correct port
-			telescope.m3port_switch(m3port)
-			#S move and wait for focuser
-			if newfocus <> status.focuser.position:
-				self.logger.info('T'+str(telescope_number) + ": Defocusing Telescope by " + str(step) + ' mm, to ' + str(newfocus))
-				telescope.focuserMove(newfocus)
-				#S Needed a bit longer to recognize focuser movement, changed from 0.3
-				time.sleep(.5)
-
-			#S Take image, recall takeimage returns the filename of the image. we have the datapath from earlier
-			imagename = self.takeImage(af_target,telescope_num=telescope_number)
-			imagenum_list.append(imagename.split('.')[4])
-
-			#S Sextract this guy, put in a try just in case. Defaults should be fine, which are set in newauto. NOt sextrator defaults
-			try: 
-				catalog = utils.sextract(datapath,imagename)
-				self.logger.debug('T' + str(telescope_number) + ': Sextractor success on '+catalog)
-			except: 
-				self.logger.exception('T' + str(telescope_number) + ': Sextractor failed on '+catalog)
-
-			#S get focus measure value, as well as standard deviation of the mean
-			try:
-				median, stddev, numstar = newauto.get_hfr_med(catalog,fau=fau,telescope=telescope)
-				self.logger.info('T'+str(telescope_number)+': Got hfr value from '+catalog)
-				focusmeas_list.append(median)
-				stddev_list.append(stddev)
-				numstar_list.append(numstar)
-			#S if the above fails, we set these obviously wrong numbers, and move on. We'll identify these points later.
-			except:
-				self.logger.exception('T' + str(telescope_number) + ': Failed to get hfr value from '+catalog)
-				#S This sets the default 'bad' value to 999. we want to maintain the size/shape of arrays for later use,
-				#S and will thus track these bad points for exclusion later.
-				focusmeas_list.append(-999)				
-				stddev_list.append(999)
-				numstar_list.append(0)
-		
-		#S define poslist from steps and the old best focus. this is an nparray
-		poslist = defsteps*1000 + telescope.focus
-		#S Convert to array for ease of mind
-		focusmeas_list = np.array(focusmeas_list)
-		stddev_list = np.array(stddev_list)
-		#S find the indices where we didnt hit the an error getting a measure
-		goodind = np.where(focusmeas_list <> -999)[0]
-
-		#S This try is here to catch any errors/exceptions raised out of fitquad. I think we should include exceptions if 
-		#S we are too far out of focus, etc to make this catch whenever we didn't find a best focus.
-		try:
-			#S this is in place to catch us if all the images fail to get sextracted or something else goes on.
-			#S probably a better way to do this, but we'll figure that out later.
-			if len(goodind) == 0:
-				self.logger.exception('T'+str(telescope_number)+' failed autofocus due to no medians')
-				raise Exception()
-			#S find the best focus
-			self.logger.debug('T'+str(telescope_number) +': fitting to '+str(len(goodind))+' points.')
-			new_best_focus,fitcoeffs = newauto.fitquadfindmin(poslist[goodind],focusmeas_list[goodind],\
-										  weight_list=stddev_list[goodind],\
-										  logger=self.logger,telescope_num=telescope_number)
-			self.logger.debug('T'+str(telescope_number)+': found a good fit.')
-		except:
-			#S if something went wrong, log and send email. May even want to send a text?
-			new_best_focus = None
-			self.logger.exception('T'+str(telescope_number)+' failed in finding new focus, and could probably use some help')
-			body = "Hey humans,\n\nI'm having trouble with autofocus, and need your assitance. You have a few options:\n"\
-			    +"-Try and figure what is going on with the newautofocus\n"\
-			    +"-Revert to PWI autofocus\n"\
-			    +"This may be tricky because a lot of this is worked into the observingScript, "\
-			    +"and you may be fighting with that for control of the telescope."\
-			    +" I would recommend stopping main.py, but it could be situational.\n\n"\
-			    +"I AM CONTINUING WITH NORMAL OPERATIONS USING OLD ''BEST'' FOCUS.\n\n"\
-			    +"Love,\nMINERVA\n\n"\
-			    +"P.S. Tips and tricks (please add to this list):\n"\
-			    +"-You could be too far off the nominal best focus, and the routine can't find a clean fit.\n"\
-			    +"-The aqawan could somehow be closed, and you're taking pictures that it can't find stars in.\n"\
-			    +"-You can now plot the results of any autofocus run, look into newauto.recordplot(). Just "\
-			    +"'python newauto.py' and enter the recordplot(path+record_name).\n"
-			mail.send("Autofocus failed on T"+str(telescope_number),body,level='serious')
-
-
-		#S Log the best focus.
-		self.logger.info('T' + str(telescope_number) + ': New best focus: ' + str(new_best_focus))
-
-		# if no sensible focus value measured, use the old value
-		if new_best_focus == None: new_best_focus = telescope.focus
-		
-		#S want to record old best focus
-		old_best_focus = telescope.focus
-		# update the telescope focus
-		telescope.focus = new_best_focus
-		
-		# move to the best focus
-		status = telescope.getStatus()
-		if telescope.focus <> status.focuser.position:
-			self.logger.info('T'+str(telescope_number) + ": Moving focus to " + str(telescope.focus))
-			telescope.focuserMove(telescope.focus)
-
-			# wait for focuser to finish moving
-			status = telescope.getStatus()
-			while status.focuser.moving == 'True':
-				self.logger.info('T' + str(telescope_number) + ': Focuser moving (' + str(status.focuser.position) + ')')
-				time.sleep(0.3)
-				status = telescope.getStatus()
-
-		# record values in the header
-		alt = str(float(status.mount.alt_radian)*180.0/math.pi)
-                try:    tm1 = str(status.temperature.primary)
-		except: tm1 = 'UNKNOWN'
-                try:    tm2 = str(status.temperature.secondary)
-                except: tm2 = 'UNKNOWN'
-                try:    tm3 = str(status.temperature.m3)
-		except: tm3 = 'UNKNOWN'
-		try:    tamb = str(status.temperature.ambient)
-		except: tamb = 'UNKNOWN'
-		try:    tback = str(status.temperature.backplate)
-                except: tback = 'UNKNOWN'
-
-		self.logger.info('T' + str(telescope_number) + ': Updating best focus to ' + str(telescope.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
-                f = open('focus.' + telescope.logger_name + '.txt','w')
-		f.write(str(telescope.focus))
-		f.close()
-                self.logger.info('T' + str(telescope_number) + ': Finished autofocus')
-
-		#S Record all the data to it's own run unique file for potential use later. Just 
-		#S don't want to be scraping through logs for it when we can just record it now.
-		#S Do we still want the logger line above?
-		try:
-			#S Check to make sure all the arrays are the same length and not zero.
-			if len(imagenum_list)==len(poslist)==len(focusmeas_list)==len(stddev_list)==len(numstar_list):
-				#S Stack them all together, then transpose so we can write them in columns 
-				autodata = np.vstack([imagenum_list,poslist,focusmeas_list,stddev_list,numstar_list]).transpose()
-				#S Name the data file as 'nYYYYMMDD.T#.autorecord.filter.AAAA.BBBB.txt', where AAAA is the image number on the 
-				#S first image of the autofocus sequence, and BBBB the last image number.
-				datafile = self.site.night+'.T'+str(telescope_number)+'.autorecord.'+af_filter+'.'+imagenum_list[0]+'.'+imagenum_list[-1]+'.txt'
-				with open(datapath+datafile,'a') as fd:
-					#S Write all the environment temps, etc. also record old and new best focii
-					fd.write('Old\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\n')
-					fd.write(str(old_best_focus)+'\t'+str(new_best_focus)+'\t'+tm1+'\t'+tm2+'\t'+tm3+'\t'+tamb+'\t'+tback+'\t'+alt+'\n')
-					#S Write a header with info on following columns
-					header = 'Column 1\tImage number\n'+\
-					    'Column 2\tFocuser position\n'+\
-					    'Column 3\tMedian focus measure\n'+\
-					    'Column 4\tSDOM\n'+\
-					    'Column 5\tNumber of stars'
-					#S save the array of good stuff
-					np.savetxt(fd,autodata,fmt='%s',header=header)
-			else:
-				self.logger.error('T'+str(telescope_number)+': Could not record autodata due to mismatch length in arrays')
-		except:
-			self.logger.exception('T'+str(telescope_number)+': unhandled error stopped record of autofocus results.')
 
 if __name__ == '__main__':
 

@@ -157,13 +157,20 @@ class CDK700:
 		telescopeStatus = self.getStatus()
 		self.m3port_switch(telescopeStatus.m3.port,force=True)
 
-		# turning on mount tracking, rotator tracking
+		# turning on/off mount tracking, rotator tracking
 		if tracking:
 			self.logger.info('T' + self.num + ': Turning mount tracking on')
 			self.mountTrackingOn()
+		else:
+			self.logger.info('T' + self.num + ': Turning mount tracking off')
+			self.mountTrackingOff()
+		
 		if derotate:
 			self.logger.info('T' + self.num + ': Turning rotator tracking on')
 			self.rotatorStartDerotating()
+		else:
+			self.logger.info('T' + self.num + ': Turning rotator tracking off')
+			self.rotatorStopDerotating()
 
 		return self.isInitialized(tracking=tracking,derotate=derotate)
 		
@@ -325,6 +332,30 @@ class CDK700:
 		"""
 
 		return self.pwiRequestAndParse(device="focuser"+str(port), cmd="move", position=position)
+
+	def focuserMoveAndWait(self,position,port=1,timeout=90.0):
+		self.focuserMove(position,port=port)
+
+		# wait for the focuser to start moving
+		time.sleep(2.0) 
+		status = self.getStatus()
+
+		t0 = datetime.datetime.utcnow()
+		elapsedTime = 0.0
+		
+		# wait for the focuser to finish moving
+		# or the timeout (90 seconds is about how long it takes to go from one extreme to the other)
+		while status.focuser.moving == 'True' and elapsedTime < timeout:
+			self.logger.info('Focuser moving (' + str(status.focuser.position) + ')')
+			time.sleep(0.3)
+			status = self.getStatus()
+			elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
+
+		if abs(float(status.focuser.position) - float(position)) > 10:
+			return False
+
+		return True
+
 
 	def focuserIncrement(self, offset, port=1):
 		"""
@@ -813,18 +844,18 @@ class CDK700:
 		#S make sure the m3 port is in the correct orientation
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
-				if m3port <> None: m3port = self.port['FAU']
+				if m3port == None: m3port = self.port['FAU']
 				#S Initialize the telescope
 				self.initialize(tracking=True,derotate=False)
 			else: 
-				if m3port <> None: m3port = self.port['IMAGER']
+				if m3port == None: m3port = self.port['IMAGER']
 				#S Initialize the telescope
 				self.initialize(tracking=True,derotate=True)
 				rotator_angle = self.solveRotatorPosition(target)
 				self.rotatorMove(rotator_angle,port=m3port)
 
 		else:
-			if m3port <> None: m3port = self.port['IMAGER']
+			if m3port == None: m3port = self.port['IMAGER']
 			self.initialize(tracking=True,derotate=True)
 			rotator_angle = self.solveRotatorPosition(target)
 			self.rotatorMove(rotator_angle,port=m3port)
@@ -833,13 +864,11 @@ class CDK700:
 		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
-
-### check on this; m3port not defined ####
 		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected, tracking=tracking, derotate=derotate):
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		else:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
-			self.recover()
+			self.recover(tracking=tracking, derotate=derotate)
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
 			return
@@ -884,25 +913,6 @@ class CDK700:
 		else:
 			self.logger.error('T%s: Bad M3 port specified (%s); using current port(%s)'%(self.num,m3port,telescopeStatus.m3.port))
 					   
-
-	def acquireTarget_old(self,ra,dec,pa=None):
-		self.initialize(tracking=True)
-	
-		self.logger.info('T' + self.num + ': Starting slew to J2000 ' + str(ra) + ',' + str(dec))
-		self.mountGotoRaDecJ2000(ra,dec)
-
-		if pa <> None:
-			self.logger.info('T' + self.num + ': Slewing rotator to PA=' + str(pa) + ' deg')
-			self.rotatorMove(pa)
-
-		if self.inPosition():
-			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra) + ',' + str(dec))
-		else:
-			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra) + ',' + str(dec))
-			self.recover()
-			self.acquireTarget(ra,dec,pa=pa)
-			return
-
 	def isReady(self,tracking=False,port=None,ra=None,dec=None,pa=None):
 		if not self.isInitialized():
 			#TODO
@@ -925,14 +935,21 @@ class CDK700:
 
 		self.logger.info('T' + self.num + ': Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
 		self.mountGotoAltAz(parkAlt, parkAz)
+
+#		self.initialize(tracking=False, derotate=False)
+#		self.logger.info('T' + self.num + ': Turning rotator tracking off')
+#		self.rotatorStopDerotating()
+		
 		if not self.inPosition(alt=parkAlt,az=parkAz, pointingTolerance=3600.0,derotate=False):
-			if self.recover(): self.park()
+			if self.recover(tracking=False, derotate=False): self.park()
 
 		self.logger.info('T' + self.num + ': Turning mount tracking off')
 		self.mountTrackingOff()
 
-	def recoverFocuser(self):
+	def recoverFocuser(self, focus, m3port):
 		timeout = 60.0
+
+		self.m3port_switch(m3port)
 
 		self.logger.info('T' + self.num + ': Beginning focuser recovery')
 
@@ -944,80 +961,15 @@ class CDK700:
 
 		self.initialize()
 		self.focuserConnect()
-		self.focuserMove(self.focus)
-		t0 = datetime.datetime.utcnow()
 
 		status = self.getStatus()
-		while status.focuser.moving == 'True':
-			self.logger.info('T' + self.num + ': Focuser moving (' + str(status.focuser.position) + ')')
-			time.sleep(0.3)
-			status = self.getStatus()
-			if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
-				self.logger.error('T' + self.num + ': Focus timed out')
-				mail.send('T' + self.num + ': Focuser timed out on ' + str(self.logger_name),"Try powercycling?",level='serious')
-				return
-		self.logger.info('T' + self.num + ': Focuser recovered')
-		
-	def autoFocus(self):
-
-		timeout = 360.0
-
-		self.initialize()
-		#S need tracking on for autofocus, not sure what will happen if we turn on while already on
-		self.mountTrackingOn()
-
-		self.logger.info('T' + self.num + ': Connecting to the focuser')
-		self.focuserConnect()
-
-		nominalFocus = self.focus
-		self.logger.info('T' + self.num + ': Moving to nominal focus (' + str(nominalFocus) + ')')
-		self.focuserMove(nominalFocus) # To get close to reasonable. Probably not a good general postion
-		time.sleep(5.0)
-		status = self.getStatus()
-		while status.focuser.moving == 'True':
-			self.logger.info('T' + self.num + ': Focuser moving (' + str(status.focuser.position) + ')')
-			time.sleep(0.3)
-			status = self.getStatus()
-			
-		self.logger.info('T' + self.num + ': Finished move to focus (' + str(status.focuser.position) + ')')
-
-
-		self.logger.info('T' + self.num + ': Starting Autofocus')
-		t0 = datetime.datetime.utcnow()
-		self.startAutoFocus()
-		status = self.getStatus()
-		#TODO do we want to put this in a thread so we can run all four at the same time?
-		while status.focuser.auto_focus_busy == 'True':
-			time.sleep(1)
-			status = self.getStatus()
-			if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
-				self.logger.error('T' + self.num + ': autofocus timed out')
-				self.recoverFocuser()
-				self.autoFocus()
-				return
-		
-		status = self.getStatus()
-		self.focus = float(status.focuser.position)
-		alt = str(float(status.mount.alt_radian)*180.0/math.pi)
-
-		try:    tm1 = str(status.temperature.primary)
-		except:	tm1 = 'UNKNOWN'
-		try:	tm2 = str(status.temperature.secondary)
-		except:	tm2 = 'UNKNOWN'
-		try:	tm3 = str(status.temperature.m3)
-		except:	tm3 = 'UNKNOWN'
-	        try:	tamb = str(status.temperature.ambient)
-		except:	tamb = 'UNKNOWN'
-		try:	tback = str(status.temperature.backplate)
-		except: tback = 'UNKNOWN'
-		
-		self.logger.info('T' + self.num + ': Updating best focus to ' + str(self.focus) + ' (TM1=' + tm1 + ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
-		f = open('focus.' + self.logger_name + '.txt','w')
-		f.write(str(self.focus))
-		f.close()
-		
-		self.logger.info('T' + self.num + ': Finished autofocus')
-
+		if self.focuserMoveAndWait(self.focus[m3port],m3port):
+			self.logger.info('T' + self.num + ': Focuser recovered')			
+		else:
+			self.logger.error('T' + self.num + ': Focus timed out')
+			mail.send('T' + self.num + ': Focuser failed on ' + str(self.logger_name),"Try powercycling?",level='serious')
+			return
+					
 	def shutdown(self):
 		self.rotatorStopDerotating()
 		self.focuserDisconnect()

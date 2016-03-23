@@ -202,7 +202,10 @@ class server:
                         fau = True
                 elif len(param.split()) == 1:
                         file_name = param.split()[0]
-                        fau = False
+			if file_name == 'fau':
+				self.logger.error("empty filename")
+				return 'fail'
+                        fau = False	
                 else:
 			self.logger.error('parameter mismatch')
 			return 'fail'

@@ -59,12 +59,12 @@ class PT100:
 
     def logtemp(self):
         
-        self.sock.settimeout(5.0)
+        self.sock.settimeout(10.0)
         self.sock.gettimeout()
 
         self.logger.info("Sending data lock")
-
         self.sock.sendto("lock",(self.ip,self.port))
+
         val = self.sock.recv(2048)
         if 'Lock Success' not in val:
             self.logger.error("Error locking the data logger to this computer: " + val)
@@ -157,6 +157,7 @@ if __name__ == "__main__":
     for config in configs:
         pt100s.append(PT100(config=config, base=base))
         threads.append(threading.Thread(target = pt100s[n].logtemp_robust))
+        threads[n].name = config.split(".")[0]
         threads[n].start()
         n += 1
 

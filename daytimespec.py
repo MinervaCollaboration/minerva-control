@@ -43,9 +43,6 @@ if __name__ == '__main__':
 	with open(minerva.base_directory + '/minerva_library/sunOverride.txt','w') as fh:
 		fh.write(str(datetime.datetime.utcnow()))
 
-#	# open the north roof segment only if the weather is ok
-#	minerva.domeControlThread(day=True)
-
 	with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
 		fh.write(str(datetime.datetime.utcnow()))
 		
@@ -113,7 +110,11 @@ if __name__ == '__main__':
 		status = minerva.domes[0].status()
 		isOpen = status['Shutter1'] == 'OPEN'
 		while isOpen and (datetime.datetime.utcnow() - endtime).total_seconds() < 0:
-			target['exptime'] = [150]
+			minerva.logger.info("Beginning daytimesky spectrum with iodine")
+			minerva.takeSpectrum(target)
+			
+			'''
+			# alternate between with and without iodine
 			target['i2'] = True
 			for i in range(target['num'][0]): 
 				print 'this is before the break'
@@ -127,6 +128,7 @@ if __name__ == '__main__':
 				if (datetime.datetime.utcnow() - endtime).total_seconds() > 0: break
 				minerva.logger.info("Beginning daytimesky spectrum without iodine")
 				minerva.takeSpectrum(target)
+			'''
 
 			status = minerva.domes[0].status()
 			isOpen = status['Shutter1'] == 'OPEN'

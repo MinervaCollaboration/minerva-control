@@ -11,7 +11,7 @@ import time
 import mail
 import math
 import copy
-
+import glob
 
 #S A custom exception class, so we can catch the results of fits on a case by 
 #S case basis.
@@ -27,7 +27,7 @@ class afException(Exception):
 #S Sort of carbon copy of fitquadfindmin, just beacuse we want all coeffs and 
 #S don't want to force that out of 
 def recordplot(recordfile,step=1):
-    raw_data = np.genfromtxt(recordfile,skip_header=2)
+    raw_data = np.genfromtxt(recordfile,skip_header=5)
     poslist = raw_data[::step,1].astype(float)
     hfrlist = raw_data[::step,2].astype(float)
     stdlist = raw_data[::step,3].astype(float)
@@ -62,10 +62,14 @@ def quad(x,c):
 def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=.8):
     #S get a dictionary containg the columns of a sextracted image
     cata = utils.readsexcat(catfile)
+
     if not ('FLUX_RADIUS' in cata.keys()):
         telescope.logger.exception('No hfr in '+catfile)
         raise Exception()
-#        raise afException(message='No FLUX_RADIUS in keys')
+
+    if len(cata['FLUX_RADIUS']) == 0:
+        telescope.logger.error('No stars in image')
+        raise Exception()
 
     if not ('A_IMAGE' in cata.keys() and 'B_IMAGE' in cata.keys()):
         telescope.logger.error('No major/minor axes in '+catfile)
@@ -306,49 +310,45 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
     return best_focus, coeffs
 
 def autofocus_step(control,telescope_num,newfocus,af_target):
-#    pass
+    telescope_name = "T" + str(telescope_num) + ':'
     
-    telescope.logger.info("Defocusing by " + str(step) + \
-                              ' mm, to ' + str(newfocus))
-        #S start time for a timeout in moving the focuser
-    fm_start = datetime.datetime.utcnow()
-        #S While we are more than 10um from the target focus. Might be a little
-        #S stringent. 
-    while (newfocus - float(status.focuser.position)) > 10.:
-        status = telescope.focuserMove(newfocus,port=m3port)
-            #S Needed a bit longer to recognize focuser movement, changed
-            #S from 0.3
-        time.sleep(.5)
-            #XXX What to do if we can't move the autofocus... most likely
-            #S try and recover, but I'm not sure. I have tested that this 
-            #S get's the postion of the currently selected port, but could
-            #S still see problems with the ambiguity. we may want to find a 
-            #S a way to select focuser with port, but it gets a bit tricky as
-            #S the telescope.status has attributes of '.focuse1' and 
-            #S '.focuser2', so it would be a bunch of conditionals. 
-        if (datetime.datetime.utcnow()-fm_start).total_seconds()>120.:
-            telescope.logger.exception('Failed to move focuser')
+    # choose the telescope (without assuming the list is complete)
+    for telescope in control.telescopes:
+        if telescope.num == str(telescope_num): break
 
-        #S Take image, recall takeimage returns the filename of the image.
-        #S we have the datapath from earlier
+    status = telescope.getStatus()
+    m3port = status.m3.port
+
+    if not telescope.focuserMoveAndWait(newfocus,port=m3port):
+        telescope.recoverFocuser(newfocus,m3port)
+
     if af_target['spectroscopy']:
         imagename = control.takeFauImage(af_target,telescope_num=\
-                                             telescope_number)
+                                             telescope_num)
         imnum = imagename.split('.')[4]
     else:
         imagename = control.takeImage(af_target,telescope_num=\
-                                          telescope_number)
+                                          telescope_num)
         imnum = imagename.split('.')[4]
+
     if imagename == 'error':
         telescope.logger.exception('Failed to save image')
-#                    control.imager[telescope_number-1].recover()
-        medain = -999
+        #control.imager[telescope_num-1].recover()
+        mediann = -999
         stddev = 999
         numstar = 0
         imnum = '9999'
         return median,stddev,numstar,imnum
     
+    datapath = '/Data/t' + telescope.num + '/' + control.site.night + '/'
 
+    catalog = '.'.join(imagename.split('.')[0:-2]) + '.cat'
+    
+    # default (bad) values
+    # will be overwritten by good values or flagged and not used
+    median = -999
+    stddev = 999
+    numstar = 0
 
     #S Sextract this guy, put in a try just in case. Defaults should
     #S be fine, which are set in newauto. NOt sextrator defaults
@@ -357,26 +357,15 @@ def autofocus_step(control,telescope_num,newfocus,af_target):
         telescope.logger.debug('Sextractor success on '+catalog)
     except:
         telescope.logger.exception('Sextractor failed on '+catalog)  
-        #S need to change catalog, probably causing problems.
-#        catalog = ''
-        #S get focus measure value, as well as standard deviation of the
-        #S mean
+        return median,stddev,numstar,imnum
+
     try:
         median,stddev,numstar=new_get_hfr(
             catalog,telescope=telescope,fau=af_target['spectroscopy'])
         telescope.logger.info('Got hfr value from '+ catalog)
-        #S if the above fails, we set these obviously wrong numbers, and
-        #S move on. We'll identify these points later.
     except:
-        telescope.logger.exception('Failed to get hfr value from '+\
-                                       catalog)
-            #S Set the default 'bad' value to 999. we want to maintain
-            #S the size/shape of arrays for later use, and will thus track 
-            #S these bad points for exclusion later.
-        median = -999
-        stddev = 999
-        numstar = 0
-    
+        telescope.logger.exception('Failed to get hfr value from '+catalog)
+
     return median,stddev,numstar,imnum
 
 
@@ -437,8 +426,7 @@ def new_autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     #S Get current time for measuring timeout
     t0 = datetime.datetime.utcnow()
 
-    
-    #S Loop to wait for dome to open, cancels afeter ten minutes
+    #S Loop to wait for dome to open, cancels after ten minutes
     while (not dome.isOpen()) and (not dome_override):
         telescope.logger.info('Enclosure closed; waiting for dome to open')
         timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
@@ -471,35 +459,9 @@ def new_autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     for step in initsteps:
         #S set the new focus, and move there if necessary
         newfocus = telescope.focus[m3port] + step*1000.0
-        status = telescope.getStatus()
 
-        #S ensure we have the correct port
-        telescope.m3port_switch(m3port)
-        #S move and wait for focuser
-        telescope.logger.info("Defocusing by " + str(step) + \
-                                  ' mm, to ' + str(newfocus))
-        #S start time for a timeout in moving the focuser
-        fm_start = datetime.datetime.utcnow()
-        #S While we are more than 10um from the target focus. Might be a little
-        #S stringent. 
-        while (newfocus - float(status.focuser.position)) > 10.:
-            status = telescope.focuserMove(newfocus,port=m3port)
-            #S Needed a bit longer to recognize focuser movement, changed
-            #S from 0.3
-            time.sleep(.5)
-            #XXX What to do if we can't move the autofocus... most likely
-            #S try and recover, but I'm not sure. I have tested that this 
-            #S get's the postion of the currently selected port, but could
-            #S still see problems with the ambiguity. we may want to find a 
-            #S a way to select focuser with port, but it gets a bit tricky as
-            #S the telescope.status has attributes of '.focuse1' and 
-            #S '.focuser2', so it would be a bunch of conditionals. 
-            if (datetime.datetime.utcnow()-fm_start).total_seconds()>120.:
-                telescope.logger.exception('Failed to move focuser')
-        #S take the image, get the values, do everything really. I might
-        #S out the focuser movement in there as well
-        median,stddev,numstars,imnum = \
-            autofocus_step(control,telescope_num,af_target)
+        #S take the image, get the values, do everything really.
+        median,stddev,numstars,imnum = autofocus_step(control,telescope_num,newfocus,af_target)
                                                           
         focusmeas_list.append(median)
         stddev_list.append(stddev)
@@ -508,10 +470,16 @@ def new_autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
 
 
 def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
-                  target=None,dome_override=False):
+                  target=None,dome_override=False,simulate=False):
 
     #S get the telescope we plan on working with, now redundant
-    telescope = control.telescopes[telescope_number-1]
+    for telescope in control.telescopes:
+        if telescope.num == str(telescope_number): break
+
+    if telescope_number > 2: domenum = '2'
+    else: domenum = '1'
+    for dome in control.domes:
+        if dome.num == domenum: break
 
     #S Define/make sure we have a target
     if target != None:
@@ -559,23 +527,23 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     datapath = '/Data/t' + str(telescope_number) + '/' + \
         control.site.night + '/'
 
+
     # wait for dome to be open
-    if telescope_number > 2:
-        dome = control.domes[1]
-    else:
-        dome = control.domes[0]
     # S Get current time for measuring timeout
     t0 = datetime.datetime.utcnow()
 
-    # S Loop to wait for dome to open, cancels afeter ten minutes
-    while (not dome.isOpen()) and (not dome_override):
-        telescope.logger.info('Enclosure closed; waiting for dome to open')
-        timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
-        if timeelapsed > 600:
-            telescope.logger.info('Enclosure still closed after '+\
+    # we don't normally want to do an autofocus when the dome is closed, 
+    # but we want to be able to test it during the day
+    if not simulate:
+        # S Loop to wait for dome to open, cancels after ten minutes
+        while (not dome.isOpen()) and (not dome_override):
+            telescope.logger.info('Enclosure closed; waiting for dome to open')
+            timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
+            if timeelapsed > 600:
+                telescope.logger.info('Enclosure still closed after '+\
                                     '10 minutes; skipping autofocus')
-            return
-        time.sleep(30)
+                return
+            time.sleep(30)
 
     #S make array of af_defocus_steps
     defsteps = np.linspace(-defocus_step*(num_steps/2),\
@@ -600,6 +568,15 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         #S move and wait for focuser
         telescope.logger.info("Defocusing by " + str(step) + \
                                   ' mm, to ' + str(newfocus))
+
+        median,stddev,numstars,imnum = autofocus_step(control,telescope_number,newfocus,af_target)
+        imagenum_list.append(str(imnum))
+        focusmeas_list.append(median)
+        stddev_list.append(stddev)
+        numstar_list.append(numstars)
+
+        # JDE 2016-03-22: why not use autofocus_step?
+        '''
         #S start time for a timeout in moving the focuser
         fm_start = datetime.datetime.utcnow()
         #S While we are more than 10um from the target focus. Might be a little
@@ -622,11 +599,10 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         #S Take image, recall takeimage returns the filename of the image.
         #S we have the datapath from earlier
         if af_target['spectroscopy']:
-            imagename = control.takeFauImage(af_target,telescope_num=\
-                                                 telescope_number)
+            imagename = control.takeFauImage(af_target,telescope_num=telescope_number)
         else:
-            imagename = control.takeImage(af_target,telescope_num=\
-                                              telescope_number)
+            imagename = control.takeImage(af_target,telescope_num=telescope_number)
+
         if imagename == 'error':
             telescope.logger.exception('Failed to save image')
             focusmeas_list.append(-999)
@@ -657,14 +633,14 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         #S if the above fails, we set these obviously wrong numbers, and
         #S move on. We'll identify these points later.
         except:
-            telescope.logger.exception('Failed to get hfr value from '+\
-                                           catalog)
+            telescope.logger.exception('Failed to get hfr value from ' + catalog)
             #S Set the default 'bad' value to 999. we want to maintain
             #S the size/shape of arrays for later use, and will thus track 
             #S these bad points for exclusion later.
             focusmeas_list.append(-999)
             stddev_list.append(999)
             numstar_list.append(0)
+    '''
             
     #S define poslist from steps and the old best focus. this is an
     #S nparray
@@ -750,8 +726,8 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         telescope.focuserMove(telescope.focus[m3port]+\
                                   telescope.focus_offset[m3port],port=m3port)
         # wait for focuser to finish moving
+        time.sleep(0.5)
         status = telescope.getStatus()
-        time.sleep(0.3)
         while status.focuser.moving == 'True':
             telescope.logger.info('Focuser moving'+\
                                       ' (' + str(status.focuser.position) + ')')
@@ -835,7 +811,11 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     
 
 if __name__ == '__main__':
-    import ipdb
+
+    filenames = glob.glob('/Data/t?/n20160323/*autorecord*.txt')
+    for filename in filenames:
+        print filename
+        recordplot(filename)
     ipdb.set_trace()
     print new_get_hfr('/Data/t1/n20160128/n20160128.T1.autofocus.V.0472.cat')
     print get_hfr_med('/Data/t1/n20160128/n20160128.T1.autofocus.V.0472.cat')
