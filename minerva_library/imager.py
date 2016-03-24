@@ -527,7 +527,7 @@ class imager:
                 return self.kill_remote_task('PWI.exe')
         def start_server(self):
                 ret_val = self.send_to_computer('schtasks /Run /TN "telcom server"')
-		time.sleep(20)
+		time.sleep(60)
 		return ret_val
 
         def send_to_computer(self, cmd):
@@ -577,7 +577,6 @@ class imager:
 #                self.kill_PWI()
                 self.kill_server()
                 self.start_server()
-		time.sleep(5.0)
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by restarting maxim') 
                         return True
@@ -589,7 +588,6 @@ class imager:
                 self.kill_server()
                 self.powercycle()
                 self.start_server()
-		time.sleep(5.0)
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it') 
                         return True

@@ -1869,7 +1869,7 @@ class control:
 				telstr = str(telnum)
 
 			if telnum < 1 or telnum > 4:
-				self.logger.error("Invalid telscope number (" + str(telnum) + ")")
+				self.logger.error("Invalid telescope number (" + str(telnum) + ")")
 				return f
 
 			telescope = self.telescopes[int(telnum)-1]
@@ -2475,7 +2475,7 @@ class control:
 			try:
 				newauto.autofocus(self,telescope_num,fau=fau,target=target)
 			except:
-				self.telescopes[telscope_num-1].logger.exception('Failed in autofocus')
+				self.telescopes[telescope_num-1].logger.exception('Failed in autofocus')
 			return
 		
                 #TODOACQUIRETARGET Needs to be switched to take dictionary arguement

@@ -776,7 +776,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             autodata = np.vstack([imagenum_list,poslist,focusmeas_list,\
                                       stddev_list,numstar_list]).transpose()
             #S Name the data file as:
-            #S 'nYYYYMMDD.T#.autorecord.filter.AAAA.BBBB.txt',
+            #S 'nYYYYMMDD.T#.autorecord.port#.filter.AAAA.BBBB.txt',
             #S where AAAA is the image number on the first image of the
             #S autofocus sequence, and BBBB the last image number.
             datafile = control.site.night+'.T'+str(telescope_number)+\

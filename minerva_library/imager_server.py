@@ -109,6 +109,7 @@ class server:
 			# Connect to an instance of Maxim's camera control.
 			# (This launches the app if needed)
 			self.cam = Dispatch("MaxIm.CCDCamera")
+			# self.cam.quit()
 
 			# Connect to the camera 
 			self.logger.info('Connecting to camera') 
@@ -375,6 +376,12 @@ class server:
 
 	def restart_maxim(self):
 		try:
+			self.cam.quit()
+			self.maxim.quit()
+			time.sleep(5)
+		except: pass
+		try:
+			# just in case it didn't die...
 			subprocess.call(['Taskkill','/IM','MaxIm_DL.exe','/F'])
 			time.sleep(5)
 			self.logger.info('Reconnecting')

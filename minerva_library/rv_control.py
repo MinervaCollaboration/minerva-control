@@ -185,16 +185,16 @@ def doSpectra(minerva, target, tele_list):
 
         tel_num = tele_list[t]
         for telescope in minerva.telescopes:
-            if telscope.num == str(tel_num): break
+            if telescope.num == str(tel_num): break
         for camera in minerva.cameras:
             if camera.telnum == str(tel_num): break
 
         if 'backlight' not in camera.file_name:
             minerva.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
         else:
-            xfiber, yfiber = find_fiber(camera.file_name, camera)
+            xfiber, yfiber = find_fiber('/Data/t' + str(tel_num) + '/' + minerva.night + '/' + camera.file_name, camera)
             if xfiber <> None:
-                minerva.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + str(backlit[-1]))
+                minerva.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + camera.file_name)
                 camera.fau.xfiber = xfiber
                 camera.fau.yfiber = yfiber
             else:
