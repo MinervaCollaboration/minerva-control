@@ -112,7 +112,6 @@ class imager:
 	def send(self,msg,timeout):
 
 		self.logger.debug("Beginning serial communications with the imager server")
-#		with self.lock:
 		if True:
 
 			telescope_name = 'T' + self.telnum + ': '
@@ -120,14 +119,12 @@ class imager:
 				s = self.connect_server()
 			except:
 				self.logger.error(telescope_name + "connection lost")
-#				self.lock.release()
 				if self.recover_server(): return self.send(msg,timeout) 
 				return 'fail'
 			try: 
 				s.settimeout(3)
 			except:
 				self.logger.error(telescope_name + "failed to set timeout")
-#				self.lock.release()
 				if self.recover_server(): return self.send(msg,timeout) 
 				return 'fail'
 			
@@ -143,7 +140,6 @@ class imager:
 				data = s.recv(1024)
 			except:
 				self.logger.error(telescope_name + "connection timed out")
-#				self.lock.release()
 				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
 
@@ -153,7 +149,6 @@ class imager:
 				data_ret = data.split()[0]
 			except:
 				self.logger.error(telescope_name + "error processing server response")
-#				self.lock.release()
 				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
 
@@ -455,12 +450,6 @@ class imager:
                 self.pdu.inst.on()
 		time.sleep(30)
 
-	def restartmaxim(self):
-		telescope_name = 'T' + self.telnum + ': '
-		self.logger.info(telescope_name + 'Killing maxim') 
-		if self.send('restart_maxim none',15) == 'success': return True
-		else: return False
-		
 	def recover_server(self):
                 telescope_name = 'T' + self.telnum + ': '
 
@@ -469,8 +458,12 @@ class imager:
 		# this requires winexe on linux and a registry key on each Windows (7?) machine (apply keys.reg in dependencies folder):
 		self.logger.warning(telescope_name + 'Server failed, beginning recovery') 
 	
+
+		# ****** with improved self.recover() function, I don't think this is necessary...*******
 		if self.nserver_failed > 1:
 			self.logger.warning(telescope_name + 'Server failed more than once; try power cycling the camera')
+
+			# if these don't work, we're in trouble
 			if not self.kill_server(): ipdb.set_trace()
 			if not self.kill_maxim(): ipdb.set_trace()
 			self.powercycle()
@@ -482,39 +475,28 @@ class imager:
 		if self.nserver_failed > 3:
 			mail.send(telescope_name + 'Server failed','',level='serious')
 			sys.exit()
+		# ****** with improved self.recover() function, I don't think this is necessary...*******
+
 		
-
-                # try to re-connect
-#                if self.connect_server():
-#                        self.logger.info(telescope_name + 'recovered by reconnecting') 
-#			time.sleep(1)
-#                        return True
-
+		# restart the server
                 self.logger.warning(telescope_name + 'Restarting server') 
-                if not self.kill_server(): ipdb.set_trace()
-                if not self.kill_maxim(): ipdb.set_trace()
 
-		# this should be a level above -- need to try a graceful shutdown first
-#                if not self.kill_PWI(): ipdb.set_trace()
+		# if these don't work, we're in big trouble
+                if not self.kill_server(): return False
+                if not self.kill_maxim(): return False
 		time.sleep(10)
                 if not self.start_server(): 
 			self.logger.error(telescope_name + "failed to start server")
 			return False
 
 		return True
-		
-                # try to re-connect again
-                if self.connect_server():
-                        self.logger.info(telescope_name + 'recovered by restarting the server') 
-                        return True
-
-                ipdb.set_trace()
-                return False
 
         def kill_remote_task(self,taskname):
                 return self.send_to_computer("taskkill /IM " + taskname + " /f")
         def kill_server(self):
                 return self.kill_remote_task('python.exe')
+        def quit_maxim(self):
+		return (self.send('quit_maxim none',30)).split()[0] == 'success'		
         def kill_maxim(self):
                 return self.kill_remote_task('MaxIm_DL.exe')
         def kill_PWI(self):
@@ -561,75 +543,64 @@ class imager:
                         return True
                 return True	
 
+	# This function attempts to automatically recover the camera using 
+	# increasingly drastic measures. If reconnecting, restarting maxim, 
+	# power cycling the camera, and rebooting the machine don't work, it 
+	# will email for help
 	def recover(self):
 		self.logger.warning('T' + self.telnum + ': Camera failed, beginning recovery') 
                 
+		# disconnect and reconnect camera
                 self.disconnect_camera()
 		time.sleep(5.0)
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by reconnecting') 
                         return True
 
+		# quit and restart maxim
                 self.logger.warning('T' + self.telnum + ': Camera failed to connect; restarting maxim') 
-                self.disconnect_camera()
-		time.sleep(5.0)
-                self.kill_maxim()
-#                self.kill_PWI()
-                self.kill_server()
-                self.start_server()
+		self.quit_maxim()
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by restarting maxim') 
                         return True
 
+		# force quit and restart maxim
+                self.logger.warning('T' + self.telnum + ': Camera failed to connect; restarting maxim') 
+		self.quit_maxim()
+		self.kill_maxim()
+                if self.connect_camera():
+                        self.logger.info('T' + self.telnum + ': Camera recovered by restarting maxim') 
+                        return True
+
+		# power cycle camera
                 self.logger.warning('T' + self.telnum + ': Camera failed to recover after restarting maxim; power cycling the camera') 
-                self.disconnect_camera()
-                self.kill_maxim()
-#                self.kill_PWI()
-                self.kill_server()
+                self.quit_maxim()
+		self.kill_maxim()
                 self.powercycle()
-                self.start_server()
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it') 
                         return True
 
-                self.logger.warning('T' + self.telnum + ': Camera failed to recover after power cycling the camera; trying a longer down time') 
-                self.disconnect_camera()
-                self.kill_maxim()
-#                self.kill_PWI()
-                self.kill_server()
+		# power cycle camera and wait longer?
+                self.logger.warning('T'+self.telnum+': Camera failed to recover after power cycling the camera; trying a longer down time') 
+		self.quit_maxim()
                 self.powercycle(downtime=300)
-                self.start_server()
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it with a longer downtime') 
                         return True
 
+		'''
+		# power cycle camera and wait 20 minutes!
                 self.logger.warning('T' + self.telnum + ': Camera failed to recover after power cycling the camera; trying a 20 minute down time') 
-                self.disconnect_camera()
-                self.kill_maxim()
-#                self.kill_PWI()
-                self.kill_server()
+		self.quit_maxim()
                 self.powercycle(downtime=1200)
-                self.start_server()
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it with a longer downtime') 
                         return True
 
-		filename = 'imager_' + self.telnum + '.error'
-		while not self.connect_camera():
-			mail.send("Camera on T" + self.telnum + " failed to connect","You must connect the camera and delete the file " + filename + " to restart operations.",level="serious")
-			fh = open(filename,'w')
-			fh.close()
-			while os.path.isfile(filename):
-				time.sleep(1)
-		return self.connect_camera()
-
-
-                # I don't think this is actually necessary or helpful...
+		# reboot the machine???
                 self.logger.warning('T' + self.telnum + 'Camera failed to recover after power cycling the camera; rebooting the machine') 
-                self.disconnect_camera()
-                self.kill_maxim()
-#                self.kill_PWI()
-                self.kill_server()
+		self.quit_maxim()
                 self.pdu.inst.off()
                 self.send_to_computer("shutdown -s")
                 time.sleep(60) # wait for it to shut down
@@ -645,6 +616,21 @@ class imager:
                 if self.connect_camera():
                         self.logger.info('T' + self.telnum + ': Camera recovered by rebooting the machine') 
                         return True
+		'''
+
+		# I'm out of ideas; ask humans for help
+		filename = self.base_directory + '/minerva_library/imager_' + self.telnum + '.error'
+		while not self.connect_camera():
+			mail.send("Camera on T" + self.telnum + " failed to connect",
+				  "You must connect the camera and delete the file " + 
+				  filename + " to restart operations.",level="serious")
+			fh = open(filename,'w')
+			fh.close()
+			while os.path.isfile(filename):
+				time.sleep(1)
+		return self.connect_camera()
+
+
 
                 
 		

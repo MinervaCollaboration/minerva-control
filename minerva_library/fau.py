@@ -253,8 +253,6 @@ if __name__ == '__main__':
 			test_imager.disconnect_camera()
 		elif choice == 'o':
 			test_imager.powercycle()
-		elif choice == 'p':
-			test_imager.restartmaxim()
 		elif choice == 'q':
 			test_imager.recover()
 		else:
