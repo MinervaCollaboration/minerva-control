@@ -109,21 +109,10 @@ class server:
 			# Connect to an instance of Maxim's camera control.
 			# (This launches the app if needed)
 			self.cam = Dispatch("MaxIm.CCDCamera")
-			# self.cam.quit()
 
 			# Connect to the camera 
 			self.logger.info('Connecting to camera') 
 			self.cam.LinkEnabled = True
-
-			# Prevent the camera from disconnecting when we exit
-			self.logger.info('Preventing the camera from disconnecting when we exit') 
-			self.cam.DisableAutoShutdown = True
-
-			# If we were responsible for launching Maxim, this prevents
-			# Maxim from closing when our application exits
-			self.logger.info('Preventing maxim from closing upon exit')
-			self.maxim = Dispatch("MaxIm.Application")
-			self.maxim.LockApp = True
 			
 			#S Turn on the cooler so we don't hit any issues with self.safe_close
 			self.cam.CoolerOn = True
@@ -374,21 +363,13 @@ class server:
 		except:
 			return 'fail'
 
-	def restart_maxim(self):
-		try:
-			self.cam.quit()
-			self.maxim.quit()
-			time.sleep(5)
-		except: pass
-		try:
-			# just in case it didn't die...
-			subprocess.call(['Taskkill','/IM','MaxIm_DL.exe','/F'])
-			time.sleep(5)
-			self.logger.info('Reconnecting')
-			self.connect_camera()
-			return 'success'
-		except:
-			return 'fail'
+        def quit_maxim(self):
+                try:
+                        self.cam = None
+                        return 'success'
+                except:
+                        self.logger.exception("quitting maxim failed")
+                        return 'fail'
 	
 	def disconnect_camera(self):
 		try:
@@ -453,8 +434,8 @@ class server:
 			response = self.set_temperature(tokens[1])
 		elif tokens[0] == 'get_temperature':
 			response = self.get_temperature()
-		elif tokens[0] == 'restart_maxim':
-			response = self.restart_maxim()
+		elif tokens[0] == 'quit_maxim':
+			response = self.quit_maxim()
 		else:
 			self.logger.info('command not recognized: (' + tokens[0] +')')
 			response = 'fail'
@@ -492,21 +473,7 @@ class server:
 			self.process_command(repr(data).strip("'"),conn)
 		s.close()
 		self.run_server()
-        """
-        def safe_close(self,signal):
-                return
-                #NOTE There is a time.sleep(1) in the disconnect functions
-                #print self.get_status('CoolerOn')
-                print threading._active
-                import pythoncom
-                pythoncom.CoInitialize()
-                print self.disconnect_camera()
-                #S Actually close down maxim
-                #subprocess.call(['Taskkill','/IM','MaxIm_DL.exe','/F'])
-                time.sleep(3)
-                print 'slept'
-                pass
-        """
+
 if __name__ == '__main__':
     if socket.gethostname() == 'Minervared2-PC':
         config_file = 'imager_server_red.ini'
