@@ -33,8 +33,8 @@ class site:
 			self.elevation = float(config['Setup']['ELEVATION'])
 			self.logger_name = config['Setup']['LOGNAME']
 			# touch a file in the current directory to enable cloud override
-			self.cloudOverride = os.path.isfile('cloudOverride.txt') 
-			self.sunOverride = os.path.isfile('sunOverride.txt')
+			self.cloudOverride = os.path.isfile(self.base_directory + '/minerva_library/cloudOverride.txt') 
+			self.sunOverride = os.path.isfile(self.base_directory + '/minerva_library/sunOverride.txt')
 			
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -256,21 +256,32 @@ class site:
 		# if it's open, use the limits to close
 		if domeopen:
 			self.logger.debug("Enclosure open; using the close limits")
-			weatherLimits = self.closeLimits
+			weatherLimits = copy.deepcopy(self.closeLimits)
 		else:
 			self.logger.debug("Enclosure closed; using the open limits")
-			weatherLimits = self.openLimits
+			weatherLimits = copy.deepcopy(self.openLimits)
 			
 		# change it during execution
-		if os.path.exists('sunOverride.txt'): self.sunOverride = True
-		if os.path.exists('cloudOverride.txt'): self.cloudOverride = True
+		if os.path.exists(self.base_directory + '/minerva_library/sunOverride.txt'): self.sunOverride = True
+		else: self.sunOverride = False
+		if os.path.exists(self.base_directory + '/minreva_library/cloudOverride.txt'): self.cloudOverride = True
+		else: self.cloudOverride = False
 
-		if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]
+		if self.sunOverride:
+			weatherLimits['sunAltitude'] = [-90,90]
 		if self.cloudOverride: 
 			weatherLimits['MearthCloud'] = [-999,999]
 			weatherLimits['HATCloud'] = [-999,999]
 			weatherLimits['AuroraCloud'] = [-999,999]
 			weatherLimits['MINERVACloud'] = [-999,999]
+
+		if weatherLimits['sunAltitude'][1] == 90:
+			self.logger.info("Sun override in place!")
+		if self.closeLimits['sunAltitude'][1] == 90:
+			self.logger.info("close limits have been modified; this shouldn't happen!")
+		if self.openLimits['sunAltitude'][1] == 90:
+			self.logger.info("open limits have been modified; this shouldn't happen!")
+
 
 		# get the current weather, timestamp, and Sun's position
 		self.getWeather()

@@ -2624,8 +2624,10 @@ class control:
 
 	def endNight(self, num=0, email=True, night=None, kiwispec=True):
 
-		if os.path.exists('aqawan1.request.txt'): os.remove('aqawan1.request.txt')
-		if os.path.exists('aqawan2.request.txt'): os.remove('aqawan2.request.txt')
+		if os.path.exists(self.base_directory + '/minerva_library/aqawan1.request.txt'): 
+			os.remove(self.base_directory + '/minerva_library/aqawan1.request.txt')
+		if os.path.exists(self.base_directory + '/minerva_library/aqawan2.request.txt'): 
+			os.remove(self.base_directory + '/minerva_library/aqawan2.request.txt')
 		
 		#S This implementation should allow you to specify a night you want to 'clean-up',
 		#S or just run end night on the current night. I'm not sure how it will act
@@ -2974,8 +2976,10 @@ class control:
 		self.telescope_park(telescope_num)
 
 		# all done; close the domes
-		if os.path.exists('aqawan1.request.txt'): os.remove('aqawan1.request.txt')
-		if os.path.exists('aqawan2.request.txt'): os.remove('aqawan2.request.txt')
+		if os.path.exists(self.base_directory + '/minerva_library/aqawan1.request.txt'): 
+			os.remove(self.base_directory + '/minerva_library/aqawan1.request.txt')
+		if os.path.exists(self.base_directory + '/minerva_library/aqawan2.request.txt'): 
+			os.remove(self.base_directory + '/minerva_library/aqawan2.request.txt')
 
 		if CalibEndInfo['nbiasEnd'] <> 0 or CalibEndInfo['ndarkEnd']:
 			self.imager_connect(telescope_num) # make sure the cooler is on
@@ -3053,10 +3057,10 @@ class control:
                         sys.exit()
 
 	def observingScript_all(self):
-		with open('aqawan1.request.txt','w') as fh:
+		with open(self.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
 			fh.write(str(datetime.datetime.utcnow()))
 
-		with open('aqawan2.request.txt','w') as fh:
+		with open(self.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
 			fh.write(str(datetime.datetime.utcnow()))
 
 
