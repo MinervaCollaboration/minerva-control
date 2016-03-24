@@ -9,6 +9,40 @@ import datetime, time
 import ipdb
 import logging
 
+# gets the telescope object (by reference) corresponding to a particular telescope number
+def getTelescope(minerva, telnum):
+
+    for telescope in minerva.telescopes:
+        if telescope.num == str(telnum):
+            return telescope
+    return False
+
+# gets the camera object (by reference) corresponding to a particular telescope number
+def getCamera(minerva, telnum):
+
+    for camera in minerva.cameras:
+        if telescope.num == str(telnum):
+            return telescope
+    return False
+
+# gets the dome object (by reference) corresponding to a particular telescope number
+def getDome(minerva, telnum):
+    
+    if float(telnum) < 1:
+        return False
+    elif float(telnum) <= 2:
+        domenum = 1
+    elif float(telnum) <= 4:
+        domenum = 2
+    else: return False
+
+    for dome in minerva.domes:
+        if dome.num == str(domenum):
+            return dome
+
+    return False
+
+
 def night():
     today = datetime.datetime.utcnow()
     if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:

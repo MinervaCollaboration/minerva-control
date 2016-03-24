@@ -581,6 +581,7 @@ class imager:
                         self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it') 
                         return True
 
+		'''
 		# power cycle camera and wait longer?
                 self.logger.warning('T'+self.telnum+': Camera failed to recover after power cycling the camera; trying a longer down time') 
 		self.quit_maxim()
@@ -589,7 +590,6 @@ class imager:
                         self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it with a longer downtime') 
                         return True
 
-		'''
 		# power cycle camera and wait 20 minutes!
                 self.logger.warning('T' + self.telnum + ': Camera failed to recover after power cycling the camera; trying a 20 minute down time') 
 		self.quit_maxim()

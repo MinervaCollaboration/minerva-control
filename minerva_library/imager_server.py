@@ -27,6 +27,7 @@ class server:
 
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.set_data_path()
+		self.cam = None
 		self.connect_camera()
 		#XXX These do not work
 		#S Setup shut down procedures
@@ -108,7 +109,8 @@ class server:
 		try:
 			# Connect to an instance of Maxim's camera control.
 			# (This launches the app if needed)
-			self.cam = Dispatch("MaxIm.CCDCamera")
+			if self.cam == None: 
+				self.cam = Dispatch("MaxIm.CCDCamera")
 
 			# Connect to the camera 
 			self.logger.info('Connecting to camera') 
