@@ -296,7 +296,7 @@ def endNight(minerva):
         minerva.endNight(num=int(telescope.num), email=False)
     minerva.endNight(kiwispec=True)
 
-def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backlight'):
+def backlight(minerva, tele_list=0, exptime=5.0, stagepos=None, name='backlight'):
 
     #S check if tele_list is only an int
     if type(tele_list) is int:
@@ -312,24 +312,18 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
 
     minerva.logger.info("Doing backlit images for telescopes " + ",".join([str(x) for x in tele_list]))
 
-    #S Zero index the tele_list
-    tele_list = [x-1 for x in tele_list]
-
-    # move the iodine stage to the best position for backlighting
-    if stagepos == None: kwargs = {'locationstr' : 'backlight'}
-    else: kwargs = {'position':stagepos}
-
-    threads = [threading.Thread(target=minerva.ctrl_i2stage_move,kwargs=kwargs)]
-    threads[0].name = 'Kiwispec'
-        
     # turn on the slit flat LED
-    minerva.spectrograph.led_turn_on()
+    minerva.spectrograph.backlight_turn_on()
+    t0 = datetime.datetime.utcnow()
 
+    threads = []
     # swap to the imaging port to block light from the telescope
     for i in range(len(tele_list)):
-        thread = threading.Thread(target=minerva.telescopes[tele_list[i]].m3port_switch,
-                                        args=[minerva.telescopes[tele_list[i]].port['IMAGER'],])
-        thread.name = "T" + str(minerva.telescopes[tele_list[i]].num)
+
+        telescope = utils.getTelescope(minerva, tele_list[i])
+        thread = threading.Thread(target=telescope.m3port_switch,
+                                        args=[telescope.port['IMAGER'],])
+        thread.name = "T" + str(telescope.num)
         threads.append(thread)        
 
     # execute long commands asynchronously
@@ -340,22 +334,23 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
     for thread in threads:
         thread.join()
 
-    # take an exposure with the spectrograph (to trigger the LED)
-    kwargs = {'expmeter':None,"exptime":fauexptime+2,"objname":"backlight"}
-    spectrum_thread = threading.Thread(target=minerva.spectrograph.take_image, kwargs=kwargs)
-    spectrum_thread.name = "Kiwispec"
-    spectrum_thread.start()
+    # wait for the LED to warm up
+    elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+    warmuptime = 1.0
+    if elapsedTime < warmuptime:
+        time.sleep(warmuptime - elapsedTime)
 
     # take images with all FAUs
     fau_threads = []
     for i in range(len(tele_list)):
-        kwargs = {'telescope_num':int(minerva.telescopes[tele_list[i]].num)}
+        telescope = utils.getTelescope(minerva, tele_list[i])
+        kwargs = {'telescope_num':int(telescope.num)}
         target = {
             'name':name,
-            'fauexptime':fauexptime,
+            'fauexptime':exptime,
             }
         thread = threading.Thread(target=minerva.takeFauImage,args=[target,],kwargs=kwargs)
-        thread.name = 'T' + str(minerva.telescopes[tele_list[i]].num)
+        thread.name = 'T' + str(telescope.num)
         fau_threads.append(thread)
 
     # start all the FAU images
@@ -366,22 +361,14 @@ def backlight(minerva, tele_list=0, fauexptime=150.0, stagepos=None, name='backl
     for fau_thread in fau_threads:
         fau_thread.join()
 
-    # wait for spectrum to complete
-    spectrum_thread.join()
-    
-    # delete the spectrograph image
-    badfiles = glob.glob('/Data/kiwispec/' + minerva.night + '/*backlight*.fits')
-    for badfile in badfiles:
-        os.remove(badfile)
-
     # turn off the slit flat LED
-    minerva.spectrograph.led_turn_off()
+    minerva.spectrograph.backlight_turn_off()
     minerva.logger.info("Done with backlit images")
 
 # given a backlit FAU image, locate the fiber
-def find_fiber(imagename, camera):
+def find_fiber(imagename, camera, tolerance=5.0):
     
-    catname = utils.sextract('',imagename)
+    catname = utils.sextract('',imagename,sexfile='backlight.sex')
     cat = utils.readsexcat(catname)
 
     # readsexcat will return an empty dictionary if it fails
@@ -392,11 +379,10 @@ def find_fiber(imagename, camera):
 
     try:
         xfiber = cat['XWIN_IMAGE'][brightest]
-        yfiber = cat['YWIN_IMAGE'][brightest]
-        tolerance = 20.0
+        yfiber = cat['YWIN_IMAGE'][brightest]        
         dist = math.sqrt(math.pow(camera.fau.xfiber - xfiber,2) + math.pow(camera.fau.yfiber-yfiber,2))
         if dist <= tolerance:
-            camera.logger.info("Fiber found " + str(dist) + " pixels from nominal position")
+            camera.logger.info("Fiber found at (" + str(xfiber) +","+str(yfiber) + "), "+ str(dist) + " pixels from nominal position")
             return xfiber, yfiber
     except:
         camera.logger.exception("Error finding fiber position")

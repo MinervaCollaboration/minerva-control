@@ -11,7 +11,6 @@ import mail
 import math
 import numpy
 import pdu
-import telcom_client
 import threading
 import numpy as np
 import socket
@@ -76,8 +75,6 @@ class CDK700:
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
 		self.pdu = pdu.pdu(self.pdu_config,base)
-		#TODO Get reading telcom as well
-		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
 		
@@ -185,7 +182,6 @@ class CDK700:
 			self.fau = config['Setup']['FAU']
 			self.logger_name = config['Setup']['LOGNAME']
 			self.pdu_config = config['Setup']['PDU']
-			self.telcom_client_config = config['Setup']['TELCOM']
 			self.latitude = float(config['Setup']['LATITUDE'])
 			self.longitude = float(config['Setup']['LONGITUDE'])
 			self.elevation = float(config['Setup']['ELEVATION'])
@@ -416,7 +412,6 @@ class CDK700:
         # calculate the parallactic angle (for guiding)
         def parangle(self, target=None, useCurrent=False):
 
-		
 		ha = self.hourangle(target=target, useCurrent=useCurrent)
 		if useCurrent:
 			status = self.getStatus()
@@ -545,6 +540,12 @@ class CDK700:
 	def mountSetPointingModel(self, filename):
 		return self.pwiRequestAndParse(device="mount", cmd="setmodel", filename=filename)
 
+	def mountAddToModel(self,ra,dec):
+		return self.pwiRequestAndParse(device="mount",cmd="addtomodel",ra2000=ra,dec2000=dec)
+
+	def mountSync(self,ra,dec):
+		return self.pwiRequestAndParse(device="mount",cmd="sync",ra2000=ra,dec2000=dec)
+
 	### M3 ###
 	def m3SelectPort(self, port):
 		return self.pwiRequestAndParse(device="m3", cmd="select", port=port)
@@ -553,7 +554,7 @@ class CDK700:
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
 	def recover(self,tracking = True, derotate=True):
-		#S need to make sure all these functinos don't call recover
+		#S need to make sure all these functions don't call recover
 		#S shutdown looks clear, all basePWI functions
 
 		if self.nfailed <= 1:
@@ -599,6 +600,114 @@ class CDK700:
 			while os.path.isfile(filename):
 				time.sleep(1)
 		return True
+
+	
+
+	def makePointingModel(self, camera, brightstar=True, npoints=100, maxmag=4.0, fau=True, random=False, grid=False, nalt=4, naz=10, exptime=5.0):
+		
+		if fau:
+			xcenter = camera.fau.rotatorxcenter
+			ycenter = camera.fau.rotatorycenter
+			m3port = self.port['FAU']
+			platescale = camera.fau.platescale/3600.0 # deg/pix
+			derotate = False
+		else:
+			xcenter = camera.rotatorxcenter
+			ycenter = camera.rotatorycenter
+			m3port = self.port['IMAGER']
+			platescale = camera.platescale/3600.0 # deg/pix
+			derotate = True
+
+		if brightstar:
+			brightstars = utils.brightStars(maxmag=maxmag)
+			
+		pointsAdded = 0
+		
+		while pointsAdded < npoints:
+			for i in range(len(brightstars.decdeg)):
+
+				# apply proper motion to coordinates
+				raj2000 = utils.ten(" ".join([brightstars['rahr'][i],brightstars['ramin'][i],brightstars['rasec'][i]]))
+				decj2000 = utils.ten(" ".join([brightstars['decdeg'][i],brightstars['decmin'][i],brightstars['decsec'][i]]))
+				pmra = brightstars['pmra'][i]
+				pmdec = brightstars['pmdec'][i]
+				ra,dec = self.starmotion(raj2000,decj2000,pmra,pmdec)
+
+				# make sure the star is above the horizon
+				alt,az = self.radectoaltaz(ra,dec)
+				if alt < 21.0: continue
+
+				target = {
+					'ra':ra,
+					'dec':dec,
+					'spectroscopy':fau,
+					}
+
+				# slew to bright star
+				self.acquireTarget(target, derotate=derotate, m3port=m3port)
+
+				# take image
+				imageName = camera.takeImage(exptime=exptime, objname='Pointing', fau=fau)
+
+				# find the brightest star
+				x,y = utils.findBrightest(imageName)
+
+				if x != None and y != None:
+					# determine J2000 coordinates of the center pixel
+					
+					# we need to know and apply the current sky angle
+					telescopeStatus = self.getStatus()
+					rotpos = float(telescopeStatus.rotator.position)
+					parang = self.parangle(useCurrent=True)
+					rotoff = float(self.rotatoroffset[m3port])
+					skypa = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
+
+					# apply the rotation matrix
+					racen  =  ra + ((x-xcenter)*platescale*cos(skypa) - (y-ycenter)*platescale*sin(skypa))*math.cos(dec*math.pi/180.0)/15.0
+					deccen = dec + ((x-xcenter)*platescale*sin(skypa) + (y-ycenter)*platescale*cos(skypa))
+
+					# add point to model
+					self.mountAddToModel(racen,deccen)
+
+					# TODO: copy Default_Model_Model.PXP to self.Model[m3port]
+				
+					pointsAdded += 1
+
+
+	# this is designed to calibrate the rotator using a single bright star
+	def calibrateRotator(self, camera, fau=True):
+
+		# slew to bright star
+		# brightstars = utils.brightStars()
+		# do some other stuff (assume already on a bright star)
+
+		filename = camera.takeImage(exptime=1,objname="rotatorCal",fau=True)
+
+		# locate star
+		x1, y1 = findBrightest(filename)
+		if x1 == None or y1 == None: return False
+
+		# the longer I can slew, the more accurate the calculation
+		# calculate how far I can move before hitting the edge
+		# must assume random orientation
+		maxmove = min([x1,camera.fau.x2-x1,
+			       y1,camera.fau.y2-y1])*camera.fau.platescale
+
+		# jog telescope
+		status = self.getStatus()
+		dec = utils.ten(status.mount.dec)*math.pi/180.0
+		self.mountOffsetRaDec(maxmove*0.8/math.cos(dec),0.0)
+
+		# take exposure
+		filename = camera.takeImage(exptime=1,objname="rotatorCal",fau=True)
+
+		# locate star
+		x2, y2 = findBrightest(filename)
+		if x2 == None or y2 == None: return False
+
+		# calculate rotator angle
+		rotoff = -math.atan2(-(x1-x2),y1-y2)*180.0/math.pi
+		return rotoff
 
 	def inPosition(self,m3port=None, alt=None, az=None, ra=None, dec=None, pointingTolerance=60.0, tracking=True, derotate=True):
 
@@ -750,21 +859,15 @@ class CDK700:
 		self.nfailed = 0
 		return True
 
-	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
-        #S This has not been incorporated anywhere yet, and if it is all calls on the function will
-	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
-	def acquireTarget(self,target,pa=None, tracking=True, derotate=True, m3port=None):
-
-		telescopeStatus = self.getStatus()
+	def starmotion(self,ra,dec,pmra,pmdec,parallax=0.0,rv=0.0,date=datetime.datetime.utcnow()):
 
                 ## Constants
                 #S Was using julian date of observation, but this was only to have a more general approach to
                 #S what coordinate system we were using. I assume we are using on J2000 coordinates, so I made it only take that for now.
                 #S It can be switched very easily though
                 #epoch = 2451545.0
-                now = datetime.datetime.utcnow()
                 j2000 = datetime.datetime(2000,01,01,12)
-                days_since_j2000 = (now-j2000).days #[] = daya
+                days_since_j2000 = (date-j2000).days #[] = daya
                 #jd_obs = days_since_j200 + jd_of_j2000
                 #S One AU in meters
                 AU  = 149597870700. #[] = meters
@@ -778,18 +881,9 @@ class CDK700:
 
                 #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
                 #S dec comes in as degrees.
-                ra = np.radians(target['ra']*15.)
-                dec = np.radians(target['dec'])
+                rarad = np.radians(ra*15.0)
+                decrad = np.radians(dec)
                 #S basically see what values we can make corrections for.
-                try: pmra = target['pmra']
-                except: pmra = 0.
-                try: pmdec = target['pmdec']
-                except: pmdec = 0.
-                try: px = target['px']
-                except: px = 0.                        
-                #S Need rv if available, in m/s
-                try: rv = target['rv']
-                except: rv = 0.
                         
                 #S Unit vector pointing to star's epoch location
                 r0hat = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
@@ -833,6 +927,27 @@ class CDK700:
                         ra_corrected = np.degrees(ra_intermed + 2*np.pi)/15.
                 else:
                         ra_corrected = np.degrees(ra_intermed)/15.
+
+		return ra_corrected,dec_corrected
+		
+
+	#TODO Search #TODOACQUIRE in control.py for all(?) calls on this function to be edited
+        #S This has not been incorporated anywhere yet, and if it is all calls on the function will
+	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
+	def acquireTarget(self,target,pa=None, tracking=True, derotate=True, m3port=None):
+
+		telescopeStatus = self.getStatus()
+
+                try: pmra = target['pmra']
+                except: pmra = 0.0
+                try: pmdec = target['pmdec']
+                except: pmdec = 0.0
+                try: px = target['px']
+                except: px = 0.0                    
+                try: rv = target['rv']
+                except: rv = 0.0
+
+		ra_corrected,dec_corrected = self.starmotion(target['ra'],target['dec'],pmra,pmdec,parallax=parallax,rv=rv)
 
 		# make sure the coordinates are within the telescope's limits
 		alt,az = self.radectoaltaz(ra_corrected,dec_corrected)
@@ -1024,22 +1139,6 @@ class CDK700:
 		else:
 			return True
 
-		
-	def home_rotator(self):
-		self.logger.info('T' + self.num + ': Connecting to rotator')
-		self.focuserConnect()
-
-		self.logger.info('T' + self.num + ': Turning rotator tracking off')
-		self.rotatorStopDerotating()
-
-		self.logger.info('T' + self.num + ': Homing rotator')
-		if self.telcom.home_rotator():return True
-		else: return False
-		
-	def initialize_autofocus(self):
-		if self.telcom.initialize_autofocus():return True
-		else: return False
-
 	def startPWI(self,email=True):
 		self.send_to_computer('schtasks /Run /TN "Start PWI"')
 		time.sleep(5.0)
@@ -1050,10 +1149,12 @@ class CDK700:
 		return self.startPWI(email=email)
 
         def killPWI(self):
-                # disconnect telescope gracefully first (PWI gets angry otherwise)!
-#		try: self.shutdown()
-# 		except: pass
-		return self.kill_remote_task('PWI.exe')
+		self.kill_remote_task('PWI.exe')
+		self.kill_remote_task('PXPAX532.exe')
+		self.kill_remote_task('PXPAX533.exe')
+		self.kill_remote_task('PXPAX534.exe')
+		self.kill_remote_task('PXPAX535.exe')
+		return self.kill_remote_task('ComACRServer.exe')
 
 	def kill_remote_task(self,taskname):
                 return self.send_to_computer("taskkill /IM " + taskname + " /f")

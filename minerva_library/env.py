@@ -264,7 +264,7 @@ class site:
 		# change it during execution
 		if os.path.exists(self.base_directory + '/minerva_library/sunOverride.txt'): self.sunOverride = True
 		else: self.sunOverride = False
-		if os.path.exists(self.base_directory + '/minreva_library/cloudOverride.txt'): self.cloudOverride = True
+		if os.path.exists(self.base_directory + '/minerva_library/cloudOverride.txt'): self.cloudOverride = True
 		else: self.cloudOverride = False
 
 		if self.sunOverride:

@@ -558,6 +558,16 @@ class spectrograph:
                 response = self.send('flat_turn_off None',10)
                 return response
 
+        def backlight_turn_on(self):
+		self.logger.info("turning backlight on")
+                self.benchpdu.backlight.on()
+		return
+
+        def backlight_turn_off(self):
+		self.logger.info("turning backlight off")
+                self.benchpdu.backlight.off()
+		return
+
         def led_turn_on(self):
                 response = self.send('led_turn_on None',10)
                 return response

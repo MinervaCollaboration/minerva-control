@@ -11,12 +11,21 @@ import math
 import numpy as np
 from minerva_library import rv_control
 from minerva_library import newauto
+from minerva_library import utils
 
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+
+	ipdb.set_trace()
+
+	rv_control.backlight(minerva)
+	x,y = rv_control.find_fiber('/Data/t1/' + minerva.night + '/' + minerva.cameras[0].file_name, minerva.cameras[0])
+	x,y = rv_control.find_fiber('/Data/t2/' + minerva.night + '/' + minerva.cameras[1].file_name, minerva.cameras[1])
+	x,y = rv_control.find_fiber('/Data/t3/' + minerva.night + '/' + minerva.cameras[2].file_name, minerva.cameras[2])
+	x,y = rv_control.find_fiber('/Data/t4/' + minerva.night + '/' + minerva.cameras[3].file_name, minerva.cameras[3])
 
 #	minerva.endNight(num=1,email=False)
 	ipdb.set_trace()

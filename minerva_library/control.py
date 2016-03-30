@@ -19,6 +19,7 @@ import socket
 import numpy as np
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
+import copy
 
 #Minerva library dependency
 import env
@@ -34,7 +35,6 @@ from get_all_centroids import *
 import segments
 import newauto 
 from fix_fits import fix_fits
-import copy
 import rv_control
 from plotweather import plotweather
 
@@ -179,18 +179,6 @@ class control:
 #operate dome specified by num arguments
 #if no argument or num outside of array command all domes
 
-	def dome_initialize(self,num):
-		if num >= 1 and num <= len(self.domes):
-			self.domes[num-1].initialize()
-		else:
-			threads = [None]*len(self.domes)
-			for t in range(len(self.domes)):
-				threads[t] = threading.Thread(target = self.domes[t].initialize)
-				threads[t].name = 'A' + str(self.domes[t].num)
-				threads[t].start()
-			for t in range(len(self.domes)):
-				threads[t].join()
-				
 	def dome_open(self,num=0,day=False):
 		if num >= 1 and num <= len(self.domes):
 			if day: self.domes[num-1].open_shutter(1)
@@ -374,7 +362,7 @@ class control:
 				threads[t].join()
 				
 	def imager_compressData(self,num=0,night=None):
-		#S need the night arguement to specify endNight operations on a past night
+		#S need the night argument to specify endNight operations on a past night
 		if night == None:
 			night = self.site.night
 		kwargs = {}
@@ -620,8 +608,8 @@ class control:
 			ra = utils.ten(telescopeStatus.mount.ra_2000)
 			ha = lst_hours - ra
 		else:
-			self.logger.info(target['name']+' does not have an RA for Hour Angle calc; assuming HA=0')
-			ha = 0.
+			self.logger.info(target['name']+' does not have an RA for Hour Angle calc; HA unknown')
+			return "UNKNOWN"
 		#S put HA in range (0,24)
 		if ha<0.:
 			ha+=24.
@@ -630,6 +618,7 @@ class control:
 		#S put HA in range (-12,12)
 		if ha>12.:
 			ha = ha-24
+		return ha
 
 	def jnow_to_j2000_pyephem(self, ra_rads, dec_rads):
 		"""
@@ -669,7 +658,7 @@ class control:
 		star.compute(epoch=ephem.now())
 		return self.rads_to_hours(star.ra), self.rads_to_degs(star.dec)
 
-
+	# this should be replaced with SExtractor
 	def getstars(self,imageName):
     
 		d = getfitsdata(imageName)
@@ -683,6 +672,7 @@ class control:
 
 		return cc
 
+	# this should be moved to rv_control
 	def doSpectra(self, target, tele_list):
 
 		# if after end time, return
@@ -768,7 +758,7 @@ class control:
 		# set camera.fau.guiding == False to stop guiders
 		self.logger.info("Stopping the guiding loop for all telescopes")
 		for i in range(len(tele_list)):
-			camera = utils.getCamera(tele_list[i])
+			camera = utils.getCamera(self,tele_list[i])
 			camera.fau.guiding = False
 		return
 
@@ -2532,6 +2522,8 @@ class control:
 			dataPath = '/Data/t' + str(num) + '/' + night + '/'
 			objndx = 2
 
+		if not os.path.exists(dataPath): os.mkdir(dataPath)
+
 		# park the scope
 		self.logger.info("Parking Telescope")
 		self.telescope_park(num)
@@ -2908,20 +2900,6 @@ class control:
 			mail.send("T" + str(telescope_num) + " thread died",body,level='serious')
 			sys.exit()
 	
-	def domeControl_catch(self,day=False):
-		try:
-			self.domeControl(day=day)
-		except Exception as e:
-			self.logger.exception('DomeControl thread died: ' + str(e.message) )
-			body = "Dear benevolent humans,\n\n" + \
-			    'I have encountered an unhandled exception which has killed the dome control thread. The error message is:\n\n' + \
-			    str(e.message) + "\n\n" + \
-			    "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart 'main.py'. The heartbeat will close the domes, but please restart.\n\n" + \
-			    "Love,\n" + \
-			    "MINERVA"
-			mail.send("DomeControl thread died",body,level='serious')
-			sys.exit()
-
 	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1):
 		self.takeSpecBias(nbias)
 		self.takeSpecDark(ndark, darkexptime)

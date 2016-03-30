@@ -8,6 +8,44 @@ import ephem
 import datetime, time
 import ipdb
 import logging
+import unicodecsv
+
+def findBrightest(imageName):
+    catname = utils.sextract(filename)
+    cat = utils.readsexcat(catname)
+    try: brightest = np.argmax(cat['FLUX_ISO'])
+    except: return None,None
+    
+    try:
+        x1 = cat['XWIN_IMAGE'][brightest]
+        y1 = cat['XWIN_IMAGE'][brightest]
+    except:
+        return None, None
+
+
+# reads a CSV into a dictionary; the header line becomes the keys for lists
+def readcsv(filename):
+    # parse the CSV file                                                                                    
+    with open(filename,'rb') as f:
+        reader = unicodecsv.reader(f)
+        headers = reader.next()
+        csv = {}
+        for h in headers:
+            csv[h.split('(')[0].strip()] = []
+        for row in reader:
+            for h,v in zip(headers,row):
+                csv[h.split('(')[0].strip()].append(v)
+        for key in csv.keys():
+            try: csv[key] = np.asarray(csv[key],dtype=np.float32)
+            except: csv[key] = np.asarray(csv[key])
+        return csv
+
+def brightStars(filename='brightstars.csv',path='/home/minerva/minerva-control/dependencies/',maxmag=6.0):
+    brightstars = readcsv(path+filename)
+    brightest = np.where(brightstars['vmag'] <= maxmag)
+    for key in brightstars.keys():
+        brightstars[key] = brightstars[key][brightest]
+    return brightstars
 
 # gets the telescope object (by reference) corresponding to a particular telescope number
 def getTelescope(minerva, telnum):
@@ -21,8 +59,8 @@ def getTelescope(minerva, telnum):
 def getCamera(minerva, telnum):
 
     for camera in minerva.cameras:
-        if telescope.num == str(telnum):
-            return telescope
+        if camera.telnum == str(telnum):
+            return camera
     return False
 
 # gets the dome object (by reference) corresponding to a particular telescope number

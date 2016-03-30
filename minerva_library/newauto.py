@@ -325,31 +325,27 @@ def autofocus_step(control,telescope_num,newfocus,af_target):
     if af_target['spectroscopy']:
         imagename = control.takeFauImage(af_target,telescope_num=\
                                              telescope_num)
-        imnum = imagename.split('.')[4]
     else:
         imagename = control.takeImage(af_target,telescope_num=\
                                           telescope_num)
-        imnum = imagename.split('.')[4]
-
-    if imagename == 'error':
-        telescope.logger.exception('Failed to save image')
-        #control.imager[telescope_num-1].recover()
-        mediann = -999
-        stddev = 999
-        numstar = 0
-        imnum = '9999'
-        return median,stddev,numstar,imnum
-    
-    datapath = '/Data/t' + telescope.num + '/' + control.site.night + '/'
-
-    catalog = '.'.join(imagename.split('.')[0:-2]) + '.cat'
     
     # default (bad) values
-    # will be overwritten by good values or flagged and not used
+    # will be overwritten by good values or serve as flags later
     median = -999
     stddev = 999
     numstar = 0
 
+    try: 
+        imnum = imagename.split('.')[4]
+    except: 
+        telescope.logger.exception('Failed to save image')
+        imnum = '9999'
+        return median,stddev,numstar,imnum
+
+    
+    datapath = '/Data/t' + telescope.num + '/' + control.site.night + '/'
+    catalog = '.'.join(imagename.split('.')[0:-2]) + '.cat'
+    
     #S Sextract this guy, put in a try just in case. Defaults should
     #S be fine, which are set in newauto. NOt sextrator defaults
     try:
@@ -358,7 +354,7 @@ def autofocus_step(control,telescope_num,newfocus,af_target):
     except:
         telescope.logger.exception('Sextractor failed on '+catalog)  
         return median,stddev,numstar,imnum
-
+    
     try:
         median,stddev,numstar=new_get_hfr(
             catalog,telescope=telescope,fau=af_target['spectroscopy'])
@@ -371,7 +367,7 @@ def autofocus_step(control,telescope_num,newfocus,af_target):
 
 #S the new autofocus with variable steps. borrowing heavily from standard 
 #S autofocus
-def new_autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
+def new_autofocus(control,telescope_number,num_steps=10,defocus_step=300.,\
                   target=None,dome_override=False):
 
     #S get the telescope we plan on working with, now redundant
@@ -440,7 +436,7 @@ def new_autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     initsteps = np.linspace(-defocus_step*(num_steps/2),\
                                 defocus_step*(num_steps/2),num_steps)
     #S Array of new positions for the focuser, using this rahter than step.
-    poslist = initsteps*1000 + telescope.focus[m3port]
+    poslist = initsteps + telescope.focus[m3port]
 
     #S Just need an empty list for the fwhm/hfr and std to append to. made
     #S FOCUSMEASure_LIST because we don't necessarily know which value we want
@@ -458,16 +454,109 @@ def new_autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     #S should we just try these same points again? that seems dumb.
     for step in initsteps:
         #S set the new focus, and move there if necessary
-        newfocus = telescope.focus[m3port] + step*1000.0
+        newfocus = telescope.focus[m3port] + step
 
         #S take the image, get the values, do everything really.
-        median,stddev,numstars,imnum = autofocus_step(control,telescope_num,newfocus,af_target)
+        median,stddev,numstars,imnum = \
+            autofocus_step(control,telescope_num,newfocus,af_target)
                                                           
         focusmeas_list.append(median)
         stddev_list.append(stddev)
         numstar_list.append(numstar)
         imagenum_list.append(imnum)
 
+    DELTA_FOCUS = 101.
+    MAXSTEPS = 15
+    #S init old focus at zero, will be updated to newest value and should be
+    #S fine from there
+    old_best_focus = 0.
+
+    #S while we have a sufficient shift in focus and are under the maxsteps
+    while delta_focus < threshold:
+        #try and fit quad, see where it finds the focus
+        try:
+            new_best_focus, focus_coeffs = fitquadfindmin()
+            #S if we get a focus from fitquad, then we can calculate the 
+            #S change of the focus
+            delta_focus = np.abs(old_best_focus - new_best_focus)
+            
+        #S if we hit an afException, then use that information to add a new 
+        #S afstep, in the direction that we are insuffcient
+        except afEcxeption as e:
+            #S Action if focus is below lower bound of step positions
+            if e.message == 'LowerLimit_Exception':
+                newfocus = poslit.min() - defocus_step
+                np.append(poslist,newfocus)
+                pass
+            #S Action if focus is below upper bound of step positions
+            if e.message == 'UpperLimit_Exception':
+                pass
+            #S Action if no minimum is found
+            if e.message == 'NoMinimum_Exception':
+                #idea: if we don't find a deep enough minimum or there isnt
+                #S one, we might want to try again? we could find a very 
+                #S shallow minimum even if there is no noticable change, or
+                #S if the hfrs are flat. there could also be an issue if 
+                #S we capture a wing where the focus levels off far from the 
+                #S the actual focus, e.g. the shape of graph is something like:
+                #        
+                #           x x x   x x
+                #         x       x
+                # x     x
+                #   x x
+                pass
+            #S run the autofocus step if we are still hitting the afExceptions, 
+            #S probably want to continue and try and fit again after this.
+            median,stddev,numstars,imnum = \
+                autofocus_step(control,telescope_num,newfocus,af_target)
+            
+            focusmeas_list.append(median)
+            stddev_list.append(stddev)
+            numstar_list.append(numstar)
+            imagenum_list.append(imnum)
+            continue #???????????????????
+        
+        #S catch all other exceptions
+        except:
+            pass
+        
+        #S once we are getting a focus in the range we are testing, we can now 
+        #S start refining to get below the threshold. 
+        old_best_focus = new_best_focus
+        
+        #S find where most of our points are found
+        points_below = len(np.where(poslist < new_best_focus)[0])
+        points_above = len(np.where(poslist > new_best_focus)[0])
+        
+        #S if number of positions below focus is greater than those above, we 
+        #S want to add some above the focus        
+        if points_below > points_above:
+            newfocus = poslit.max() + defocus_step
+            np.append(poslist,newfocus)
+            #S afstep for point one step above the current highest position
+            pass
+
+        #S same logic, but for below
+        if points_below < points_above:
+            newfocus = poslit.min() - defocus_step
+            np.append(poslist,newfocus)
+            pass
+
+            pass
+        median,stddev,numstars,imnum = \
+            autofocus_step(control,telescope_num,newfocus,af_target)
+        
+        focusmeas_list.append(median)
+        stddev_list.append(stddev)
+        numstar_list.append(numstar)
+        imagenum_list.append(imnum)
+        continue #???????????????????????????
+
+
+    print('Found a focus')
+    #S declare victory, and do all the updates from current autofocus
+
+            
 
 def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                   target=None,dome_override=False,simulate=False):
