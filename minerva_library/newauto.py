@@ -561,14 +561,8 @@ def new_autofocus(control,telescope_number,num_steps=10,defocus_step=300.,\
 def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                   target=None,dome_override=False,simulate=False):
 
-    #S get the telescope we plan on working with, now redundant
-    for telescope in control.telescopes:
-        if telescope.num == str(telescope_number): break
-
-    if telescope_number > 2: domenum = '2'
-    else: domenum = '1'
-    for dome in control.domes:
-        if dome.num == domenum: break
+    telescope = utils.getTelescope(control,telescope_number)
+    dome = utils.getDome(control,telescope_number)
 
     #S Define/make sure we have a target
     if target != None:
@@ -900,6 +894,8 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     
 
 if __name__ == '__main__':
+
+    ipdb.set_trace()
 
     filenames = glob.glob('/Data/t?/n20160323/*autorecord*.txt')
     for filename in filenames:

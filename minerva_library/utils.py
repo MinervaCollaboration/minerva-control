@@ -11,14 +11,15 @@ import logging
 import unicodecsv
 
 def findBrightest(imageName):
-    catname = utils.sextract(filename)
-    cat = utils.readsexcat(catname)
+    catname = sextract('',imageName)
+    cat = readsexcat(catname)
     try: brightest = np.argmax(cat['FLUX_ISO'])
     except: return None,None
     
     try:
-        x1 = cat['XWIN_IMAGE'][brightest]
-        y1 = cat['XWIN_IMAGE'][brightest]
+        x = cat['XWIN_IMAGE'][brightest]
+        y = cat['YWIN_IMAGE'][brightest]
+        return x,y
     except:
         return None, None
 
@@ -40,11 +41,19 @@ def readcsv(filename):
             except: csv[key] = np.asarray(csv[key])
         return csv
 
-def brightStars(filename='brightstars.csv',path='/home/minerva/minerva-control/dependencies/',maxmag=6.0):
+def brightStars(filename='brightstars2.csv',path='/home/minerva/minerva-control/dependencies/',maxmag=6.0):
     brightstars = readcsv(path+filename)
     brightest = np.where(brightstars['vmag'] <= maxmag)
     for key in brightstars.keys():
         brightstars[key] = brightstars[key][brightest]
+
+
+    # cut out high proper motion stars
+    pm = np.sqrt(np.power(brightstars['pmra'],2) + np.power(brightstars['pmdec'],2) )
+    lowmu = np.where(pm <= 100)
+    for key in brightstars.keys():
+        brightstars[key] = brightstars[key][lowmu]
+
     return brightstars
 
 # gets the telescope object (by reference) corresponding to a particular telescope number

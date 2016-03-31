@@ -586,6 +586,12 @@ class spectrograph:
                 response = self.send("time_tracker_check "+filename,10)
                 return float(response.split()[1].split('\\')[0])
         
+
+	def expmeter_shutter_open(self):
+		response = self.send('expmeter_shutter_open None',10)
+	def expmeter_shutter_close(self):
+		response = self.send('expmeter_shutter_close None',10)
+
 	"""
         #S Dynapowers are now objects for the spectrograph server to control,
         #S but we still need to communicate statuses from server to write

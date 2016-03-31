@@ -196,6 +196,10 @@ class server:
 			response = self.led_turn_off()
 		elif tokens[0] == 'time_tracker_check':
                         response = self.time_tracker_check(tokens[1])
+		elif tokens[0] == 'expmeter_shutter_open':
+			response = self.expmeter_shutter_open()
+		elif tokens[0] == 'expmeter_shutter_close':
+			response = self.expmeter_shutter_close()
 #                elif tokens[0] == 'update_dynapower1':
 #                        response = self.update_dynapower1()
 #                elif tokens[0] == 'update_dynapower2':
@@ -830,6 +834,23 @@ class server:
         ###
         # EXPOSURE METER FUNCTIONS
         ###
+
+	def expmeter_shutter_open(self):
+                #S Sets the trigger for the shutter.
+		try:
+			self.expmeter_com.send('O' + chr(1))
+			return 'success'
+		except:
+			return 'fail'
+
+	def expmeter_shutter_close(self):
+		# Shut the shutter
+		try:
+			self.expmeter_com.send('O' + chr(0))
+			self.logger.info('Closed expmeter shutter')
+			return 'success'
+		except:
+			return 'fail'
 
         #TODO I think we need to add some more functions in case
         #TODO we need to reset attributes of the exposure meter,

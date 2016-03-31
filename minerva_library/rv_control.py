@@ -27,8 +27,6 @@ def rv_observing(minerva):
     with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
         fh.write(str(datetime.datetime.utcnow()))
 
-#    minerva.domeControlThread()
-
     minerva.telescope_initialize(tracking=False,derotate=False)
     minerva.telescope_park()
 
@@ -296,7 +294,7 @@ def endNight(minerva):
         minerva.endNight(num=int(telescope.num), email=False)
     minerva.endNight(kiwispec=True)
 
-def backlight(minerva, tele_list=0, exptime=5.0, stagepos=None, name='backlight'):
+def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'):
 
     #S check if tele_list is only an int
     if type(tele_list) is int:
@@ -311,6 +309,8 @@ def backlight(minerva, tele_list=0, exptime=5.0, stagepos=None, name='backlight'
             tele_list = [tele_list]
 
     minerva.logger.info("Doing backlit images for telescopes " + ",".join([str(x) for x in tele_list]))
+
+    # TODO: close expmeter shutter
 
     # turn on the slit flat LED
     minerva.spectrograph.backlight_turn_on()
@@ -365,6 +365,8 @@ def backlight(minerva, tele_list=0, exptime=5.0, stagepos=None, name='backlight'
     minerva.spectrograph.backlight_turn_off()
     minerva.logger.info("Done with backlit images")
 
+    # TODO: open expmeter shutter
+
 # given a backlit FAU image, locate the fiber
 def find_fiber(imagename, camera, tolerance=5.0):
     
@@ -384,6 +386,8 @@ def find_fiber(imagename, camera, tolerance=5.0):
         if dist <= tolerance:
             camera.logger.info("Fiber found at (" + str(xfiber) +","+str(yfiber) + "), "+ str(dist) + " pixels from nominal position")
             return xfiber, yfiber
+        else:
+            camera.logger.info("Object found at (" + str(xfiber) +","+str(yfiber) + "), but "+ str(dist) + " is greater than fiber tolerance")
     except:
         camera.logger.exception("Error finding fiber position")
 

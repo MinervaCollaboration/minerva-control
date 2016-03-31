@@ -509,7 +509,7 @@ class imager:
                 return self.kill_remote_task('PWI.exe')
         def start_server(self):
                 ret_val = self.send_to_computer('schtasks /Run /TN "telcom server"')
-		time.sleep(60)
+		time.sleep(20)
 		return ret_val
 
         def send_to_computer(self, cmd):
