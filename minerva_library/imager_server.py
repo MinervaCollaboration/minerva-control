@@ -264,14 +264,15 @@ class server:
 				hdr = {}
 
 			for key,value in hdr.iteritems():
-				if isinstance(value, (str, unicode)) or isinstance(value, (float, unicode)):
+				if isinstance(value, (str, unicode, float)):
 					if isinstance(value,float):
 						if math.isnan(value): value = 'NaN'
 					f[0].header[key] = value
 				else:
-					if isinstance(value[0],float):
-						if math.isnan(value[0]): value[0] = 'NaN'
-					f[0].header[key] = (value[0],value[1])
+       					if isinstance(value[0],float):
+               					if math.isnan(value[0]): value[0] = 'NaN'
+                       			f[0].header[key] = (value[0],value[1])
+
 			f.flush()
 			f.close()
 		except:
