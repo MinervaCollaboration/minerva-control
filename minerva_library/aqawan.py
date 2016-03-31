@@ -67,17 +67,16 @@ class aqawan:
 		filename = self.base_directory + '/minerva_library/aqawan' + str(self.num) + '.stat'
 		#with FileLock(filename):
 		if True:	
-			with open(filename,'r') as fh:
-				line = fh.readline().split()
-				try:
-					lastUpdate = datetime.datetime.strptime(' '.join(line[0:2]),'%Y-%m-%d %H:%M:%S.%f')
-					if (datetime.datetime.utcnow() - lastUpdate).total_seconds() > 300:
-						self.logger.error("Dome status hasn't updated in 5 minutes; assuming closed")
-						return False
-					return line[2] == 'True'
-				except:
-					self.logger.exception("Failed to read aqawan status file")
+			with open(filename,'r') as fh: line = fh.readline().split()
+			try:
+				lastUpdate = datetime.datetime.strptime(' '.join(line[0:2]),'%Y-%m-%d %H:%M:%S.%f')
+				if (datetime.datetime.utcnow() - lastUpdate).total_seconds() > 300:
+					self.logger.error("Dome status hasn't updated in 5 minutes; assuming closed")
 					return False
+				return line[2] == 'True'
+			except:
+				self.logger.exception("Failed to read aqawan status file")
+				return False
 		return False
 
 	def setup_command_lib(self):

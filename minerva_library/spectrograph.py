@@ -587,10 +587,10 @@ class spectrograph:
                 return float(response.split()[1].split('\\')[0])
         
 
-	def expmeter_shutter_open(self):
-		response = self.send('expmeter_shutter_open None',10)
-	def expmeter_shutter_close(self):
-		response = self.send('expmeter_shutter_close None',10)
+	def stop_log_expmeter(self):
+		response = self.send('stop_log_expmeter None',30)
+	def start_log_expmeter(self):
+		response = self.send('start_log_expmeter None',10)
 
 	"""
         #S Dynapowers are now objects for the spectrograph server to control,

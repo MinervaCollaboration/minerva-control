@@ -264,7 +264,7 @@ class server:
 				hdr = {}
 
 			for key,value in hdr.iteritems():
-				if isinstance(value, (str, unicode)):
+				if isinstance(value, (str, unicode)) or isinstance(value, (float, unicode)):
 					if isinstance(value,float):
 						if math.isnan(value): value = 'NaN'
 					f[0].header[key] = value

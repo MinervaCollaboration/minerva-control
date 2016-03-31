@@ -846,15 +846,15 @@ class control:
 			filename = 'error'
 			while filename == 'error': 
 				filename = self.takeFauImage(target,telescope_num=tel_num)
-				if not dome.isOpen(): 
-					# The target is no longer acquired
-					camera.fau.acquired = False
-					return
-
-			if not dome.isOpen(): 
-				self.logger.info("The dome closed while guiding; exiting guide loop")
-				camera.fau.acquired = False
-				return
+#				if not dome.isOpen(): 
+#					# The target is no longer acquired
+#					camera.fau.acquired = False
+#					return False
+#
+#			if not dome.isOpen(): 
+#				self.logger.info("The dome closed while guiding; exiting guide loop")
+#				camera.fau.acquired = False
+#				return False
 				
 			dataPath = '/Data/t' + camera.telnum + '/' + self.night + '/'
 			stars = self.getstars(dataPath + filename)
@@ -896,7 +896,7 @@ class control:
  				if separation < camera.fau.acquisition_tolerance:
 					self.logger.info("T" + str(tel_num) + ": Target acquired")
 					camera.fau.acquired = True
-					if acquireonly: return
+					if acquireonly: return True
 				#else: camera.fau.acquired = False
 
 				if separation < camera.fau.bp:
@@ -967,7 +967,7 @@ class control:
 
 		# The target is no longer acquired
 		camera.fau.acquired = False
-		return
+		return True
 
 	def guide(self,filename, reference):
 
@@ -1429,7 +1429,7 @@ class control:
 		f = self.getHdr(target,[1,2,3,4],[1,2])
 
 		header = json.dumps(f)
-
+		
 		self.spectrograph.logger.info('Waiting for spectrograph imaging thread')
 		# wait for imaging process to complete
 		imaging_thread.join()
@@ -1458,7 +1458,7 @@ class control:
 	def takeFauImage(self,target,telescope_num=0):
 		telescope_name = 'T' + str(telescope_num) +': '
 
-		#check camera number is valid
+		# check camera number is valid
 		if telescope_num > len(self.telescopes) or telescope_num < 0:
 			return 'error'
 		if telescope_num > 2: dome = 2
@@ -1475,9 +1475,10 @@ class control:
 		imaging_thread.start()
 		
 		# Prepare header while waiting for imager to finish taking image
-		f = self.getHdr(target, telescope_num, dome)
+		f = self.getHdr(target, telescope_num, dome, fau=True)
+
 		header = json.dumps(f)
-		
+
 		imager.logger.info('waiting for imaging thread')
 		# wait for imaging process to complete
 		imaging_thread.join()
@@ -1747,8 +1748,8 @@ class control:
 		
                 # loop over each telescope and insert the appropriate keywords
 		moonpos = self.site.moonpos()
-		moonra = moonpos[0]
-		moondec = moonpos[1]
+		moonra = float(moonpos[0])
+		moondec = float(moonpos[1])
 		moonphase = self.site.moonphase()
 		f['MOONRA'] = (moonra, "Moon RA (J2000)")    
 		f['MOONDEC'] =  (moondec, "Moon Dec (J2000)")
@@ -1800,23 +1801,23 @@ class control:
 			moonsep = ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi
 
 			# target ra, J2000 degrees
-			if 'ra' in target.keys(): ra = target['ra']*15.0 
+			if 'ra' in target.keys(): ra = float(target['ra'])*15.0 
 			else: ra = telra
                         
                         # target dec, J2000 degrees
-			if 'dec' in target.keys(): dec = target['dec']
+			if 'dec' in target.keys(): dec = float(target['dec'])
 			else: dec = teldec
 
-			if 'pmra' in target.keys(): pmra = target['pmra']
+			if 'pmra' in target.keys(): pmra = float(target['pmra'])
 			else: pmra = 'UNKNOWN' 
 
-			if 'pmdec' in target.keys(): pmdec = target['pmdec']
+			if 'pmdec' in target.keys(): pmdec = float(target['pmdec'])
 			else: pmdec = "UNKNOWN"
 
-			if 'parallax' in target.keys(): parallax = target['parallax']
+			if 'parallax' in target.keys(): parallax = float(target['parallax'])
 			else: parallax = "UNKNOWN"
 
-			if 'rv' in target.keys(): rv = target['rv']
+			if 'rv' in target.keys(): rv = float(target['rv'])
 			else: rv = "UNKNOWN"
 
 			# State can be:
@@ -1848,7 +1849,7 @@ class control:
 			except: bcktemp = 'UNKNOWN'
 			    
 			f['LST'] = (telescopeStatus.status.lst,"Local Sidereal Time")
-			f['OBJECT'  + telstr] = target['name'] 
+			f['OBJECT'  + telstr] = (target['name'],"Object name")
 			f['FAUSTAT' + telstr] = (state,"State of the FAU at start of exposure")
 			f['TELRA'   + telstr] = (telra,"Telescope RA (J2000 deg)")
 			f['TELDEC'  + telstr] = (teldec,"Telescope Dec (J2000 deg)")
@@ -1888,7 +1889,7 @@ class control:
 		return f
 
 			
-	def getHdr(self,target,tele_list,dome_list):
+	def getHdr(self,target,tele_list,dome_list,fau=False):
 
 		#get header info into json format and pass it to imager's write_header method
 		f = collections.OrderedDict()
@@ -1921,6 +1922,8 @@ class control:
 			else: f = self.addImagerKeys(tele_list, f)
 		else: f = self.addImagerKeys(tele_list, f)
 
+		#if fau: self.addImagerKeys(tele_list,f,fau=True)
+
 		# telescope Specific
 		f = self.addTelescopeKeys(target, tele_list, f)
 
@@ -1933,7 +1936,7 @@ class control:
 		return f
 
 
-	def addImagerKeys(self, telnum, f):
+	def addImagerKeys(self, telnum, f, fau=False):
 
 		if type(telnum) is not int:
 			self.logger.error("invalid imager specified")
@@ -1946,9 +1949,19 @@ class control:
 			camera = utils.getCamera(self,telnum)
 			
 		# WCS
-		platescale = camera.platescale/3600.0*camera.xbin # deg/pix
-		PA = 0.0#float(telescopeStatus.rotator.position)*math.pi/180.0
-		f['PIXSCALE'] = (str(platescale*3600.0),"Platescale in arc/pix, as binned")
+		if fau:
+			platescale = camera.fau.platescale/3600.0*camera.fau.xbin
+		else:
+			platescale = camera.platescale/3600.0*camera.xbin # deg/pix
+
+		#telescopeStatus = telescope.getStatus()
+		#m3port = int(telescopeStatus.m3.port)
+		#rotpos = float(telescopeStatus.rotator.position)
+		#parang = float(telescope.parangle(useCurrent=True))
+		#rotoff = float(telescope.rotatoroffset[str(m3port)])
+		PA = 0.0#(float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
+
+		f['PIXSCALE'] = (platescale*3600.0,"Platescale in arc/pix, as binned")
 		f['CTYPE1'] = ("RA---TAN","TAN projection")
 		f['CTYPE2'] = ("DEC--TAN","TAN projection")
 		f['CUNIT1'] = ("deg","X pixel scale units")
@@ -1959,14 +1972,14 @@ class control:
 		teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
 		if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
 
-		f['CRVAL1'] = (str(telra),"RA of reference point")
-		f['CRVAL2'] = (str(teldec),"DEC of reference point")
-		f['CRPIX1'] = (str(camera.xcenter),"X reference pixel")
-		f['CRPIX2'] = (str(camera.ycenter),"Y reference pixel")
-		f['CD1_1'] = str(-platescale*math.cos(PA))
-		f['CD1_2'] = str(platescale*math.sin(PA))
-		f['CD2_1'] = str(platescale*math.sin(PA))
-		f['CD2_2'] = str(platescale*math.cos(PA))
+		f['CRVAL1'] = (float(telra),"RA of reference point")
+		f['CRVAL2'] = (float(teldec),"DEC of reference point")
+		f['CRPIX1'] = (float(camera.xcenter),"X reference pixel")
+		f['CRPIX2'] = (float(camera.ycenter),"Y reference pixel")
+		f['CD1_1'] = float(-platescale*math.cos(PA))
+		f['CD1_2'] = float(platescale*math.sin(PA))
+		f['CD2_1'] = float(platescale*math.sin(PA))
+		f['CD2_2'] = float(platescale*math.cos(PA))
 
 		return f
 

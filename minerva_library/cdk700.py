@@ -604,19 +604,25 @@ class CDK700:
 
 	
 	
-	def makePointingModel(self, camera, npoints=100, maxmag=4.0, fau=True, brightstar=True, random=False, grid=False, nalt=4, naz=10, exptime=5.0, filterName='V'):
+	def makePointingModel(self, minerva, npoints=100, maxmag=4.0, fau=True, brightstar=True, random=False, grid=False, nalt=4, naz=10, exptime=5.0, filterName='V'):
 		
+		camera = utils.getCamera(minerva,self.num)
+
 		if fau:
 			xcenter = camera.fau.xcenter
 			ycenter = camera.fau.ycenter
+			xsize = camera.fau.x2
+			ysize = camera.fau.y2			
 			m3port = self.port['FAU']
-			platescale = camera.fau.platescale/3600.0 # deg/pix
+			platescale = camera.fau.platescale
 			derotate = False
 		else:
 			xcenter = camera.xcenter
 			ycenter = camera.ycenter
+			xsize = camera.x2
+			ysize = camera.y2
 			m3port = self.port['IMAGER']
-			platescale = camera.platescale/3600.0 # deg/pix
+			platescale = camera.platescale
 			derotate = True
 
 		if brightstar:
@@ -628,10 +634,10 @@ class CDK700:
 			for i in range(len(brightstars['dec'])):
 
 				# apply proper motion to coordinates
-				raj2000 = brightstars['ra'][i]
-				decj2000 = brightstars['dec'][i]
-				pmra = brightstars['pmra'][i]
-				pmdec = brightstars['pmdec'][i]
+				raj2000 = float(brightstars['ra'][i])
+				decj2000 = float(brightstars['dec'][i])
+				pmra = float(brightstars['pmra'][i])
+				pmdec = float(brightstars['pmdec'][i])
 #				ra,dec = self.starmotion(raj2000,decj2000,pmra,pmdec)
 
 				# ignore proper motion
@@ -647,59 +653,84 @@ class CDK700:
 					'ra':ra,
 					'dec':dec,
 					'spectroscopy':fau,
+					'fauexptime': exptime,
+					'name':'Pointing',
 					}
+
+
+				camera.fau.guiding=True
+				camera.fau.acquisition_tolerance=1.5
+				if minerva.fauguide(target,int(self.num),acquireonly=True,xfiber=xcenter,yfiber=ycenter):
+					# add point to model
+					self.logger.info("Adding point to model: ra = " + str(ra) + ", dec = " + str(dec))
+					self.mountAddToModel(ra,dec)
+
+#				# update the model file (so the new point doesn't get overwritten on port switch)
+#				shutil.copyfile(self.modeldir + 'Default_Mount_Model.PXP',self.modeldir + self.model[m3port])
+	
+				pointsAdded += 1
+				if pointsAdded >= npoints: return
+				continue
+
+
+				edge = 10
+
 
 				# slew to bright star
 				self.acquireTarget(target, derotate=derotate, m3port=m3port)
-
+			
 				# take image
 				imageName = camera.take_image(exptime=exptime, objname='Pointing', fau=fau, filterInd=filterName)
+#				imageName = minerva.takeFauImage(target,telescope_num=int(self.num))
 
 				# find the brightest star
 				datapath = '/Data/t' + self.num + '/' + self.night + '/'
 				x,y = utils.findBrightest(datapath + imageName)
+				if x==None or y==None: continue
 
-				if x != None and y != None:
-					# determine J2000 coordinates of the center pixel
-					
-					# we need to know and apply the current sky angle
-					telescopeStatus = self.getStatus()
-					rotpos = float(telescopeStatus.rotator.position)
-					parang = self.parangle(useCurrent=True)
-					rotoff = float(self.rotatoroffset[m3port])
-					skypa = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
+				# determine J2000 coordinates of the center pixel
+				
+				# we need to know and apply the current sky angle
+				telescopeStatus = self.getStatus()
+				rotpos = float(telescopeStatus.rotator.position)
+				parang = self.parangle(useCurrent=True)
+				rotoff = float(self.rotatoroffset[m3port])
+				skypa = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
+				
+				# apply the rotation matrix
+				raoffset  = ((x-xcenter)*math.cos(-skypa) - (y-ycenter)*math.sin(-skypa))*platescale/math.cos(dec*math.pi/180.0)
+				decoffset = ((x-xcenter)*math.sin(-skypa) + (y-ycenter)*math.cos(-skypa))*platescale
 
-					# apply the rotation matrix
-					raoffset = ((x-xcenter)*platescale*math.cos(skypa) + (y-ycenter)*platescale*math.sin(skypa))*math.cos(dec*math.pi/180.0)/15.0
-					decoffset = ((x-xcenter)*platescale*math.sin(skypa) - (y-ycenter)*platescale*math.cos(skypa))
-					racen  =  ra + raoffset
-					deccen = dec + decoffset
-
-					self.mountOffsetRaDec(raoffset*3600.0*15.0,decoffset*3600.0)
-					
+				# if it's too close to the edge, recenter and try again
+				if x < edge or y < edge or xsize-x < edge or ysize-y < edge:
+					self.mountOffsetRaDec(raoffset,decoffset)
+						
 					if self.inPosition(m3port=m3port, tracking=True, derotate=derotate):
 						self.logger.info('T' + self.num + ': Finished jog')
-					
-					
+
 					# take image
 					imageName = camera.take_image(exptime=exptime, objname='Pointing', fau=fau, filterInd=filterName)
-						
+
 					# find the brightest star
-					datapath = '/Data/t' + self.num + '/' + self.night + '/'
 					x,y = utils.findBrightest(datapath + imageName)
-					print x,y,xcenter,ycenter
+					if x==None or y==None: continue
+						
+					# apply the rotation matrix
+					raoffset  = ((x-xcenter)*math.cos(-skypa) - (y-ycenter)*math.sin(-skypa))*platescale/math.cos(dec*math.pi/180.0)
+					decoffset = ((x-xcenter)*math.sin(-skypa) + (y-ycenter)*math.cos(-skypa))*platescale
 
-					ipdb.set_trace()
+				racen  =  ra - raoffset/240.0
+				deccen = dec - decoffset/3600.0
+								# add point to model
+				self.logger.info("Adding point to model: RA_Center = " + str(racen) + ", Dec_center = " + str(deccen) + ", ra = " + str(ra) + ", dec = " + str(dec))
+				self.mountAddToModel(racen,deccen)
 
-
-					# add point to model
-					self.logger.info("Adding point to model: RA_Center = " + str(racen) + ", Dec_center = " + str(deccen) + ", ra = " + str(ra) + ", dec = " + str(dec))
-					self.mountAddToModel(racen,deccen)
-
-					# update the model file (so the new point doesn't get overwritten on port switch)
-					shutil.copyfile(self.modeldir + 'Default_Mount_Model.PXP',self.modeldir + self.model[m3port])
+#				# update the model file (so the new point doesn't get overwritten on port switch)
+#				shutil.copyfile(self.modeldir + 'Default_Mount_Model.PXP',self.modeldir + self.model[m3port])
 	
-					pointsAdded += 1
+				pointsAdded += 1
+				if pointsAdded >= npoints: return
+
 
 
 	# this is designed to calibrate the rotator using a single bright star
@@ -1091,6 +1122,15 @@ class CDK700:
 						mail.send('T%s: model file (%s) does not exist; using current model'%(self.num, modelfile),'',level='serious')
 
 					telescopeStatus = self.m3SelectPort(port=m3port)
+					time.sleep(0.5)
+					
+					telescopeStatus = self.m3SelectPort(port=m3port)
+
+					# TODO: add a timeout here!
+					while telescopeStatus.m3.moving_rotate == 'True':
+						time.sleep(0.1)
+						telescopeStatus = self.getStatus()
+						
 				
 		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
 		else:

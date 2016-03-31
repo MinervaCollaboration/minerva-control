@@ -310,8 +310,10 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
 
     minerva.logger.info("Doing backlit images for telescopes " + ",".join([str(x) for x in tele_list]))
 
-    # TODO: close expmeter shutter
-
+    # Turn off the expmeter (high voltage, close shutter). this waits for a response that 
+    # the high voltage supply has been turned off (in a weird way, look in spec_server)
+    minerva.spectrograph.stop_log_expmeter()
+    time.sleep(15)
     # turn on the slit flat LED
     minerva.spectrograph.backlight_turn_on()
     t0 = datetime.datetime.utcnow()
@@ -364,8 +366,9 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     # turn off the slit flat LED
     minerva.spectrograph.backlight_turn_off()
     minerva.logger.info("Done with backlit images")
-
+    time.sleep(15)
     # TODO: open expmeter shutter
+    minerva.spectrograph.start_log_expmeter()
 
 # given a backlit FAU image, locate the fiber
 def find_fiber(imagename, camera, tolerance=5.0):
