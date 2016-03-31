@@ -798,7 +798,7 @@ class control:
 
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
-	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False):
+	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False):
 
 		telescope = utils.getTelescope(self,tel_num)
 		camera = utils.getCamera(self,tel_num)
@@ -861,6 +861,7 @@ class control:
 
 			if len(stars) < 1:
 				self.logger.info("T" + str(tel_num) + ": no stars in imaging; skipping guide correction")
+				if skiponfail: return False
 			else:
 
 				ndx = np.argmax(stars[:,2])
@@ -1504,16 +1505,16 @@ class control:
 #                f['DATE-OBS'] = ("","UTC at exposure start")
                 f['EXPTIME'] = ("","Exposure time in seconds")                  # PARAM24/1000
 #                f['EXPSTOP'] = ("","UTC at exposure end")
-                f['SET-TEMP'] = ("",'CCD temperature setpoint (C)')            # PARAM62 (in comments!)
-                f['CCD-TEMP'] = ("",'CCD temperature at start of exposure (C)')# PARAM0
-                f['BACKTEMP'] = ("","Camera backplate temperature (C)")        # PARAM1
-                f['XPIXSZ'] = ("",'Pixel Width (microns after binning)')
-                f['YPIXSZ'] = ("",'Pixel Height (microns after binning)')
-                f['XBINNING'] = ("","Binning factor in width")                  # PARAM18
-                f['YBINNING'] = ("","Binning factor in height")                 # PARAM22
+                f['SET-TEMP'] = ("UNKNOWN",'CCD temperature setpoint (C)')            # PARAM62 (in comments!)
+                f['CCD-TEMP'] = ("UNKNOWN",'CCD temperature at start of exposure (C)')# PARAM0
+                f['BACKTEMP'] = ("UNKNOWN","Camera backplate temperature (C)")        # PARAM1
+                f['XPIXSZ'] = ("UNKNOWN",'Pixel Width (microns after binning)')
+                f['YPIXSZ'] = ("UNKNOWN",'Pixel Height (microns after binning)')
+                f['XBINNING'] = ("UNKNOWN","Binning factor in width")                  # PARAM18
+                f['YBINNING'] = ("UNKNOWN","Binning factor in height")                 # PARAM22
                 f['XORGSUBF'] = (0,'Subframe X position in binned pixels')      # PARAM16
                 f['YORGSUBF'] = (0,'Subframe Y position in binned pixels')      # PARAM20
-                f['IMAGETYP'] = ("",'Type of image')
+                f['IMAGETYP'] = ("UNKNOWN",'Type of image')
                 f['SITELAT'] = (str(self.site.obs.lat),"Site Latitude")
                 f['SITELONG'] = (str(self.site.obs.lon),"East Longitude of the imaging location")
                 f['SITEALT'] = (self.site.obs.elevation,"Site Altitude (m)")
@@ -1521,32 +1522,32 @@ class control:
                 f['SWCREATE'] = ("SI2479E 2011-12-02","Name of the software that created the image")
                 f['INSTRUME'] = ('KiwiSpec','Name of the instrument')
                 f['OBSERVER'] = ('MINERVA Robot',"Observer")
-                f['SHUTTER'] = ("","Shuter Status")             # PARAM8
-                f['XIRQA'] = ("",'XIRQA status')                # PARAM9
-                f['COOLER'] = ("","Cooler Status")              # PARAM10
-                f['CONCLEAR'] = ("","Continuous Clear")         # PARAM25
-                f['DSISAMP'] = ("","DSI Sample Time")           # PARAM26
-                f['ANLGATT'] = ("","Analog Attenuation")        # PARAM27
-                f['PORT1OFF'] = ("","Port 1 Offset")            # PARAM28
-                f['PORT2OFF'] = ("","Port 2 Offset")            # PARAM29
-                f['TDIDELAY'] = ("","TDI Delay,us")             # PARAM32
-                f['CMDTRIG'] = ("","Command on Trigger")        # PARAM39
-                f['ADCOFF1'] = ("","Port 1 ADC Offset")         # PARAM44
-                f['ADCOFF2'] = ("","Port 2 ADC Offset")         # PARAM45
-                f['MODEL'] = ("","Instrument Model")            # PARAM48
-                f['SN'] = ("","Instrument SN")                  # PARAM49
-                f['HWREV'] = ("","Hardware Revision")           # PARAM50
-                f['SERIALP'] =("","Serial Phasing")             # PARAM51
-                f['SERIALSP'] = ("","Serial Split")             # PARAM52
-                f['SERIALS'] = ("","Serial Size,Pixels")        # PARAM53
-                f['PARALP'] = ("","Parallel Phasing")           # PARAM54
-                f['PARALSP'] = ("","Parallel Split")            # PARAM55
-                f['PARALS'] = ("","Parallel Size,Pixels")       # PARAM56
-                f['PARDLY'] = ("","Parallel Shift Delay, ns")   # PARAM57
-                f['NPORTS'] = ("","Number of Ports")            # PARAM58
-                f['SHUTDLY'] = ("","Shutter Close Delay, ms")   # PARAM59
-                f['GAIN'] = (1.30,"Detector gain (e-/ADU)")
-                f['RDNOISE'] = (3.63,"Detector read noise (e-)")
+                f['SHUTTER'] = ("UNKNOWN","Shuter Status")             # PARAM8
+                f['XIRQA'] = ("UNKNOWN",'XIRQA status')                # PARAM9
+                f['COOLER'] = ("UNKNOWN","Cooler Status")              # PARAM10
+                f['CONCLEAR'] = ("UNKNOWN","Continuous Clear")         # PARAM25
+                f['DSISAMP'] = ("UNKNOWN","DSI Sample Time")           # PARAM26
+                f['ANLGATT'] = ("UNKNOWN","Analog Attenuation")        # PARAM27
+                f['PORT1OFF'] = ("UNKNOWN","Port 1 Offset")            # PARAM28
+                f['PORT2OFF'] = ("UNKNOWN","Port 2 Offset")            # PARAM29
+                f['TDIDELAY'] = ("UNKNOWN","TDI Delay,us")             # PARAM32
+                f['CMDTRIG'] = ("UNKNOWN","Command on Trigger")        # PARAM39
+                f['ADCOFF1'] = ("UNKNOWN","Port 1 ADC Offset")         # PARAM44
+                f['ADCOFF2'] = ("UNKNOWN","Port 2 ADC Offset")         # PARAM45
+                f['MODEL'] = ("UNKNOWN","Instrument Model")            # PARAM48
+                f['SN'] = ("UNKNOWN","Instrument SN")                  # PARAM49
+                f['HWREV'] = ("UNKNOWN","Hardware Revision")           # PARAM50
+                f['SERIALP'] =("UNKNOWN","Serial Phasing")             # PARAM51
+                f['SERIALSP'] = ("UNKNOWN","Serial Split")             # PARAM52
+                f['SERIALS'] = ("UNKNOWN","Serial Size,Pixels")        # PARAM53
+                f['PARALP'] = ("UNKNOWN","Parallel Phasing")           # PARAM54
+                f['PARALSP'] = ("UNKNOWN","Parallel Split")            # PARAM55
+                f['PARALS'] = ("UNKNOWN","Parallel Size,Pixels")       # PARAM56
+                f['PARDLY'] = ("UNKNOWN","Parallel Shift Delay, ns")   # PARAM57
+                f['NPORTS'] = ("UNKNOWN","Number of Ports")            # PARAM58
+                f['SHUTDLY'] = ("UNKNOWN","Shutter Close Delay, ms")   # PARAM59
+                f['GAIN'] = (1.30,"SI Detector gain (e-/ADU)")
+                f['RDNOISE'] = (3.63,"SI Detector read noise (e-)")
 
                                         
         #PARAM60 =                   74 / CCD Temp. Setpoint Offset,0.1 C               
@@ -1571,7 +1572,6 @@ class control:
                 # spectrograph information
                 EXPTYPE = 'Time-Based'         / Exposure Type                                  
                 '''
-
 
 		# pressure in the spectrograph
 		specpressure = -999.0
@@ -1922,7 +1922,7 @@ class control:
 			else: f = self.addImagerKeys(tele_list, f)
 		else: f = self.addImagerKeys(tele_list, f)
 
-		#if fau: self.addImagerKeys(tele_list,f,fau=True)
+		if fau: self.addImagerKeys(tele_list,f,fau=True)
 
 		# telescope Specific
 		f = self.addTelescopeKeys(target, tele_list, f)
@@ -1951,15 +1951,27 @@ class control:
 		# WCS
 		if fau:
 			platescale = camera.fau.platescale/3600.0*camera.fau.xbin
+			xcenter = camera.fau.xcenter
+			ycenter = camera.fau.ycenter
 		else:
 			platescale = camera.platescale/3600.0*camera.xbin # deg/pix
+			xcenter = camera.xcenter
+			ycenter = camera.ycenter
 
-		#telescopeStatus = telescope.getStatus()
-		#m3port = int(telescopeStatus.m3.port)
-		#rotpos = float(telescopeStatus.rotator.position)
-		#parang = float(telescope.parangle(useCurrent=True))
-		#rotoff = float(telescope.rotatoroffset[str(m3port)])
-		PA = 0.0#(float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
+		telescopeStatus = telescope.getStatus()
+		m3port = int(telescopeStatus.m3.port)
+		
+		try: rotpos = float(telescopeStatus.rotator.position)
+		except: rotpos = "UNKNOWN"
+
+		try: parang = float(telescope.parangle(useCurrent=True))
+		except: parang = "UNKNOWN"
+
+		try: rotoff = float(telescope.rotatoroffset[str(m3port)])
+		except: rotoff = "UNKNOWN"
+
+		try: PA = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
+		except: PA = 0.0
 
 		f['PIXSCALE'] = (platescale*3600.0,"Platescale in arc/pix, as binned")
 		f['CTYPE1'] = ("RA---TAN","TAN projection")
@@ -1974,12 +1986,12 @@ class control:
 
 		f['CRVAL1'] = (float(telra),"RA of reference point")
 		f['CRVAL2'] = (float(teldec),"DEC of reference point")
-		f['CRPIX1'] = (float(camera.xcenter),"X reference pixel")
-		f['CRPIX2'] = (float(camera.ycenter),"Y reference pixel")
-		f['CD1_1'] = float(-platescale*math.cos(PA))
-		f['CD1_2'] = float(platescale*math.sin(PA))
-		f['CD2_1'] = float(platescale*math.sin(PA))
-		f['CD2_2'] = float(platescale*math.cos(PA))
+		f['CRPIX1'] = (float(xcenter),"X reference pixel")
+		f['CRPIX2'] = (float(ycenter),"Y reference pixel")
+		f['CD1_1'] = (float(-platescale*math.cos(PA)),"DL/DX")
+		f['CD1_2'] = (float(platescale*math.sin(PA)),"DL/DY")
+		f['CD2_1'] = (float(platescale*math.sin(PA)),"DM/DX")
+		f['CD2_2'] = (float(platescale*math.cos(PA)),"DM/DY")
 
 		return f
 

@@ -658,30 +658,52 @@ class CDK700:
 					}
 
 
+				# slew to bright star
+				self.acquireTarget(target, derotate=derotate, m3port=m3port)
+
 				camera.fau.guiding=True
 				camera.fau.acquisition_tolerance=1.5
-				if minerva.fauguide(target,int(self.num),acquireonly=True,xfiber=xcenter,yfiber=ycenter):
+				if minerva.fauguide(target,int(self.num),acquireonly=True,xfiber=xcenter,yfiber=ycenter,skiponfail=True):
 					# add point to model
 					self.logger.info("Adding point to model: ra = " + str(ra) + ", dec = " + str(dec))
 					self.mountAddToModel(ra,dec)
 
-#				# update the model file (so the new point doesn't get overwritten on port switch)
-#				shutil.copyfile(self.modeldir + 'Default_Mount_Model.PXP',self.modeldir + self.model[m3port])
+					# update the model file (so the new point doesn't get overwritten on port switch)
+					# TODO: need function to save model as default
+#					shutil.copyfile(self.modeldir + 'Default_Mount_Model.PXP',self.modeldir + self.model[m3port])
 	
-				pointsAdded += 1
-				if pointsAdded >= npoints: return
-				continue
+					pointsAdded += 1
+					if pointsAdded >= npoints: return
+#				continue
+
+
+				imageName = minerva.takeFauImage(target,telescope_num=int(self.num))
+				datapath = '/Data/t' + self.num + '/' + self.night + '/'
+				x,y = utils.findBrightest(datapath + imageName)
+				if x==None or y==None: continue
+
+				# update the reference pixel to the brightest (target) star
+				f = pyfits.open(dataPath + imageName, mode='update')
+				f[0].header]['CRVAL1'] = ra
+				f[0].header]['CRVAL2'] = dec
+				f[0].header]['CRPIX1'] = x
+				f[0].header]['CRPIX2'] = y
+				f.flush()
+				f.close()
+
+				# call xy2sky to determine the J2000 coordinates of the center pixel
+				p = subprocess.Popen(["xy2sky",datapath+imageName,str(xcenter),str(ycenter)],
+						     stderr=subprocess.PIPE,stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+				output,err = p.communicate()
+				racen = utils.ten(output.split()[0])
+				deccen = utils.ten(output.split()[1])
 
 
 				edge = 10
 
-
-				# slew to bright star
-				self.acquireTarget(target, derotate=derotate, m3port=m3port)
 			
 				# take image
 				imageName = camera.take_image(exptime=exptime, objname='Pointing', fau=fau, filterInd=filterName)
-#				imageName = minerva.takeFauImage(target,telescope_num=int(self.num))
 
 				# find the brightest star
 				datapath = '/Data/t' + self.num + '/' + self.night + '/'
@@ -714,6 +736,7 @@ class CDK700:
 					# find the brightest star
 					x,y = utils.findBrightest(datapath + imageName)
 					if x==None or y==None: continue
+					if x < edge or y < edge or xsize-x < edge or ysize-y < edge: continue
 						
 					# apply the rotation matrix
 					raoffset  = ((x-xcenter)*math.cos(-skypa) - (y-ycenter)*math.sin(-skypa))*platescale/math.cos(dec*math.pi/180.0)
@@ -813,7 +836,7 @@ class CDK700:
 		start = datetime.datetime.utcnow()
 		timeout = 30.0
 		elapsedTime = 0
-		time.sleep(0.25) # needs time to start moving
+		time.sleep(0.5) # needs time to start moving
 		telescopeStatus = self.getStatus()
 
 		#S want to make sure we are at the right port before mount, focuser, rotator slew.
@@ -836,7 +859,7 @@ class CDK700:
 			self.logger.info('T%s: No M3 port specified or bad, using current port(%s)'%(self.num,telescopeStatus.m3.port))
 
 
-		self.logger.info('T' + self.num + ': Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving)
+		self.logger.info('T' + self.num + ': Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving + str(telescopeStatus.mount.moving == 'True') + str(elapsedTime < timeout) + str(tracking))
 		timeout = 60.0
 		while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout and tracking:
 			time.sleep(0.1)
