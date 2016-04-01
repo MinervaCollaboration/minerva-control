@@ -196,10 +196,10 @@ class server:
 			response = self.led_turn_off()
 		elif tokens[0] == 'time_tracker_check':
                         response = self.time_tracker_check(tokens[1])
-		elif tokens[0] == 'expmeter_shutter_open':
-			response = self.expmeter_shutter_open()
-		elif tokens[0] == 'expmeter_shutter_close':
-			response = self.expmeter_shutter_close()
+		elif tokens[0] == 'stop_log_expmeter':
+			response = self.stop_log_expmeter()
+		elif tokens[0] == 'start_log_expmeter':
+			response = self.start_log_expmeter()
 #                elif tokens[0] == 'update_dynapower1':
 #                        response = self.update_dynapower1()
 #                elif tokens[0] == 'update_dynapower2':
@@ -400,8 +400,9 @@ class server:
                         return 'fail'
 
                 # home the stage then move to the nominal (in) position
-                self.logger.info("Iodine stage connected; homing and moving to 'in' position")
+                self.logger.info("Iodine stage connected; homing")
                 self.i2stage_home()
+                self.logger.info("Iodine cell homed, moving to 'in' position")
                 self.i2stage_move('in')
         
                 return 'success'
@@ -835,19 +836,26 @@ class server:
         # EXPOSURE METER FUNCTIONS
         ###
 
-	def expmeter_shutter_open(self):
-                #S Sets the trigger for the shutter.
+        #S Restart the exposure meter if it were paused for backlighting the fiber.
+        #S This only works if the exposure meter is in the loop in logexpmeter.
+	def start_log_expmeter(self):
 		try:
-			self.expmeter_com.send('O' + chr(1))
+                        self.logger.info('Starting to log expmeter measurements')
+                        self.pause_for_backlight = False
 			return 'success'
 		except:
 			return 'fail'
 
-	def expmeter_shutter_close(self):
-		# Shut the shutter
+        #S Stop the exposure meter, inteded for use only in the backlighting portion of
+        #S logexpmeter main loop. This 'waits' for the high voltage to be turned off. This is
+        #S a sort of weird way to do it, but it saves the time for waiting on more comm while
+        #S confirming it is off. 
+	def stop_log_expmeter(self):
 		try:
-			self.expmeter_com.send('O' + chr(0))
-			self.logger.info('Closed expmeter shutter')
+                        self.pause_for_backlight = True
+                        #time.sleep(10)
+                        while self.exp_highvoltage:
+                                time.sleep(0.1)
 			return 'success'
 		except:
 			return 'fail'
@@ -861,6 +869,10 @@ class server:
         #S defined here that will act as a catch if there
         #S is an overexposure hopefully before any damage is done.         
         def logexpmeter(self):
+                #S Turn expmeter on
+                self.pdu.expmeter.on()
+                self.pause_for_backlight = False
+                
                 #S The maximum count threshold we are currently allowing.
                 #S Used as trigger level for shutdown.
                 #TODO Get a real number for this.
@@ -868,28 +880,62 @@ class server:
 
                 #S Number of measurements we want to read per second.
                 MEASUREMENTSPERSEC = 1.0
-                #S Turn expmeter on
-                self.pdu.expmeter.on()
                 #S Give some time for command to be sent and the outlet to
                 #S power on. Empirical wait time from counting how long it
                 #S it took to turn on. Potentially shortened?
-                time.sleep(2)
+                time.sleep(1)
                 #S Sends comand to set Period of expmeter measurements.
                 #S See documentation for explanation.
                 self.expmeter_com.send('P' + chr(int(100.0/MEASUREMENTSPERSEC)))
                 #S Turns on the high voltage.
+                self.logger.info('Exposure meter high voltage on')
+                self.exp_highvoltage = True
                 self.expmeter_com.send('V'+chr(1)+chr(1))
                 #S Sets the trigger for the shutter.
+                self.logger.info('Exposure meter shutter trigger set')
                 self.expmeter_com.send('O' + chr(1))
-                #S This command is supposed to allow continuous measurements,
-                #S but no difference if it is made or not.
-                ##expmeter.send('L')
                 #S Begin continuous measurements.
+                self.logger.info('starting continuous exposure meter measurements')
                 self.expmeter_com.send('C')
                 #S Open up connection for reading, remains open.
                 self.expmeter_com.ser.open()
                 #S Loop for catching exposures.
                 while self.expmeter_com.ser.isOpen() and self.log_exposure_meter:
+                        if self.pause_for_backlight:
+                                self.expmeter_com.ser.close()
+                                # Shut the shutter
+                                self.expmeter_com.send('O' + chr(0))
+                                self.logger.info('Closed expmeter shutter')
+                                #S High voltage off.
+                                self.expmeter_com.send('V'+ chr(0) + chr(0) + self.expmeter_com.termstr) # turn off voltage
+                                self.logger.info('turned off exposure meter high voltage')
+                                self.exp_highvoltage = False
+                                #S Stop measurements
+                                self.expmeter_com.send("\r")
+                                self.logger.info('stopped expmeter measurements')
+                                self.pdu.expmeter.off()
+                                #time.sleep(5)
+                                #S waiting for self.start_log_expmeter
+                                while self.pause_for_backlight:
+                                        time.sleep(0.1)
+                                self.pdu.expmeter.on()
+                                time.sleep(1)
+                                #S Sends comand to set Period of expmeter measurements.
+                                #S See documentation for explanation.
+                                self.expmeter_com.send('P' + chr(int(100.0/MEASUREMENTSPERSEC)))
+                                #S Turns on the high voltage.
+                                self.logger.info('Exposure meter high voltage on')
+                                self.expmeter_com.send('V'+chr(1)+chr(1))
+                                self.exp_highvoltage = True
+                                #S Sets the trigger for the shutter.
+                                self.logger.info('Exposure meter shutter trigger set')
+                                self.expmeter_com.send('O' + chr(1))
+                                #S Begin continuous measurements.
+                                self.logger.info('starting continuous exposure meter measurements')
+                                self.expmeter_com.send('C')
+                                #S Open up connection for reading, remains open.
+                                self.expmeter_com.ser.open()
+        
                         try:
                                 #ipdb.set_trace()
                                 #S While the register is empty, wait
@@ -907,12 +953,8 @@ class server:
                         #S The exception if something goes bad, negative reading is the key.   
                         except:
                                 time.sleep(.5)
-                                self.expmeter_com.logger.exception('-999')
-                                reading = -999
-                                print 'WE HIT THE SPEC_SERV EXCEPTION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-                                #TODO Run this solution by Jason
-                                if not self.expmeter_com.ser.isOpen():
-                                        self.expmeter_com.open()                               
+                                self.expmeter_com.logger.exception('Expmeter connectino unexpectedly closed.')
+                                reading = -999                            
                         
                         #S This is the check against the maxsafecount.    
                         #S Tested to see if caught, passed.Utlimately just
@@ -933,7 +975,7 @@ class server:
                         
                         with open(path + "expmeter.dat", "a") as fh:
                                 fh.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(reading) + "\n")
-                        self.expmeter_com.logger.info("The exposure meter reading is: " + datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + " " + str(reading))
+                        self.expmeter_com.logger.info("The exposure meter reading is: " + str(reading))
 
                 #S Close the comm port
                 self.expmeter_com.close() # close connection
