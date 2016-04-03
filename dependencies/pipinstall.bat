@@ -21,4 +21,4 @@ cd pywinauto-0.4.2
 python setup.py install
 cd ..
 #pip install google-api-python-client
-#pip install astropy
+pip install astropy
