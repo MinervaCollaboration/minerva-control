@@ -229,6 +229,12 @@ class site:
 		retval = True
 		decisionFile = 'manualDecision.txt'
 
+		# get the current weather, timestamp, and Sun's position
+		self.getWeather()
+		while self.weather == -1:
+			time.sleep(1)
+			self.getWeather()
+
 		# conditions have necessitated a manual decision to open the domes
 		if os.path.exists(decisionFile):
 			f = open(decisionFile,'r')
@@ -281,14 +287,6 @@ class site:
 			self.logger.info("close limits have been modified; this shouldn't happen!")
 		if self.openLimits['sunAltitude'][1] == 90:
 			self.logger.info("open limits have been modified; this shouldn't happen!")
-
-
-		# get the current weather, timestamp, and Sun's position
-		self.getWeather()
-		while self.weather == -1:
-			time.sleep(1)
-			self.getWeather()
-
 
 		# MearthCloud reports 998.0 when it's raining and is much more reliable than wxt510Rain 
 		if self.weather['MearthCloud'] == 998.0:

@@ -798,7 +798,7 @@ class control:
 
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
-	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False):
+	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False):
 
 		telescope = utils.getTelescope(self,tel_num)
 		camera = utils.getCamera(self,tel_num)
@@ -856,6 +856,11 @@ class control:
 #				camera.fau.acquired = False
 #				return False
 				
+#			self.logger.info("*****I'm Sleeping; kill me if you need to*****")
+#			time.sleep(5)
+
+
+				
 			dataPath = '/Data/t' + camera.telnum + '/' + self.night + '/'
 			stars = self.getstars(dataPath + filename)
 
@@ -912,9 +917,12 @@ class control:
 
 				# position angle on the sky
 				# PA = parallactic angle - mechanical rotator position + field rotation offset
-				parangle = telescope.parangle(useCurrent=True)
 				offset = float(telescope.rotatoroffset[telescope.port['FAU']])
-				PA = parangle - float(telescope.getStatus().rotator.position) + offset
+				if artificial:
+					PA = float(telescope.getStatus().rotator.position) - offset
+				else:
+					parangle = telescope.parangle(useCurrent=True)
+					PA = parangle - float(telescope.getStatus().rotator.position) + offset
 				self.logger.info('T' + str(tel_num) + ': PA = '+str(PA))
 
 
@@ -928,7 +936,11 @@ class control:
 				if guiding == True:
 					telescopeStatus = telescope.getStatus()
 					dec = utils.ten(telescopeStatus.mount.dec_2000)
-					telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
+					if artificial:
+						telescope.mountOffsetAltAzFixed(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
+					else:
+						telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
+					
 
 					if fast:
 						time.sleep(5)

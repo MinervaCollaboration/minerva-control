@@ -89,8 +89,8 @@ class spectrograph:
 			s.connect((self.ip, self.port))
 			self.logger.info('successfully connected to spectrograph server')
 		except:
-			self.logger.error('failed to connect to spectrograph server')
-			ipdb.set_trace()
+			self.logger.exception('failed to connect to spectrograph server')
+			#ipdb.set_trace()
 		return s
 	#send commands to camera server running on telcom that has direct control over instrument
 	def send(self,msg,timeout):

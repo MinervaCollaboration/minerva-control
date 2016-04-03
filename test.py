@@ -19,35 +19,50 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+	ipdb.set_trace()
+
 	
+
 	target = {'name':'autofocus',
 		  'exptime':[5],
-		  'fauexptime':1,
+		  'fauexptime':.1,
 		  'filter':["V"],
+		  'tracking':False,
 		  'spectroscopy':True}
+	
+	ipdb.set_trace()
+#	minerva.telescopes[0].m3port_switch('2',force=True)
+#	newauto.autofocus(minerva,1,target=target)
 #	newauto.autofocus(minerva,3,target=target)
-
 #	minerva.telescopes[3].calibrateRotator(minerva.cameras[3])
-
 #	minerva.telescopes[0].makePointingModel(minerva.cameras[0],npoints=1)
 
 
-	ipdb.set_trace()
 	exptime = 1.0
 #	minerva.telescopes[0].makePointingModel(minerva.cameras[0],npoints=1)
+#	ipdb.set_trace()
+#	rv_control.backlight(minerva,tele_list=[4],exptime=exptime)
+#	x,y = rv_control.find_fiber('/Data/t4/' + minerva.night + '/' + minerva.cameras[3].file_name, minerva.cameras[3])
+
+
+#	minerva.night1 = 'n20160401'
+
+	rv_control.backlight(minerva,exptime=exptime,tele_list=[2])
+	x,y = rv_control.find_fiber('/Data/t2/' + minerva.night + '/' + minerva.cameras[1].file_name, minerva.cameras[1])
+	
 	ipdb.set_trace()
-	rv_control.backlight(minerva,tele_list=[4],exptime=exptime)
-	x,y = rv_control.find_fiber('/Data/t4/' + minerva.night + '/' + minerva.cameras[3].file_name, minerva.cameras[3])
+	for ind in [3]:
+		path = '/Data/t%s/%s/%s'\
+		    %(str(ind+1),minerva.night,\
+                              minerva.cameras[ind].file_name)
+		rv_control.find_fiber(path, minerva.cameras[ind],control=minerva)
 
 
-	minerva.night1 = 'n20160330'
 
-	ipdb.set_trace()
-	rv_control.backlight(minerva,exptime=exptime)
-	x,y = rv_control.find_fiber('/Data/t1/' + minerva.night1 + '/' + minerva.cameras[0].file_name, minerva.cameras[0])
-	x,y = rv_control.find_fiber('/Data/t2/' + minerva.night1 + '/' + minerva.cameras[1].file_name, minerva.cameras[1])
-	x,y = rv_control.find_fiber('/Data/t3/' + minerva.night1 + '/' + minerva.cameras[2].file_name, minerva.cameras[2])
-	x,y = rv_control.find_fiber('/Data/t4/' + minerva.night1 + '/' + minerva.cameras[3].file_name, minerva.cameras[3])
+#	x,y = rv_control.find_fiber('/Data/t1/' + minerva.night1 + '/' + minerva.cameras[0].file_name, minerva.cameras[0],control=minerva)
+#	x,y = rv_control.find_fiber('/Data/t2/' + minerva.night1 + '/' + minerva.cameras[1].file_name, minerva.cameras[1],control=minerva)
+#	x,y = rv_control.find_fiber('/Data/t3/' + minerva.night1 + '/' + minerva.cameras[2].file_name, minerva.cameras[2],control=minerva)
+#	x,y = rv_control.find_fiber('/Data/t4/' + minerva.night1 + '/' + minerva.cameras[3].file_name, minerva.cameras[3],control=minerva)
 
 #	minerva.endNight(num=1,email=False)
 	ipdb.set_trace()

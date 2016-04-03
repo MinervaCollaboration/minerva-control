@@ -593,11 +593,16 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                      'spectroscopy':spectroscopy}
         
     #S Initialize telescope, we want tracking ON
-    if not telescope.isInitialized(tracking=True,derotate=
+    if 'tracking' in af_target.keys():
+        tracking = af_target['tracking']
+    else:
+        tracking = True
+
+    if not telescope.isInitialized(tracking=tracking,derotate=
                                    (not af_target['spectroscopy'])):
-        if not telescope.initialize(tracking=True,derotate=\
+        if not telescope.initialize(tracking=tracking,derotate=\
                                         (not af_target['spectroscopy'])):
-            telescope.recover(tracking=True,derotate=\
+            telescope.recover(tracking=tracking,derotate=\
                                   (not af_target['spectroscopy']))
             
     if 'ra' in af_target.keys() and 'dec' in af_target.keys():

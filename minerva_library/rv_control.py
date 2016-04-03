@@ -313,7 +313,7 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     # Turn off the expmeter (high voltage, close shutter). this waits for a response that 
     # the high voltage supply has been turned off (in a weird way, look in spec_server)
     minerva.spectrograph.stop_log_expmeter()
-    time.sleep(15)
+
     # turn on the slit flat LED
     minerva.spectrograph.backlight_turn_on()
     t0 = datetime.datetime.utcnow()
@@ -338,7 +338,7 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
 
     # wait for the LED to warm up
     elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-    warmuptime = 1.0
+    warmuptime = 2.0
     if elapsedTime < warmuptime:
         time.sleep(warmuptime - elapsedTime)
 
@@ -366,12 +366,12 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     # turn off the slit flat LED
     minerva.spectrograph.backlight_turn_off()
     minerva.logger.info("Done with backlit images")
-    time.sleep(15)
-    # TODO: open expmeter shutter
+
+    # open expmeter shutter
     minerva.spectrograph.start_log_expmeter()
 
 # given a backlit FAU image, locate the fiber
-def find_fiber(imagename, camera, tolerance=5.0):
+def find_fiber(imagename, camera, tolerance=5.,control=None):
     
     catname = utils.sextract('',imagename,sexfile='backlight.sex')
     cat = utils.readsexcat(catname)
@@ -387,7 +387,44 @@ def find_fiber(imagename, camera, tolerance=5.0):
         yfiber = cat['YWIN_IMAGE'][brightest]        
         dist = math.sqrt(math.pow(camera.fau.xfiber - xfiber,2) + math.pow(camera.fau.yfiber-yfiber,2))
         if dist <= tolerance:
-            camera.logger.info("Fiber found at (" + str(xfiber) +","+str(yfiber) + "), "+ str(dist) + " pixels from nominal position")
+            if control==None:
+                camera.logger.info("Fiber found at (" + str(xfiber) +","+str(yfiber) + "), "+ str(dist) + " pixels from nominal position")
+            
+            #S if a control class is handed to find_fiber
+            elif control!=None:
+                #S get the zero-indexed telescope number
+                telnum = int(camera.telnum) - 1
+                #S get the status of the telescope the camera is on
+                status = control.telescopes[telnum].getStatus()
+                try: alt = '%.3f'%(np.degrees(float(status.mount.alt_radian)))
+                except: alt = 'UNKNOWN'
+                try: azm = '%.3f'%np.degrees(float(status.mount.azm_radian)) 
+                except: azm = 'UNKNOWN'
+                try: focpos = str(status.focuser.position)
+                except: focpos = 'UNKNOWN'
+                try: rotpos = str(status.rotator.position)
+                except: rotpos = 'UNKNOWN'
+                try:    tm1 = str(status.temperature.primary)
+                except: tm1 = 'UNKNOWN'
+                try:    tm2 = str(status.temperature.secondary)
+                except: tm2 = 'UNKNOWN'
+                try:    tm3 = str(status.temperature.m3)
+                except: tm3 = 'UNKNOWN'
+                try:    tamb = str(status.temperature.ambient)
+                except: tamb = 'UNKNOWN'
+                try:    tback = str(status.temperature.backplate)
+                except: tback = 'UNKNOWN'
+                str_telnum = str(telnum + 1)
+            
+                camera.logger.info(('fibstab001, Fiberpos:(%0.3f,%0.3f), '+\
+                                        'dist:%0.3f, T:%s, alt:%s, azm:%s, '+\
+                                        'focpos:%s, rotpos:%s, tm1:%s, '+\
+                                        'tm2:%s, tm3:%s, tamb:%s, tback:%s'),\
+                                       xfiber,yfiber,dist,str_telnum,alt,azm,\
+                                       focpos,rotpos,tm1,tm2,tm3,tamb,tback)
+
+                
+            
             return xfiber, yfiber
         else:
             camera.logger.info("Object found at (" + str(xfiber) +","+str(yfiber) + "), but "+ str(dist) + " is greater than fiber tolerance")
@@ -415,6 +452,7 @@ def fiber_stability(minerva):
     timeout = 360.0
 
     # evaluate stability as a function of alt/az/rotation
+    """
     for rotang in range(0,360,10):
 
         threads = []
@@ -424,24 +462,30 @@ def fiber_stability(minerva):
             threads.append(thread)
         for thread in threads:
             thread.start()
-            
+    """
         # now slew in alt/az
-        for az in range(0,270,90):
-            for alt in range(21,84,15):
-                
-                minerva.telescope_mountGotoAltAz(alt,az)
-
-                t0 = datetime.datetime.utcnow()
-                elapsedTime = 0.0
+    for az in range(0,270,90):
+        for alt in range(21,84,15):
+            
+            minerva.telescope_mountGotoAltAz(alt,az)
+            
+            t0 = datetime.datetime.utcnow()
+            elapsedTime = 0.0
 
                 # wait for telescopes to get in position
-                for telescope in minerva.telescopes:
-                    while not telescope.inPosition(alt=alt,az=az,pointingTolerance=3600.0) and elapsedTime < timeout:
-                        time.sleep(1)
-                        elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+            for telescope in minerva.telescopes:
+                while not telescope.inPosition(alt=alt,az=az,pointingTolerance=3600.0) and elapsedTime < timeout:
+                    time.sleep(1)
+                    elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
                 
-                backlight(minerva)
-
+            backlight(minerva)
+            for ind in np.arange(4):
+                path = '/Data/t%s/%s/%s'\
+                    %(str(ind+1),minerva.night,\
+                          minerva.cameras[ind].file_name)
+                find_fiber(path, minerva.cameras[ind],control=minerva)
+                
+                
 
 def get_rv_target(minerva, bstar=False):
     targets = targetlist.mkdict(bstar=bstar)
