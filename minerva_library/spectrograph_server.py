@@ -301,6 +301,7 @@ class server:
 			dateobs = (datetime.datetime.strptime(f[0].header['DATE-OBS'],fmt) + datetime.timedelta(hours=7)).strftime(fmt)[:-3]
 
 			f[0].header['DATE-OBS'] = (dateobs,"UTC at exposure start")
+                        f[0].header['JD'] = utils.dateobs2jd(dateobs)
                         f[0].header['EXPTIME'] = float(f[0].header['PARAM24'])/1000.0
                         f[0].header['SET-TEMP'] = float(f[0].header.comments['PARAM62'].split('(')[1].split('C')[0].strip())
                         f[0].header['CCD-TEMP'] = float(f[0].header['PARAM0'])
@@ -402,6 +403,8 @@ class server:
                 # home the stage then move to the nominal (in) position
                 self.logger.info("Iodine stage connected; homing")
                 self.i2stage_home()
+                self.logger.info("Iodine cell homed, moving to 'OUT' position, needs to be changed to 'IN'")
+                self.i2stage_move('out')
                 self.logger.info("Iodine cell homed, moving to 'in' position")
                 self.i2stage_move('in')
         
@@ -1051,8 +1054,8 @@ if __name__ == '__main__':
 	pressure_thread.name = 'Kiwispec'
         pressure_thread.start()
 	
-	expmeter_thread = threading.Thread(target=test_server.logexpmeter)
-	expmeter_thread.name = 'Kiwispec'
+        expmeter_thread = threading.Thread(target=test_server.logexpmeter)
+        expmeter_thread.name = 'Kiwispec'
         expmeter_thread.start()
 	
 	#	test_server.logexpmeter()
