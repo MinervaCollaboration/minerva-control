@@ -10,6 +10,13 @@ import ipdb
 import logging
 import unicodecsv
 
+
+def dateobs2jd(dateobs):
+    t0 = datetime.datetime(2000,1,1)
+    t0jd = 2451544.5
+    ti = datetime.datetime.strptime(dateobs,"%Y-%m-%dT%H:%M:%S.%f")
+    return t0jd + (ti-t0).total_seconds()/86400.0
+
 def findBrightest(imageName):
     catname = sextract('',imageName)
     cat = readsexcat(catname)
