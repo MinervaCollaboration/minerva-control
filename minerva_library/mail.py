@@ -48,7 +48,7 @@ def send(subject,body,level='normal',attachment=None):
 	msg['Subject'] = subject
 	msg.attach(MIMEText(body))
 
-	# attachments don't work like this!  
+	# doesn't work for pdf attachments (only tested for pngs)
 	if attachment <> None:
 		if os.path.exists(attachment):
 			fp = open(attachment,'rb')

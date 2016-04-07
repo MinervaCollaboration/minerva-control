@@ -108,7 +108,7 @@ def plotlogs(night, expmeter=False, pressure=False,ymin=None, ymax=None, smoothw
         ax.set_ylim([ymin,ymax])
 
     plt.savefig(imname)
-#     plt.show()
+    plt.show()
 
 if __name__ == "__main__":
 

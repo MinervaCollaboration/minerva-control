@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import sys
 sys.dont_write_bytecode = True
 from minerva_library import control
@@ -19,18 +19,19 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
-	ipdb.set_trace()
-
-	
-
 	target = {'name':'autofocus',
 		  'exptime':[5],
-		  'fauexptime':.1,
+		  'fauexptime':1,#.1,
 		  'filter':["V"],
 		  'tracking':False,
-		  'spectroscopy':True}
-	
+		  'spectroscopy':True,
+		  'i2': True,
+		  }
+	newauto.autofocus(minerva,1,target=target,defocus_step=0.03,num_steps=3,dome_override=True)
 	ipdb.set_trace()
+	minerva.takeSpectrum(target,[1,2,3,4])
+	
+	
 #	minerva.telescopes[0].m3port_switch('2',force=True)
 #	newauto.autofocus(minerva,1,target=target)
 #	newauto.autofocus(minerva,3,target=target)

@@ -31,12 +31,7 @@ class Imager (object):
 
 	def doSingleFrame (self):
 
-#		print 'do single frame'
-
-#                for t in dir(self.client): print t
-#                print SetAcquisitionMode(0)
                 SetAcquisitionMode(0)
-                #ipdb.set_trace()
 		
 		self.client.executeCommand (SetAcquisitionMode (0)) # SINGLE FRAMES
 

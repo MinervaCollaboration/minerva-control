@@ -2642,6 +2642,7 @@ class control:
 
 		# these messages contain variables; trim them down so they can be consolidated
 		toospecific = [('The camera was unable to reach its setpoint','in the elapsed time'),
+			       ('failed to find fiber in image','using default'),
 			       ('The process "MaxIm_DL.exe" with PID','could not be terminated'),
 			       ("Stars are too elliptical, can't use",''),
 			       ('The process "python.exe" with PID','could not be terminated'),

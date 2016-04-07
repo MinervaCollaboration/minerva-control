@@ -206,12 +206,6 @@ class spectrograph:
 
         	host = self.ip
                 port = self.camera_port
-#		host = "192.168.1.22"
-#		port = 2055
-#		print "which of these isn't the same?"
-#		print self.ip == host
-#		print self.camera_port == port
-#		ipdb.set_trace()
 
                 client = SIClient (host, port)
                 self.logger.info("Connected to SI client")
@@ -246,7 +240,6 @@ class spectrograph:
                         
 		else:
                         imager.do()
-                
 
                 return self.save_image(self.file_name)
  
