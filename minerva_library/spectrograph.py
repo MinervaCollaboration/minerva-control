@@ -78,6 +78,7 @@ class spectrograph:
                 #TODO to warm and settle.
 		self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
                 self.cell_heater_on()
+		self.connect_si_imager()
                 
                 
 		
@@ -188,9 +189,10 @@ class spectrograph:
 	def settle_temp(self):
 		threading.Thread(target = self.send,args=('settle_temp ' + self.setTemp,910)).start()
 
-        def getexpflux(self, t0):
+        def getexpflux(self, t0, directory = '/Data/kiwilog/'):
                 flux = 0.0
-                with open(self.base_directory + '/log/' + self.night() + '/expmeter.dat', 'r') as fh:
+		
+                with open(directory + self.night() + '/expmeter.dat', 'r') as fh:
                         f = fh.read()
                         lines = f.split('\n')
                         for line in lines:
@@ -203,7 +205,9 @@ class spectrograph:
 		
 	#start exposure
 	def expose(self, exptime=1.0, exptype=1, expmeter=None):
-
+		
+#		imager = self.si_imager
+		"""
         	host = self.ip
                 port = self.camera_port
 
@@ -212,20 +216,21 @@ class spectrograph:
 
                 imager = Imager(client)
                 self.logger.info("Connected to SI imager")
-                imager.nexp = 1		        # number of exposures
-                imager.texp = exptime		# exposure time, float number
-                imager.nome = "image"		# file name to be saved
-		if exptype == 0: imager.dark = True
-		else: imager.dark = False
-                imager.frametransfer = False	# frame transfer?
-                imager.getpars = False		# Get camera parameters and print on the screen
+		"""
+                self.si_imager.nexp = 1		        # number of exposures
+                self.si_imager.texp = exptime		# exposure time, float number
+                self.si_imager.nome = "image"		# file name to be saved
+		if exptype == 0: self.si_imager.dark = True
+		else: self.si_imager.dark = False
+                self.si_imager.frametransfer = False	# frame transfer?
+                self.si_imager.getpars = False		# Get camera parameters and print on the screen
 
                 # expose until exptime or expmeter >= flux
                 t0 = datetime.datetime.utcnow()
                 elapsedtime = 0.0
                 flux = 0.0
                 if expmeter <> None:
-                        thread = threading.Thread(target=imager.do)
+                        thread = threading.Thread(target=self.si_imager.do)
                         thread.start()
                         while elapsedtime < exptime:
                                 time.sleep(0.1)
@@ -233,13 +238,14 @@ class spectrograph:
                                 flux = self.getexpflux(t0)
                                 self.logger.info("flux = " + str(flux))
                                 if expmeter < flux:
-                                        imager.retrieve_image()
-                                        ## imager.interrupt()
+                                        #imager.retrieve_image()
+                                        self.si_imager.interrupt()
+					time.sleep(30)
                                         break
 
                         
 		else:
-                        imager.do()
+                        self.si_imager.do()
 
                 return self.save_image(self.file_name)
  
@@ -615,8 +621,15 @@ class spectrograph:
                 self.dynapower2_status = json.loads(status_str)
 	"""
 
-        
-	
+        #S si_imager object
+	def connect_si_imager(self):
+		client = SIClient(self.ip, self.camera_port)
+                self.logger.info("Connected to SI client")
+
+                imager = Imager(client)
+                self.logger.info("Connected to SI imager")
+
+		self.si_imager = imager
 if __name__ == '__main__':
 	
 	base_directory = '/home/minerva/minerva-control'

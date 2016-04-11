@@ -294,6 +294,8 @@ class SetReadoutMode(CameraCommand):
 		cmd.func_number = 1042
 
 		cmd.addParam(">B",self.rom)
+		
+		return cmd
 
 	def result(self):
 		return Done ()
@@ -322,6 +324,8 @@ class SetCCDFormatParameters(CameraCommand):
 		cmd.addParam(">i",self.ParallelOrigin)
 		cmd.addParam(">i",self.ParallelLength)
 		cmd.addParam(">i",self.ParallelBinning)
+		
+		return cmd
 
 	def result(self):
 		return Done ()

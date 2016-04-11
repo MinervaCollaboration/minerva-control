@@ -24,28 +24,35 @@ class afException(Exception):
 
 #S Simple function for plotting results in a record file
 #S also does a fit, etc..
-#S Sort of carbon copy of fitquadfindmin, just beacuse we want all coeffs and 
-#S don't want to force that out of 
+#S Now used in making plots for emails
 def recordplot(recordfile,step=1,saveplot=False):
+    #S get the data from the autorecord
     raw_data = np.genfromtxt(recordfile,skip_header=5)
     imnlist = raw_data[::step,0].astype(int)
     poslist = raw_data[::step,1].astype(float)
     hfrlist = raw_data[::step,2].astype(float)
     stdlist = raw_data[::step,3].astype(float)
     numlist = raw_data[::step,4].astype(float)
+
+    #S identify the good points, those were an hfr was found
     goodind = np.where(hfrlist<>-999)[0]
-    print 'fitting initial ' + str(len(goodind))
+
+    #S if there were no good points
     if len(goodind) == 0:
         print 'Nothing good in that record, try something better!'
         return None
+
+    #S try and fit the point, else return the found coefficients
     try:
         focus,coeffs = fitquadfindmin(poslist[goodind],hfrlist[goodind],
                                       stdlist[goodind]*\
                                           np.sqrt(numlist[goodind]))
     except afException as e:
         coeffs = e.coeffs
-        
+
+    #S make the x-values to evaluate the fit at for plotting. 
     xplot = np.linspace(poslist.min(),poslist.max(),100)
+    #S some printing, not necessary at all but makes info easier
     print 'Only plotting points with found hfradii'
     print 'Coeffs:' 
     print coeffs
@@ -57,15 +64,18 @@ def recordplot(recordfile,step=1,saveplot=False):
     plt.plot(xplot,quad(xplot,coeffs),'g')
 
     if saveplot:
+        #S make the path and file name from the autorecord name and path
         rfilesp = recordfile.split('/')
         fnamesp = rfilesp[4].split('.')
         path = '/%s/%s/%s/'%(rfilesp[1],rfilesp[2],rfilesp[3])
         fname = '%s.%s.%s.%s.%s.%s.png'%(fnamesp[0],fnamesp[1],'afplot',\
                                              fnamesp[3],fnamesp[5],fnamesp[6])
-                                       
+        #S save the actual plot
         plt.savefig(path+fname)
+        #S return path for email attachment, whatever else you need
         return path+fname
-        
+    
+    #S just show it if we aren't saving
     plt.show()
     print 'leaving recordplot()'
 
@@ -171,7 +181,7 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
     #S see if the old coefficients are the same and if iters is below the max
     #S we enter this loop at least once, but probably don't need to refit.
     #TODO think of better ways to do this? not that important right now.
-    """
+
     while not (oldcoeffs == coeffs).all() and iters<10:
         print 'fitting '+ str(len(inds))
         #S set the old to the new
@@ -197,7 +207,7 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
     if iters > 9:
         print "couldn't fit"
         return None, coeffs
-    """
+
     # if the best fit was a downward facing parabola, it was bad
     #S For most of these I return None, None if there was no input logger, 
     #S which is a way of saying exceptions need to handled by any other call
@@ -224,7 +234,7 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
             logger.error('T'+str(telescope_num)+': New best focus was below '\
                          +'lower limit.')
             #S we return exceptions now so it can be caught in calling routine
-            raise afException('LowerLimit_Exception',best_focus,coeffs)
+            raise afException('LowerLimit_Exception',None,coeffs)
         else:
             return best_focus, coeffs
         #return None
@@ -235,19 +245,14 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
             logger.error('T'+str(telescope_num)+': New best focus was above'\
                              +' upper limit.')
             #S Same as above
-            raise afException('UpperLimit_Exception',best_focus,coeffs)
+            raise afException('UpperLimit_Exception',None,coeffs)
         else:
             return best_focus, coeffs
     #S Return coeffs for extra output to any other function besides control
     return best_focus, coeffs
 
-def autofocus_step(control,telescope_num,newfocus,af_target):
-    telescope_name = "T" + str(telescope_num) + ':'
+def autofocus_step(control,telescope,newfocus,af_target):
     
-    # choose the telescope (without assuming the list is complete)
-    for telescope in control.telescopes:
-        if telescope.num == str(telescope_num): break
-
     status = telescope.getStatus()
     m3port = status.m3.port
 
@@ -256,10 +261,10 @@ def autofocus_step(control,telescope_num,newfocus,af_target):
 
     if af_target['spectroscopy']:
         imagename = control.takeFauImage(af_target,telescope_num=\
-                                             telescope_num)
+                                             int(telescope.num))
     else:
         imagename = control.takeImage(af_target,telescope_num=\
-                                          telescope_num)
+                                          int(telescope.num))
     
     # default (bad) values
     # will be overwritten by good values or serve as flags later
@@ -525,7 +530,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                      'spectroscopy':spectroscopy}
         
     #S set the platescale for the image
-    if target['spectroscopy']:
+    if af_target['spectroscopy']:
         platescale = float(camera.fau.platescale)
     else:
         platescale = float(camera.platescale)
@@ -595,8 +600,8 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         telescope.logger.info("Defocusing by " + str(step) + \
                                   " mm, to " + str(newfocus))
 
-        median,stddev,numstars,imnum = autofocus_step(control,telescope_number\
-                                                          ,newfocus,af_target)
+        median,stddev,numstars,imnum = autofocus_step(control,telescope,\
+                                                          newfocus,af_target)
         imagenum_list.append(str(imnum))
         if median != -999:
             focusmeas_list.append(median*platescale)

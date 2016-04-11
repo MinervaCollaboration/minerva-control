@@ -9,7 +9,8 @@ import ipdb
 os.environ["NUMERIX"] = "numpy"
 from astropy.io import fits as pyfits
 
-from si.commands import *
+#from si.commands import *
+from commands import *
 
 class Imager (object):
 
@@ -257,6 +258,23 @@ class Imager (object):
 		self.setExposureTime()
 		self.acquire()
 		
+	#S settings commands
+	def coolerON(self):
+		self.client.executeCommand(SetCooler(1))
+
+	def coolerOFF(self):
+		self.client.executeCommand(SetCooler(0))
+	
+	def setReadoutMode(self,number):
+		self.client.executeCommand(SetReadoutMode(number))
+	
+	def setCCDFormatParameters(self,SerialOrigin,SerialLength,SerialBinning,ParallelOrigin,ParallelLength,ParallelBinning):
+		self.client.executeCommand(SetCCDFormatParameters(SerialOrigin,SerialLength,SerialBinning,ParallelOrigin,ParallelLength,ParallelBinning))
+	def inquireAcquisitionStatus(self):
+		print self.client.executeCommand(InquireAcquisitionStatus())
+		
+	def getStatusFromCamera(self):
+		print self.client.executeCommand(GetStatusFromCamera())
 	
 if __name__ == '__main__':
 	pass

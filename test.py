@@ -18,6 +18,15 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+	minerva.spectrograph.connect_si_imager()
+#	minerva.spectrograph.take_image(exptime=5)
+	ipdb.set_trace()
+	minerva.spectrograph.si_imager.getStatusFromCamera()
+#	minerva.spectrograph.si_imager.coolerON()#setReadoutMode(3)
+
+
+	minerva.spectrograph.si_imager.setReadoutMode(3)
+	ipdb.set_trace()
 
 	target = {'name':'autofocus',
 		  'exptime':[5],

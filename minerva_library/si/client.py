@@ -14,9 +14,13 @@ import logging
 
 #import array
 
-from si.packet import Packet
-from si.packets import *
-from si.commands import *
+#from si.packet import Packet
+#from si.packets import *
+#from si.commands import *
+
+from packet import Packet
+from packets import *
+from commands import *
 
 class AckException(Exception):
 	'''
@@ -50,7 +54,7 @@ class SIClient (object):
 		try:
 			self.sk = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
 			self.sk.connect ((self.host, self.port))
-			self.sk.settimeout (10)
+			self.sk.settimeout (40)#10)
 		except socket.error, e:
 			raise e
 
