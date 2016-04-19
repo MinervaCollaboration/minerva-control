@@ -223,6 +223,25 @@ class server:
 		else:
 			self.logger.info('command succeeded(' + tokens[0] +')')
 			
+
+	def update_logpaths(self,path):
+		pass
+		
+		if not os.path.exists(path): os.mkdir(path)
+		
+		fmt = "%(asctime)s [%(filename)s:%(lineno)s,%(thread)d - %(funcName)s()] %(levelname)s: %(message)s"
+		datefmt = "%Y-%m-%dT%H:%M:%S"
+		formatter = logging.Formatter(fmt,datefmt=datefmt)
+		formatter.converter = time.gmtime
+		
+                self.logger_lock.acquire()
+
+		for fh in self.logger.handlers: self.logger.removeHandler(fh)
+		fh = logging.FileHandler(path + '/' + self.logger_name + '.log', mode='a')
+                fh.setFormatter(formatter)
+		self.logger.addHandler(fh)
+
+		
 			
 	#server loop that runs indefinitely and handle communication with client
 	def run_server(self):
@@ -233,6 +252,17 @@ class server:
                 s.listen(True)
                 ##s.settimeout(1)#S
                 while True:
+
+			#S update the logger, similar to in domeControl
+			#S want to find a better spot to put this
+			t0 = datetime.datetime.utcnow()
+			
+			# roll over the logs to a new day                                                                                                                   
+			thisnight = datetime.datetime.strftime(t0,'n%Y%m%d')
+			if thisnight != lastnight:
+				minerva.update_logpaths(minerva.base_directory + '/log/' + thisnight)
+				lastnight = thisnight
+
                         print 'listening to incoming connection on port ' + str(self.port)
                         #S Conn is a new secket object created by s.accept(), where
                         #S addr is he address where the socket is bound to. 
@@ -1047,7 +1077,7 @@ if __name__ == '__main__':
 	base_directory = 'C:\\minerva-control'
 	test_server = server('spectrograph_server.ini',base_directory)
 
-#        ipdb.set_trace()
+        ipdb.set_trace()
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
 
         pressure_thread = threading.Thread(target=test_server.log_pressures)
