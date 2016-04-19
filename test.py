@@ -18,8 +18,10 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
-	minerva.spectrograph.connect_si_imager()
+#	minerva.spectrograph.connect_si_imager()
 #	minerva.spectrograph.take_image(exptime=5)
+	ipdb.set_trace()
+	minerva.telescopes[1].makePointingModel(minerva,npoints=100,exptime=2.0)
 	ipdb.set_trace()
 	minerva.spectrograph.si_imager.getStatusFromCamera()
 #	minerva.spectrograph.si_imager.coolerON()#setReadoutMode(3)

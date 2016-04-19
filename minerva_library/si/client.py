@@ -54,7 +54,7 @@ class SIClient (object):
 		try:
 			self.sk = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
 			self.sk.connect ((self.host, self.port))
-			self.sk.settimeout (40)#10)
+			self.sk.settimeout (40)#??
 		except socket.error, e:
 			raise e
 
@@ -219,5 +219,7 @@ class SIClient (object):
 						#logging.debug (img)
 						data = self.recv(img.img_bytes)
 						tmp_array = np.append(tmp_array,np.fromstring(data,np.uint16))
-
+			
 					return (img.serial_length, img.parallel_length, tmp_array)
+		
+				

@@ -140,16 +140,20 @@ class CDK700:
 	# it's much worse to have it off when it should be on than vice versa
 	def initialize(self,tracking=True, derotate=True):
 
-		# turning on mount tracking
-		self.logger.info('T' + self.num + ': Connecting to mount')
-		if not self.mountConnect(): return False #S Start yer engines
+		telescopeStatus = self.getStatus()
 
-		self.logger.info('T' + self.num + ': Enabling motors')
-		if not self.mountEnableMotors(): return False
+		if telescopeStatus.mount.connected <> 'True': 
+			self.logger.info('T' + self.num + ': Connecting to mount')
+			if not self.mountConnect(): return False #S Start yer engines
 
-		self.logger.info('T' + self.num + ': Connecting to focuser')
-		if not self.focuserConnect(): return False
-		
+		if telescopeStatus.mount.alt_enabled <> 'True' or telescopeStatus.mount.azm_enabled <> 'True':
+			self.logger.info('T' + self.num + ': Enabling motors')
+			if not self.mountEnableMotors(): return False
+
+		if telescopeStatus.focuser.connected <> 'True' or telescopeStatus.rotator.connected <> 'True':
+			self.logger.info('T' + self.num + ': Connecting to focuser')
+			if not self.focuserConnect(): return False
+
 		self.logger.info('T' + self.num + ': Homing telescope')
 		if not self.home(): return False
 
@@ -642,7 +646,7 @@ class CDK700:
 	def makePointingModel(self, minerva, npoints=100, maxmag=4.0, 
 			      fau=True, brightstar=True, random=False, grid=False, 
 			      nalt=5, naz=20, exptime=5.0, filterName='V', shuffle=True, 
-			      minalt=-999, maxalt=85.0,minaz=0.0,maxaz=360.0):
+			      minalt=-999, maxalt=80.0,minaz=0.0,maxaz=360.0):
 		
 		# can't set defaults using self...
 		if minalt == -999: minalt = self.horizon
@@ -1349,7 +1353,10 @@ class CDK700:
 		self.pdu.panel.on()
 		time.sleep(30) # wait for the panel to initialize
 
-	def home(self, timeout=420.0):
+	#S increased default timeout to ten minutes due to pokey t2
+	#S w cna probablyt set tis to be only for t2, but just a quick edit, sorry
+	#TODO work on real timout
+	def home(self, timeout=600):#420.0):
                 #S running into problems where we get recursion between mountconnecting failing and 
 		#S homing. 
 		# turning on mount tracking

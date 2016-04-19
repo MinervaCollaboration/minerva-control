@@ -47,7 +47,6 @@ class control:
 #============Initialize class===============#
 	#S The standard init
 	def __init__(self,config,base):#telescope_list=0,dome_control=1):
-                #S This config file literally only contains the logger name I think.
 		self.config_file = config
 		self.base_directory = base
 		#S Only sets logger name right now
@@ -63,7 +62,6 @@ class control:
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
 
-		#S NEED TO UNCOMMENT THE LOGGER, SEARCH FOR XXXXXXX
 		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []

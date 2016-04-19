@@ -58,10 +58,17 @@ def recordplot(recordfile,step=1,saveplot=False):
     print coeffs
     print 'Focus:'
     print focus
+
     plt.plot(poslist[goodind],hfrlist[goodind],'b.')
-    plt.errorbar(poslist[goodind],hfrlist[goodind],stdlist[goodind],\
-                     linestyle='None')
+    #S If using a port2 autorecord, the errors are fake. We don't want to 
+    #S plot bars for those errors, and this will also allow us to avoid 
+    #S hitting anything in the 
+    if recordfile.split('/')[4].split('.')[3] != 'port2':
+        plt.errorbar(poslist[goodind],hfrlist[goodind],stdlist[goodind],\
+                         linestyle='None')
     plt.plot(xplot,quad(xplot,coeffs),'g')
+    plt.xlabel('Focuser Position [$\mu$m]')
+    plt.ylabel('Half Flux Radius [arcsec]')
 
     if saveplot:
         #S make the path and file name from the autorecord name and path

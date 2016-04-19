@@ -78,7 +78,7 @@ class spectrograph:
                 #TODO to warm and settle.
 		self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
                 self.cell_heater_on()
-		self.connect_si_imager()
+#		self.connect_si_imager()
                 
                 
 		
@@ -207,7 +207,7 @@ class spectrograph:
 	def expose(self, exptime=1.0, exptype=1, expmeter=None):
 		
 #		imager = self.si_imager
-		"""
+#		"""
         	host = self.ip
                 port = self.camera_port
 
@@ -216,7 +216,8 @@ class spectrograph:
 
                 imager = Imager(client)
                 self.logger.info("Connected to SI imager")
-		"""
+#		"""
+                self.si_imager = imager
                 self.si_imager.nexp = 1		        # number of exposures
                 self.si_imager.texp = exptime		# exposure time, float number
                 self.si_imager.nome = "image"		# file name to be saved
@@ -240,13 +241,13 @@ class spectrograph:
                                 if expmeter < flux:
                                         #imager.retrieve_image()
                                         self.si_imager.interrupt()
-					time.sleep(30)
+					time.sleep(25)
                                         break
 
                         
 		else:
                         self.si_imager.do()
-
+		#client.disconnect()
                 return self.save_image(self.file_name)
  
 	#block until image is ready, then save it to file_name
