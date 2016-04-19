@@ -43,6 +43,7 @@ class server:
 
                 #S Defined later.
                 self.setup_logger()
+                self.logger_lock = threading.Lock()
                 #S Defined later.
 #                self.set_data_path()
                 self.file_name = ''
@@ -225,7 +226,7 @@ class server:
 			
 
 	def update_logpaths(self,path):
-		pass
+		self.logger.info('Updating log paths!')
 		
 		if not os.path.exists(path): os.mkdir(path)
 		
@@ -241,6 +242,25 @@ class server:
                 fh.setFormatter(formatter)
 		self.logger.addHandler(fh)
 
+	def logpath_watch(self):
+                lastnight = ''
+                #S update the logger, similar to in domeControl
+		while True:
+                        t0 = datetime.datetime.utcnow()
+			
+                        # roll over the logs to a new day                                                                                                                   
+                        thisnight = datetime.datetime.strftime(t0,'n%Y%m%d')
+                        if thisnight != lastnight:
+                                self.update_logpaths(self.base_directory + '/log/' + thisnight)
+                                lastnight = thisnight
+                                
+                        #S sleep until tomorrow
+                        tomorrow = datetime.datetime.replace(t0 + datetime.timedelta(days=1),hour=0,minute=0,second=0)
+                        tomorrow_wait = (tomorrow - t0).total_seconds()
+                        sleep_time = max(1.,0.99*tomorrow_wait)
+                        self.logger.info('Waiting %.2f to update log paths'%(sleep_time))
+                        time.sleep(sleep_time)
+
 		
 			
 	#server loop that runs indefinitely and handle communication with client
@@ -252,16 +272,6 @@ class server:
                 s.listen(True)
                 ##s.settimeout(1)#S
                 while True:
-
-			#S update the logger, similar to in domeControl
-			#S want to find a better spot to put this
-			t0 = datetime.datetime.utcnow()
-			
-			# roll over the logs to a new day                                                                                                                   
-			thisnight = datetime.datetime.strftime(t0,'n%Y%m%d')
-			if thisnight != lastnight:
-				minerva.update_logpaths(minerva.base_directory + '/log/' + thisnight)
-				lastnight = thisnight
 
                         print 'listening to incoming connection on port ' + str(self.port)
                         #S Conn is a new secket object created by s.accept(), where
@@ -1077,8 +1087,15 @@ if __name__ == '__main__':
 	base_directory = 'C:\\minerva-control'
 	test_server = server('spectrograph_server.ini',base_directory)
 
-        ipdb.set_trace()
+#        ipdb.set_trace()
+#        thisnight = 'n20991332'
+#        path = test_server.base_directory + '/log/' + thisnight
+#        test_server.update_logpaths(path)
 #	win32api.SetConsoleCtrlHandler(test_server.safe_close,True)
+
+        logpath_thread = threading.Thread(target=test_server.logpath_watch)
+        logpath_thread.name = 'Kiwispec'
+        logpath_thread.start()
 
         pressure_thread = threading.Thread(target=test_server.log_pressures)
 	pressure_thread.name = 'Kiwispec'
