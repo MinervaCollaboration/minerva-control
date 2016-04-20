@@ -21,6 +21,7 @@ if __name__ == '__main__':
 #	minerva.spectrograph.connect_si_imager()
 #	minerva.spectrograph.take_image(exptime=5)
 	ipdb.set_trace()
+#	minerva.spectrograph.si_imager_set_format_params()
 	minerva.telescopes[1].makePointingModel(minerva,npoints=100,exptime=2.0)
 	ipdb.set_trace()
 	minerva.spectrograph.si_imager.getStatusFromCamera()

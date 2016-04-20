@@ -82,7 +82,7 @@ def mkdict(name=None, bstar=False, includeInactive=False):
         target['filter'] = ["rp"]
         target['num'] = [1]
         target['exptime'] = [float(targetlist['exptime'][i])]
-        target['fauexptime'] = 5.0
+        target['fauexptime'] = float(targetlist['fauexptime'][i])
         target['defocus'] = 0.0
         target['selfguide'] = True
         target['guide'] = False

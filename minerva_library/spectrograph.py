@@ -50,6 +50,7 @@ class spectrograph:
                                          'Bias':0,
                                          'Dark':0,
                                         }
+			self.si_settings = config['SI_SETTINGS']
 
 			# reset the night at 10 am local
 			today = datetime.datetime.utcnow()
@@ -202,6 +203,55 @@ class spectrograph:
                                         if date > t0: flux += float(entries[1])
                 return flux
                         
+		
+	# ##
+	# SI IMAGER FUNCTIONS
+	# ##
+
+	def start_si_image(self):
+		response = self.send('start_si_image None',10)
+		return response
+
+	def kill_si_image(self):
+		response = self.send('kill_si_image None',10)
+		return response
+		
+
+	def si_imager_connect(self):
+		host = self.ip
+		port = self.camera_port
+		
+		client = SIClient (host, port)
+                self.logger.info("Connected to SI client")
+
+                imager = Imager(client)
+                self.logger.info("Connected to SI imager")
+
+		return imager
+				      
+	def si_imager_cooler_on(self):
+		imager = self.si_imager_connect()
+		imager.coolerON()
+
+	def si_imager_cooler_off(self):
+		imager = self.si_imager_connect()
+		imager.coolerOFF()
+		
+	def si_imager_set_format_params(self):
+		serori = int(self.si_settings['SERIALORIGIN'])
+		serlen = int(self.si_settings['SERIALLENGTH'])
+		serbin = int(self.si_settings['SERIALBINNING'])
+		parori = int(self.si_settings['PARALLELORIGIN'])
+		parlen = int(self.si_settings['PARALLELLENGTH'])
+		parbin = int(self.si_settings['PARALLELBINNING'])
+
+		imager = self.si_imager_connect()
+		self.logger.info('Setting SI imager format params (%i,%i,%i,%i,%i,%i)'%(serori,serlen,serbin,parori,parlen,parbin))
+		imager.setCCDFormatParameters(serori,serlen,serbin,parori,parlen,parbin)
+
+	def si_imager_set_readoutmode(self):
+		imager = self.si_imager_connect()
+		imager.setReadoutMode(int(self.si_settings['READOUT_MODE']))
 		
 	#start exposure
 	def expose(self, exptime=1.0, exptype=1, expmeter=None):

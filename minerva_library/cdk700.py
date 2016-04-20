@@ -142,39 +142,56 @@ class CDK700:
 
 		telescopeStatus = self.getStatus()
 
+		# connect to the mount if not connected
 		if telescopeStatus.mount.connected <> 'True': 
 			self.logger.info('T' + self.num + ': Connecting to mount')
-			if not self.mountConnect(): return False #S Start yer engines
+			if not self.mountConnect(): return False
+			time.sleep(0.25)
+			telescopeStatus = self.getStatus()
 
+		# enable motors if not enabled
 		if telescopeStatus.mount.alt_enabled <> 'True' or telescopeStatus.mount.azm_enabled <> 'True':
 			self.logger.info('T' + self.num + ': Enabling motors')
 			if not self.mountEnableMotors(): return False
+			time.sleep(0.25)
+			telescopeStatus = self.getStatus()
 
+		# connect to the focuser if not connected
 		if telescopeStatus.focuser.connected <> 'True' or telescopeStatus.rotator.connected <> 'True':
 			self.logger.info('T' + self.num + ': Connecting to focuser')
 			if not self.focuserConnect(): return False
+			time.sleep(0.25)
+			telescopeStatus = self.getStatus()
 
-		self.logger.info('T' + self.num + ': Homing telescope')
-		if not self.home(): return False
+		# home if not homed
+                if telescopeStatus.mount.encoders_have_been_set <> 'True':
+			self.logger.info('T' + self.num + ': Homing telescope')
+                        if not self.home(): return False
+			time.sleep(0.25)
+			telescopeStatus = self.getStatus()
 
+		# reload the pointing model
 		self.logger.info('T' + self.num + ': re-loading pointing model for the current port')
-		telescopeStatus = self.getStatus()
 		self.m3port_switch(telescopeStatus.m3.port,force=True)
 
-		# turning on/off mount tracking, rotator tracking
+		# turning on/off mount tracking, rotator tracking if not already on/off
 		if tracking:
-			self.logger.info('T' + self.num + ': Turning mount tracking on')
-			self.mountTrackingOn()
+			if telescopeStatus.mount.tracking <> 'True': 
+				self.logger.info('T' + self.num + ': Turning mount tracking on')
+				self.mountTrackingOn()
 		else:
-			self.logger.info('T' + self.num + ': Turning mount tracking off')
-			self.mountTrackingOff()
+			if telescopeStatus.mount.tracking <> 'False': 
+				self.logger.info('T' + self.num + ': Turning mount tracking off')
+				self.mountTrackingOff()
 		
 		if derotate:
-			self.logger.info('T' + self.num + ': Turning rotator tracking on')
-			self.rotatorStartDerotating()
+			if telescopeStatus.rotator.altaz_derotate <> 'True': 
+				self.logger.info('T' + self.num + ': Turning rotator tracking on')
+				self.rotatorStartDerotating()
 		else:
-			self.logger.info('T' + self.num + ': Turning rotator tracking off')
-			self.rotatorStopDerotating()
+			if telescopeStatus.rotator.altaz_derotate <> 'False': 
+				self.logger.info('T' + self.num + ': Turning rotator tracking off')
+				self.rotatorStopDerotating()
 
 		return self.isInitialized(tracking=tracking,derotate=derotate)
 		
@@ -1196,10 +1213,11 @@ class CDK700:
 
 		# make sure the coordinates are within the telescope's limits
 		alt,az = self.radectoaltaz(ra_corrected,dec_corrected)
-		if alt < self.horizon:
+		if alt < self.horizon or alt > 85:
 			self.logger.error("Coordinates out of bounds; object not acquired! (Alt,Az) = (" + str(alt) + "," + str(az) + "), (RA,Dec) = (" + str(ra_corrected) + ',' + str(dec_corrected) + ")")
-			self.logger.info("... but something is going wrong with these calculations; I'm going to try to acquire anyway")
-#			return False
+#			self.logger.info("... but something is going wrong with these calculations; I'm going to try to acquire anyway")
+			return 'out of bounds'
+			return False
 
 		#S make sure the m3 port is in the correct orientation
 		if 'spectroscopy' in target.keys():
@@ -1226,12 +1244,12 @@ class CDK700:
 
 		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected, tracking=tracking, derotate=derotate):
 			self.logger.info('T' + self.num + ': Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
+			return True
 		else:
 			self.logger.error('T' + self.num + ': Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 			self.recover(tracking=tracking, derotate=derotate)
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
-			self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
-			return
+			return self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
 
 	def radectoaltaz(self,ra,dec,date=datetime.datetime.utcnow()):
 		obs = ephem.Observer()
@@ -1357,34 +1375,18 @@ class CDK700:
 	#S w cna probablyt set tis to be only for t2, but just a quick edit, sorry
 	#TODO work on real timout
 	def home(self, timeout=600):#420.0):
-                #S running into problems where we get recursion between mountconnecting failing and 
-		#S homing. 
-		# turning on mount tracking
-		self.logger.info('T' + self.num + ': Connecting to mount')
-		self.mountConnect()
 
-		self.logger.info('T' + self.num + ': Enabling motors')
-		self.mountEnableMotors()
-
-                status = self.getStatus()
-                if status.mount.encoders_have_been_set == 'True':
-                        self.logger.info('T' + self.num + ': Mount already homed')
-                        return True
-                else:
-                        self.mountHome()
-                        time.sleep(5.0)
-                        status = self.getStatus()
-                        t0 = datetime.datetime.utcnow()
-                        elapsedTime = 0
-                        while status.mount.is_finding_home == 'True' and elapsedTime < timeout:
-                                elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-                                self.logger.info('T' + self.num + ': Homing Telescope (elapsed time = ' + str(elapsedTime) + ')')
-                                time.sleep(5.0)
-                                status = self.getStatus()
-		
+		self.mountHome()
 		time.sleep(5.0)
-		status = self.getStatus()
-
+		telescopeStatus = self.getStatus()
+		t0 = datetime.datetime.utcnow()
+		elapsedTime = 0
+		while telescopeStatus.mount.is_finding_home == 'True' and elapsedTime < timeout:
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			self.logger.info('T' + self.num + ': Homing Telescope (elapsed time = ' + str(elapsedTime) + ')')
+			time.sleep(5.0)
+			telescopeStatus = self.getStatus()
+		
 		#S Let's force close PWI here (after a disconnect). What is happening I think is that 
 		#S PWI freezes, and it can't home. While it's stuck in this loop of rehoming
 		#S with no hope of exiting. All it does is continually hit time out. 
@@ -1392,7 +1394,9 @@ class CDK700:
 		#S actual going to put an iteration limit of 2 on it for now, that way we'll get emails 
 		#S and it won't keep spiralling downward.
 		#TODO Need to think of a good way to setup iteration check... be right back to it
-		if status.mount.encoders_have_been_set == 'False':
+		# JDE 2016-04-20: self.home is and should remain a low-level function. Any recovery should be handled at a higher level (self.recover)
+
+		if telescopeStatus.mount.encoders_have_been_set == 'False':
 			return False
 		else:
 			return True
@@ -1408,10 +1412,6 @@ class CDK700:
 
         def killPWI(self):
 		self.kill_remote_task('PWI.exe')
-		self.kill_remote_task('PXPAX532.exe')
-		self.kill_remote_task('PXPAX533.exe')
-		self.kill_remote_task('PXPAX534.exe')
-		self.kill_remote_task('PXPAX535.exe')
 		return self.kill_remote_task('ComACRServer.exe')
 
 	def kill_remote_task(self,taskname):

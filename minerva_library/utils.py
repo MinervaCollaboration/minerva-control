@@ -48,18 +48,20 @@ def readcsv(filename):
             except: csv[key] = np.asarray(csv[key])
         return csv
 
-def brightStars(filename='brightstars2.csv',path='/home/minerva/minerva-control/dependencies/',maxmag=6.0):
+def brightStars(filename='bsc.csv',path='/home/minerva/minerva-control/dependencies/',maxmag=6.0):
+#def brightStars(filename='brightstars2.csv',path='/home/minerva/minerva-control/dependencies/',maxmag=6.0):
     brightstars = readcsv(path+filename)
     brightest = np.where(brightstars['vmag'] <= maxmag)
     for key in brightstars.keys():
         brightstars[key] = brightstars[key][brightest]
 
-
+    '''
     # cut out high proper motion stars
     pm = np.sqrt(np.power(brightstars['pmra'],2) + np.power(brightstars['pmdec'],2) )
     lowmu = np.where(pm <= 100)
     for key in brightstars.keys():
         brightstars[key] = brightstars[key][lowmu]
+    '''
 
     return brightstars
 
