@@ -98,42 +98,54 @@ class CDK700:
 	#tracking and detrotating should be on by default
 	#much worse to be off when it should be on than vice versa
 	def isInitialized(self,tracking=True, derotate=True):
+
 		# check to see if it's properly initialized
 		telescopeStatus = self.getStatus()
+
 		if telescopeStatus.mount.encoders_have_been_set <> 'True':
-			self.logger.warning('T' + self.num + ': encoders not set (' + telescopeStatus.mount.encoders_have_been_set + '), telescope not initialized')
+			self.logger.info('T' + self.num + ': encoders not set (' + telescopeStatus.mount.encoders_have_been_set + '), telescope not initialized')
 			return False
 		if telescopeStatus.mount.alt_enabled <> 'True':
-			self.logger.warning('T' + self.num + ': altitude motor not enabled (' + telescopeStatus.mount.alt_enabled + '), telescope not initialized')
+			self.logger.info('T' + self.num + ': altitude motor not enabled (' + telescopeStatus.mount.alt_enabled + '), telescope not initialized')
 			return False
 		if telescopeStatus.mount.alt_motor_error_message <> 'No error': 
-			self.logger.warning('T' + self.num + ': altitude motor error present (' + telescopeStatus.mount.alt_motor_error_message + '), telescope not initialized')
+			self.logger.info('T' + self.num + ': altitude motor error present (' + telescopeStatus.mount.alt_motor_error_message + '), telescope not initialized')
 			return False
 		if telescopeStatus.mount.azm_enabled <> 'True':
-			self.logger.warning('T' + self.num + ': azimuth motor not enabled (' + telescopeStatus.mount.azm_enabled + '), telescope not initialized')
+			self.logger.info('T' + self.num + ': azimuth motor not enabled (' + telescopeStatus.mount.azm_enabled + '), telescope not initialized')
 			return False
 		if telescopeStatus.mount.azm_motor_error_message <> 'No error': 
-			self.logger.warning('T' + self.num + ': azimuth motor error present (' + telescopeStatus.mount.azm_motor_error_message + '), telescope not initialized')
+			self.logger.info('T' + self.num + ': azimuth motor error present (' + telescopeStatus.mount.azm_motor_error_message + '), telescope not initialized')
 			return False
 		if telescopeStatus.mount.connected <> 'True': 
-			self.logger.warning('T' + self.num + ': mount not connected (' + telescopeStatus.mount.connected + '), telescope not initialized')
+			self.logger.info('T' + self.num + ': mount not connected (' + telescopeStatus.mount.connected + '), telescope not initialized')
 			return False
 		if telescopeStatus.rotator.connected <> 'True': 
-			self.logger.warning('T' + self.num + ': rotator not connected (' + telescopeStatus.rotator.connected + '), telescope not initialized')
+			self.logger.info('T' + self.num + ': rotator not connected (' + telescopeStatus.rotator.connected + '), telescope not initialized')
 			return False
 		if telescopeStatus.focuser.connected <> 'True': 
-			self.logger.warning('T' + self.num + ': focuser not connected (' + telescopeStatus.focuser.connected + '), telescope not initialized')
+			self.logger.info('T' + self.num + ': focuser not connected (' + telescopeStatus.focuser.connected + '), telescope not initialized')
 			return False
+
 
 		if tracking:
 			if telescopeStatus.mount.tracking <> 'True': 
 				self.logger.info('T' + self.num + ': mount not tracking (' + telescopeStatus.mount.tracking + '), telescope not initialized')
 				return False
+		else:
+			if telescopeStatus.mount.tracking <> 'False': 
+				self.logger.info('T' + self.num + ': mount tracking (' + telescopeStatus.mount.tracking + '), telescope not initialized')
+				return False
+			
 		if derotate:
 			if telescopeStatus.rotator.altaz_derotate <> 'True': 
 				self.logger.info('T' + self.num + ': rotator not tracking (' + telescopeStatus.rotator.altaz_derotate + '), telescope not initialized')
 				return False
-		
+		else:
+			if telescopeStatus.rotator.altaz_derotate <> 'False': 
+				self.logger.info('T' + self.num + ': rotator tracking (' + telescopeStatus.rotator.altaz_derotate + '), telescope not initialized')
+				return False
+					
 		return True
 
 	# by default, set tracking and derotating
@@ -173,6 +185,7 @@ class CDK700:
 		# reload the pointing model
 		self.logger.info('T' + self.num + ': re-loading pointing model for the current port')
 		self.m3port_switch(telescopeStatus.m3.port,force=True)
+		telescopeStatus = self.getStatus()
 
 		# turning on/off mount tracking, rotator tracking if not already on/off
 		if tracking:
@@ -606,7 +619,7 @@ class CDK700:
 	def m3Stop(self):
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
-	def recover(self,tracking = True, derotate=True):
+	def recover(self, tracking=True, derotate=True):
 		#S need to make sure all these functions don't call recover
 		#S shutdown looks clear, all basePWI functions
 
