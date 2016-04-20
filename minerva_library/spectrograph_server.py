@@ -14,6 +14,7 @@ import json
 import collections
 import struct
 from PyAPT import APTMotor
+import subprocess
 import win32api
 import atexit
 import re
@@ -201,6 +202,10 @@ class server:
 			response = self.stop_log_expmeter()
 		elif tokens[0] == 'start_log_expmeter':
 			response = self.start_log_expmeter()
+		elif tokens[0] == 'start_si_image':
+                        response = self.start_si_image()
+                elif tokens[0] == 'kill_si_image':
+                        response = self.kill_si_image()
 #                elif tokens[0] == 'update_dynapower1':
 #                        response = self.update_dynapower1()
 #                elif tokens[0] == 'update_dynapower2':
@@ -242,6 +247,8 @@ class server:
                 fh.setFormatter(formatter)
 		self.logger.addHandler(fh)
 
+                self.logger_lock.release()
+
 	def logpath_watch(self):
                 lastnight = ''
                 #S update the logger, similar to in domeControl
@@ -261,6 +268,28 @@ class server:
                         self.logger.info('Waiting %.2f to update log paths'%(sleep_time))
                         time.sleep(sleep_time)
 
+        def start_si_image(self):
+                #S not sure how big of a deal formatting is for this, or how putting it in the .ini would be,
+                #S but it works now, so leaving as is. Same for the kill command
+                try:
+                        siexe = r"C:/Program Files/SI Image SGL Rev E/SI Image SGL E_64.exe"
+                        subprocess.Popen([siexe],shell=True,stdin=None,stdout=None,stderr=None,close_fds=True)
+                        self.logger.info('Started SI Image')
+                        return 'success'
+                except:
+                        self.logger.exception('Failed to start SI Image')
+                        return 'fail'
+                                
+
+        def kill_si_image(self):
+                try:
+                        killer = r'taskkill /IM "SI Image SGL E_64.exe" /f'
+                        subprocess.Popen(killer)#,shell=True,stdin=None,stdout=None,stderr=None)
+                        self.logger.info('Successfully killed SI Image')
+                        return 'success'
+                except:
+                        self.logger.info('Failed to kill SI Image?')
+                        return 'fail'
 		
 			
 	#server loop that runs indefinitely and handle communication with client
@@ -1088,6 +1117,7 @@ if __name__ == '__main__':
 	test_server = server('spectrograph_server.ini',base_directory)
 
 #        ipdb.set_trace()
+#        test_server.kill_si_image()
 #        thisnight = 'n20991332'
 #        path = test_server.base_directory + '/log/' + thisnight
 #        test_server.update_logpaths(path)
