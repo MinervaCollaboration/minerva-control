@@ -1134,7 +1134,9 @@ class CDK700:
 		self.nfailed = 0
 		return True
 
-	def starmotion(self,ra,dec,pmra,pmdec,px=0.0,rv=0.0,date=datetime.datetime.utcnow()):
+	def starmotion(self,ra,dec,pmra,pmdec,px=0.0,rv=0.0,date=-999):
+
+		if date == -999: date = datetime.datetime.utcnow()
 
                 ## Constants
                 #S Was using julian date of observation, but this was only to have a more general approach to
@@ -1264,7 +1266,10 @@ class CDK700:
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			return self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
 
-	def radectoaltaz(self,ra,dec,date=datetime.datetime.utcnow()):
+	def radectoaltaz(self,ra,dec,date=-999):
+
+		if date == -999: date = datetime.datetime.utcnow()
+
 		obs = ephem.Observer()
 		obs.lat = str(self.latitude)
 		obs.long = str(self.longitude)
