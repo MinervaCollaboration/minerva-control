@@ -371,7 +371,13 @@ class server:
 
 			f[0].header['DATE-OBS'] = (dateobs,"UTC at exposure start")
                         f[0].header['JD'] = utils.dateobs2jd(dateobs)
-                        f[0].header['EXPTIME'] = float(f[0].header['PARAM24'])/1000.0
+                        f[0].header['MEXPTIME'] = float(f[0].header['PARAM24'])/1000.0
+                        startstop = f[0].header['TIME'].split()
+                        starttime = datetime.datetime.strptime(startstop[0],"%H:%M:%S.%f")
+                        endtime = datetime.datetime.strptime(startstop[2],"%H:%M:%S.%f")
+                        exptime = (endtime-starttime).total_seconds()
+                        if starttime > endtime: exptime += 86400.0 # handle the exposure stradling midnight
+                        f[0].header['EXPTIME'] = exptime
                         f[0].header['SET-TEMP'] = float(f[0].header.comments['PARAM62'].split('(')[1].split('C')[0].strip())
                         f[0].header['CCD-TEMP'] = float(f[0].header['PARAM0'])
                         f[0].header['BACKTEMP'] = float(f[0].header['PARAM1'])
