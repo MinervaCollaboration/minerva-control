@@ -190,17 +190,23 @@ class spectrograph:
 	def settle_temp(self):
 		threading.Thread(target = self.send,args=('settle_temp ' + self.setTemp,910)).start()
 
-        def getexpflux(self, t0, directory = '/Data/kiwilog/'):
+        def getexpflux(self, t0, tf=None, night=None, directory = '/Data/kiwilog/'):
                 flux = 0.0
-		
-                with open(directory + self.night() + '/expmeter.dat', 'r') as fh:
+		night = t0.strftime('n%Y%m%d')
+                with open(directory + night + '/expmeter.dat', 'r') as fh:
                         f = fh.read()
                         lines = f.split('\n')
                         for line in lines:
                                 entries = line.split(',')
                                 if len(entries[0]) == 26:
                                         date = datetime.datetime.strptime(entries[0], '%Y-%m-%d %H:%M:%S.%f')
-                                        if date > t0: flux += float(entries[1])
+					if tf != None:
+						if date > t0 and date < tf: 
+							flux += float(entries[1])
+						elif date > tf:
+							break
+					else:
+						if date > t0: flux += float(entries[1])
                 return flux
                         
 		
@@ -209,10 +215,12 @@ class spectrograph:
 	# ##
 
 	def start_si_image(self):
+		self.logger.info('Starting SI Imager SGL E on Kiwispec')
 		response = self.send('start_si_image None',10)
 		return response
 
 	def kill_si_image(self):
+		self.logger.info('Killing SI Imager SGL E on Kiwispec')
 		response = self.send('kill_si_image None',10)
 		return response
 		
@@ -232,10 +240,13 @@ class spectrograph:
 	def si_imager_cooler_on(self):
 		imager = self.si_imager_connect()
 		imager.coolerON()
+		self.logger.info('Turning SI Imager cooler ON')
 
 	def si_imager_cooler_off(self):
 		imager = self.si_imager_connect()
 		imager.coolerOFF()
+		self.logger.warning('Turning SI Imager cooler OFF. '+\
+					    'BE SURE YOU MEANT TO DO THIS')
 		
 	def si_imager_set_format_params(self):
 		serori = int(self.si_settings['SERIALORIGIN'])
@@ -246,13 +257,42 @@ class spectrograph:
 		parbin = int(self.si_settings['PARALLELBINNING'])
 
 		imager = self.si_imager_connect()
-		self.logger.info('Setting SI imager format params (%i,%i,%i,%i,%i,%i)'%(serori,serlen,serbin,parori,parlen,parbin))
-		imager.setCCDFormatParameters(serori,serlen,serbin,parori,parlen,parbin)
+		self.logger.info\
+		    ('Setting SI imager format params '+\
+			     '(%i,%i,%i,%i,%i,%i)'%\
+			     (serori,serlen,serbin,parori,parlen,parbin))
+		imager.setCCDFormatParameters\
+		    (serori,serlen,serbin,parori,parlen,parbin)
 
 	def si_imager_set_readoutmode(self):
 		imager = self.si_imager_connect()
 		imager.setReadoutMode(int(self.si_settings['READOUT_MODE']))
+		self.logger.info('Setting CCD readout mode to ' +\
+					 self.si_settings['READOUT_MODE'])
+
+	def si_image_restart(self,timeout=30):
+		self.logger.info('Restarting SI Image')
+		self.kill_si_image()
+		time.sleep(1)
+		self.start_si_image()
+		#S give it some time to start up, read readout modes, etc
+		connection_refused = True
+		time.sleep(15)
+		t0 = datetime.datetime.utcnow()
+		while connection_refused and (datetime.datetime.utcnow()-t0).total_seconds()<timeout:
+			try:
+				self.si_imager_cooler_on()
+				connection_refused = False
+			except:
+				time.sleep(5)
+				pass
 		
+		if (datetime.datetime.utcnow()-t0).total_seconds()>timeout:
+			self.logger.error('Timeout exceeded in si imager recovery')
+			# add an email
+
+		self.si_imager_set_readoutmode()
+		self.si_imager_set_format_params()
 	#start exposure
 	def expose(self, exptime=1.0, exptype=1, expmeter=None):
 		
@@ -289,6 +329,7 @@ class spectrograph:
                                 flux = self.getexpflux(t0)
                                 self.logger.info("flux = " + str(flux))
                                 if expmeter < flux:
+					self.logger.info('got to flux of '+str(flux)+', greater then expmeter: '+str(expmeter))
                                         #imager.retrieve_image()
                                         self.si_imager.interrupt()
 					time.sleep(25)

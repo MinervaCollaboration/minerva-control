@@ -64,7 +64,7 @@ if __name__ == '__main__':
 			status = dome.status()
 #	'''
        	target = {
-		"name" : "daytimeSky",
+		"name" : "daytimeSkyExpmeter",
 		"ra" : 0.0, 
 		"dec" : 0.0,
 		"starttime" : "2015-01-01 00:00:00", 
@@ -72,7 +72,8 @@ if __name__ == '__main__':
 		"spectroscopy": True, 
 		"filter": ["rp"], 
 		"num": [10], 
-		"exptime": [150], 
+		"exptime": [600],
+		"expmeter": 3.0e8,
 		"fauexptime": 1, 
 		"defocus": 0.0, 
 		"selfguide": True, 
