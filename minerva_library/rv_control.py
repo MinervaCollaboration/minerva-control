@@ -51,7 +51,7 @@ def rv_observing(minerva):
                 # compute the rise/set times of the target
                 #S I think something with coordinates is screwing us up here
                 #S We are still going below 20 degrees.                
-                minerva.site.obs.horizon = '21.0'
+                minerva.site.obs.horizon = '25.0'
                 body = ephem.FixedBody()
                 body._ra = str(target['ra'])
                 body._dec = str(target['dec'])
@@ -162,7 +162,7 @@ def doSpectra(minerva, target, tele_list):
     # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
     minerva.logger.info("Waiting for all telescopes to slew")
     t0 = datetime.datetime.utcnow()
-    slewTimeout = 360.0 # sometimes it needs to home as part of a recovery, let it do that
+    slewTimeout = 600.0 # sometimes it needs to home as part of a recovery, let it do that
     for thread in threads:
         elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
         thread.join(slewTimeout - elapsedTime)

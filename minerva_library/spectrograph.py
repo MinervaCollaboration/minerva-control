@@ -190,7 +190,7 @@ class spectrograph:
 	def settle_temp(self):
 		threading.Thread(target = self.send,args=('settle_temp ' + self.setTemp,910)).start()
 
-        def getexpflux(self, t0, tf=None, night=None, directory = '/Data/kiwilog/'):
+        def getexpflux(self, t0, tf=None, directory = '/Data/kiwilog/'):
                 flux = 0.0
 		night = t0.strftime('n%Y%m%d')
                 with open(directory + night + '/expmeter.dat', 'r') as fh:

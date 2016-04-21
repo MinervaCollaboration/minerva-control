@@ -1513,8 +1513,8 @@ class control:
 #                f['BSCALE'] = (1,'physical = BZERO + BSCALE*array_value')
 #                f['BZERO'] = (0,'physical = BZERO + BSCALE*array_value')
 #                f['DATE-OBS'] = ("","UTC at exposure start")
-                f['EXPTIME'] = ("","Exposure time in seconds")                  # PARAM24/1000
-#                f['EXPSTOP'] = ("","UTC at exposure end")
+                f['EXPTIME'] = ("","Exposure time in seconds")               # derived from TIME keyword
+                f['MEXPTIME'] = ("","Maximum Exposure time in seconds")      # PARAM24/1000
                 f['SET-TEMP'] = ("UNKNOWN",'CCD temperature setpoint (C)')            # PARAM62 (in comments!)
                 f['CCD-TEMP'] = ("UNKNOWN",'CCD temperature at start of exposure (C)')# PARAM0
                 f['BACKTEMP'] = ("UNKNOWN","Camera backplate temperature (C)")        # PARAM1

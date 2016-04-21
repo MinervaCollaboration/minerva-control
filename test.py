@@ -19,18 +19,19 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
-	minerva.telescopes[0].initialize()
+#	minerva.telescopes[0].initialize()
 #	minerva.spectrograph.connect_si_imager()
 #	minerva.spectrograph.take_image(exptime=5)
 	ipdb.set_trace()
+
+	t0 = datetime.datetime(year=2016,month=4,day=14,hour=20,minute=48,second=42)
+	tf = t0 + datetime.timedelta(seconds=150)
+	exp = minerva.spectrograph.getexpflux(t0,tf)
 #	minerva.spectrograph.si_imager_set_format_params()
-	minerva.telescopes[1].makePointingModel(minerva,npoints=100,exptime=2.0)
+
 	ipdb.set_trace()
-	minerva.spectrograph.si_imager.getStatusFromCamera()
-#	minerva.spectrograph.si_imager.coolerON()#setReadoutMode(3)
+	minerva.telescopes[1].makePointingModel(minerva,npoints=100,exptime=2.0)
 
-
-	minerva.spectrograph.si_imager.setReadoutMode(3)
 	ipdb.set_trace()
 
 	target = {'name':'autofocus',

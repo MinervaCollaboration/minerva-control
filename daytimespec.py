@@ -12,6 +12,9 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+	# stop at 2:30 pm local (so calibrations can finish before daily reboot at 3:30 pm)
+	endtime = datetime.datetime(datetime.datetime.utcnow().year, datetime.datetime.utcnow().month, datetime.datetime.utcnow().day, 21, 30, 0)
+
 	# home all telescopes (make sure they're pointing north)
 	# ***not in danger of pointing at the Sun***
 	minerva.telescope_park()
@@ -38,28 +41,30 @@ if __name__ == '__main__':
 	for telescope in minerva.telescopes:
 		telescope.m3port_switch(telescope.port['FAU'])
 
-	# create the sunOverride.txt file
-	# force manual creation of this file??
-	with open(minerva.base_directory + '/minerva_library/sunOverride.txt','w') as fh:
-		fh.write(str(datetime.datetime.utcnow()))
 
-	with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
-		fh.write(str(datetime.datetime.utcnow()))
-		
-	with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
-		fh.write(str(datetime.datetime.utcnow()))
-		
+	if datetime.datetime.utcnow() < endtime:
 
+		# create the sunOverride.txt file
+		# force manual creation of this file??
+		with open(minerva.base_directory + '/minerva_library/sunOverride.txt','w') as fh:
+			fh.write(str(datetime.datetime.utcnow()))
+
+		with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
+			fh.write(str(datetime.datetime.utcnow()))
+		
+		with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
+			fh.write(str(datetime.datetime.utcnow()))
+		
 	# wait for domes to open
 	t0 = datetime.datetime.utcnow()
 	for dome in minerva.domes:
 		status = dome.status()
-		while status['Shutter1'] <> 'OPEN':
+		while status['Shutter1'] <> 'OPEN' and datetime.datetime.utcnow() < endtime:
 			print 'Enclosure closed; waiting for dome to open (status["Shutter1"] = ' + status['Shutter1'] + ")"
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
-			if timeelapsed > 600:
-				print 'Enclosure still closed after 10 minutes; exiting'
-				sys.exit()
+#			if timeelapsed > 600:
+#				print 'Enclosure still closed after 10 minutes; exiting'
+#				sys.exit()
 			time.sleep(30)
 			status = dome.status()
 #	'''
@@ -87,8 +92,6 @@ if __name__ == '__main__':
 		"i2": True,
 		"comment":"daytime sky spectrum"}
 	
-	# stop at 2:30 pm local (so calibrations can finish before daily reboot at 3:30 pm)
-	endtime = datetime.datetime(datetime.datetime.utcnow().year, datetime.datetime.utcnow().month, datetime.datetime.utcnow().day, 21, 30, 0)
 
 	'''
 	# take several exposures with the iodine stage in various positions
@@ -106,7 +109,7 @@ if __name__ == '__main__':
 	except: pass
 	'''
 
-	while (datetime.datetime.utcnow() - endtime).total_seconds() < 0:
+	while datetime.datetime.utcnow() < endtime:
 
 		status = minerva.domes[0].status()
 		isOpen = status['Shutter1'] == 'OPEN'
