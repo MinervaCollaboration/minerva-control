@@ -149,9 +149,6 @@ def doSpectra(minerva, target, tele_list):
     threads = [None] * len(tele_list)
     for t in range(len(tele_list)):
         if minerva.telcom_enabled[tele_list[t]-1]:
-            #TODOACQUIRETARGET Needs to be switched to take dictionary argument
-            #S i think this might act up due to being a dictionary, but well see.
-            # swap the m3port to the imager to locate the fiber
             m3port = minerva.telescopes[tele_list[t]-1].port['IMAGER']
             kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
             threads[t] = threading.Thread(target = minerva.telescopes[tele_list[t]-1].acquireTarget,args=(target,),kwargs=kwargs)
@@ -162,12 +159,12 @@ def doSpectra(minerva, target, tele_list):
     # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
     minerva.logger.info("Waiting for all telescopes to slew")
     t0 = datetime.datetime.utcnow()
-    slewTimeout = 600.0 # sometimes it needs to home as part of a recovery, let it do that
+    slewTimeout = 600.0 # sometimes it needs to home as part of a recovery, give it time for that
     for thread in threads:
         elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
         thread.join(slewTimeout - elapsedTime)
 
-    # see if the thread timed out
+    # check if the thread timed out
     for t in range(len(tele_list)):
         if threads[t].isAlive():
             minerva.logger.error("T" + str(tele_list[t]) + " thread timed out waiting for slew")
@@ -176,17 +173,18 @@ def doSpectra(minerva, target, tele_list):
                       "T" + str(tele_list[t]) + " thread timed out waiting for slew. "+
                       "This shouldn't happen. Please fix me and note what was done."+
                       "Love,\nMINERVA",level='serious')
-        
+
+    # take the backlit images
     minerva.logger.info("Locating Fiber")
     backlight(minerva)
+
+    # find the fiber position from the backlit images
     for t in range(len(tele_list)):
 
         tel_num = tele_list[t]
-        for telescope in minerva.telescopes:
-            if telescope.num == str(tel_num): break
-        for camera in minerva.cameras:
-            if camera.telnum == str(tel_num): break
-
+        telescope = utils.getTelescope(minerva,tel_num)
+        camera = utils.getCamera(minerva,tel_num)
+        
         if 'backlight' not in camera.file_name:
             minerva.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
         else:
@@ -200,42 +198,23 @@ def doSpectra(minerva, target, tele_list):
 
         camera.fau.guiding=True
 
-
+    # switch all ports back to the FAU asynchronously
+    minerva.m3port_switch_list(minerva,tele_list,'FAU')
+    
+    # acquire the target, run autofocus, then start guiding
+    minerva.logger.info("Beginning fine acquisition, autofocus, and guiding")
     threads = []
-    guideThreads = []
     for t in range(len(tele_list)):
-        if minerva.telcom_enabled[tele_list[t]-1]:
-            #TODOACQUIRETARGET Needs to be switched to take dictionary argument
-            #S i think this might act up due to being a dictionary, but well see.
-            # swap the m3port to the imager to locate the fiber
-            telescope = minerva.telescopes[tele_list[t]-1]
-            
-            m3port = telescope.port['FAU']
-            thread = threading.Thread(target = telescope.m3port_switch, args=(m3port,))
-            thread.name = "T" + str(telescope.num)
-            thread.start()
-            threads.append(thread)
-            
-            thread = threading.Thread(target=minerva.fauguide,args=(target,tele_list[t],))
-            thread.name = "T" + str(telescope.num)
-            thread.start()
-            guideThreads.append(thread)
-
-    # wait for all m3 mirrors to finish
-    for thread in threads:
-        thread.join()
-
-    for t in range(len(tele_list)):
-        #TODOACQUIRETARGET Needs to be switched to take dictionary argument
-        #S i think this might act up due to being a dictionary, but well see.                
-        threads[t] = threading.Thread(target = minerva.pointAndGuide,args=(target,tele_list[t]))
-        threads[t].name= "T" + str(minerva.telescopes[tele_list[t]-1].num)
-        threads[t].start()
+        telescope = minerva.telescopes[tele_list[t]-1]
+        thread = threading.Thread(target=minerva.acquireFocusGuide,args=(target,tele_list[t],))
+        thread.name = "T" + str(telescope.num)
+        thread.start()
+        threads.append(thread)
         
     # wait for all telescopes to put target on their fibers (or timeout)
-    minerva.logger.info("Waiting for all telescopes to acquire")
+    # needs time to reslew (because m3port_switch stops tracking), fine acquire, autofocus, guiding
     acquired = False
-    timeout = 300.0 # is this long enough?
+    timeout = 300.0 
     elapsedTime = 0.0
     t0 = datetime.datetime.utcnow()
     while not acquired and elapsedTime < timeout:
@@ -275,7 +254,7 @@ def doSpectra(minerva, target, tele_list):
 
     minerva.stopFAU(tele_list)
 
-    # let's take another backlit image to see how stable it is
+    # let's take another backlit image to see how stable it was
     backlight(minerva)
 
     return
@@ -314,27 +293,12 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     # the high voltage supply has been turned off (in a weird way, look in spec_server)
     minerva.spectrograph.stop_log_expmeter()
 
-    # turn on the slit flat LED
+    # turn on the backlight LED
     minerva.spectrograph.backlight_turn_on()
     t0 = datetime.datetime.utcnow()
 
-    threads = []
     # swap to the imaging port to block light from the telescope
-    for i in range(len(tele_list)):
-
-        telescope = utils.getTelescope(minerva, tele_list[i])
-        thread = threading.Thread(target=telescope.m3port_switch,
-                                        args=[telescope.port['IMAGER'],])
-        thread.name = "T" + str(telescope.num)
-        threads.append(thread)        
-
-    # execute long commands asynchronously
-    for thread in threads:
-        thread.start()
-
-    # wait for everything to complete
-    for thread in threads:
-        thread.join()
+    minerva.m3port_switch_list(minerva,tele_list,'IMAGER')
 
     # wait for the LED to warm up
     elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()

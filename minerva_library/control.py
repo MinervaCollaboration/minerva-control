@@ -315,6 +315,26 @@ class control:
                                 threads[t].join()
                 return
 
+	def m3port_switch_list(self,tele_list = 0, portstr):
+                if type(tele_list) is int:
+			if (tele_list < 1) or (tele_list > len(self.telescopes)):
+				tele_list = [x+1 for x in range(len(self.telescopes))]
+			else:
+				tele_list = [tele_list]
+
+                threads = [None] * len(tele_list)
+                for t in range(len(tele_list)):
+			telescope = utils.getTelescope(self,tele_list[t])
+
+			threads[t] = threading.Thread(target = telescope.m3port_switch,args=[telescope.port[portstr],])
+			threads[t].name = 'T' + str(telescope.num)
+			threads[t].start()
+
+                for thread in threads:
+			thread.join()
+
+                return
+
 
 #============Imager control===============#
 #block until command is complete
@@ -670,87 +690,6 @@ class control:
 
 		return cc
 
-	# this should be moved to rv_control
-	def doSpectra(self, target, tele_list):
-
-		# if after end time, return
-		if datetime.datetime.utcnow() > target['endtime']:
-			self.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + "); skipping")
-			return
-
-		# if before start time, wait
-		if datetime.datetime.utcnow() < target['starttime']:
-			waittime = (target['starttime']-datetime.datetime.utcnow()).total_seconds()
-			self.logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
-			time.sleep(waittime)
-
-		# if the dome isn't open, wait for it to open
-		for dome in self.domes:
-			while not dome.isOpen():
-				if datetime.datetime.utcnow() > target['endtime']:
-					self.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
-					return
-				time.sleep(60)
-
-		# acquire the target and begin guiding on each telescope
-                if type(tele_list) is int:
-                        if (tele_list < 1) or (tele_list > len(self.telescopes)):
-                                tele_list = [x+1 for x in range(len(self.telescopes))]
-                        else:
-                                tele_list = [tele_list]
-                threads = [None] * len(tele_list)
-                for t in range(len(tele_list)):
-                        if self.telcom_enabled[tele_list[t]-1]:
-                                #TODOACQUIRETARGET Needs to be switched to take dictionary arguement
-                                #S i think this might act up due to being a dictionary, but well see.
-                                threads[t] = threading.Thread(target = self.pointAndGuide,args=(target,tele_list[t]))
-				telescope = utils.getTelescope(self,tele_list[t])
-				threads[t].name = 'T' + str(telescope.num)
-                                threads[t].start()
-				
-		self.logger.info("Waiting for all telescopes to acquire")
-		# wait for all telescopes to put target on their fibers (or timeout)
-		acquired = False
-		timeout = 300.0 # is this long enough?
-		elapsedTime = 0.0
-		t0 = datetime.datetime.utcnow()
-		while not acquired and elapsedTime < timeout:
-			acquired = True
-			for i in range(len(tele_list)):
-				camera = utils.getCamera(self,tele_list[i])
-				self.logger.info("T" + str(camera.telnum) + ": acquired = " + str(camera.fau.acquired))
-				if not camera.fau.acquired: 
-					self.logger.info("T" + str(camera.telnum) + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
-					acquired = False
-			time.sleep(1.0)
-			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-			
-		# what's the right thing to do in a timeout? 
-		# Try again? 
-		# Go on anyway? (as long as one telescope succeeded?)
-		# We'll try going on anyway for now...
-
-		# begin exposure(s)
-		for i in range(target['num'][0]):
-			# make sure we're not past the end time
-			if datetime.datetime.utcnow() > target['endtime']: 
-				self.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
-				self.stopFAU(tele_list)
-				return
-			
-			while not self.domes[0].isOpen():
-				self.logger.info("Waiting for dome to open")
-				time.sleep(60.0)
-				if datetime.datetime.utcnow() > target['endtime']: 
-					self.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
-					self.stopFAU(tele_list)
-					return
-
-			self.takeSpectrum(target)
-
-		self.stopFAU(tele_list)
-		return
-
 	def stopFAU(self,tele_list):
 
 		# set camera.fau.guiding == False to stop guiders
@@ -760,40 +699,31 @@ class control:
 			camera.fau.guiding = False
 		return
 
-
-	def pointAndGuide(self, target, tel_num, backlight=False):
-
-		camera = utils.getCamera(self,tel_num)
+	def acquireFocusGuide(self,target,tel_num):
 		telescope = utils.getTelescope(self,tel_num)
+		camera = utils.getCamera(self,tel_num)
+		camera.fau.guiding=True
 
 		try:
-#			self.telescopes[tel_num-1].logger.info('Beginning autofocus on '+target['name'])
-#			newauto.autofocus(self, tel_num, target=target)
-			self.logger.info("T" + str(tel_num) + ": pointing to target")
-			telescope.acquireTarget(target, derotate=False)
-			telescope.logger.info('Beginning autofocus on '+target['name'])
-#			newauto.autofocus(self, tel_num, target=target)
+			# slew to the target
+			self.logger.info("beginning course acquisition")
+			telescope.acquireTarget(target,tracking=True,derotate=False,m3port=telescope.port['FAU'])
+
+			# put the target on the fiber
+			self.logger.info("beginning fine acquisition")
+			self.fauguide(target,tel_num,acquireonly=True)
+
+			# autofocus
+			self.logger.info("beginning autofocus")
 			newauto.autofocus(self, tel_num)
 
-			if backlight:
-				rv_control.backlight(self)
-				backlit = glob.glob('/Data/t' + str(tel_num) + '/' + self.night + '/*backlight*.fits')
-				if len(backlit) > 1:
-					xfiber, yfiber = rv_control.find_fiber(backlit[-1])
-					self.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ")")
-					camera.fau.xfiber = xfiber
-					camera.fau.yfiber = yfiber
-				else:
-					self.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
-
-
-			self.logger.info("T" + str(tel_num) + ": beginning guiding")
-			camera.fau.guiding=True
+			# guide
+			self.logger.info("beginning guiding")
 			self.fauguide(target,tel_num)
 		except:
 			self.logger.exception("T" + str(tel_num) + ": Pointing and guiding failed")
 #			mail.send("Pointing and guiding failed","",level="serious")
-
+			
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
 	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False):
@@ -853,12 +783,7 @@ class control:
 #				self.logger.info("The dome closed while guiding; exiting guide loop")
 #				camera.fau.acquired = False
 #				return False
-				
-#			self.logger.info("*****I'm Sleeping; kill me if you need to*****")
-#			time.sleep(5)
-
-
-				
+								
 			dataPath = '/Data/t' + camera.telnum + '/' + self.night + '/'
 			stars = self.getstars(dataPath + filename)
 

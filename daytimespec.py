@@ -43,7 +43,6 @@ if __name__ == '__main__':
 
 
 	if datetime.datetime.utcnow() < endtime:
-
 		# create the sunOverride.txt file
 		# force manual creation of this file??
 		with open(minerva.base_directory + '/minerva_library/sunOverride.txt','w') as fh:

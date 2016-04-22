@@ -667,7 +667,13 @@ class spectrograph:
                 response = self.send('led_turn_off None',10)
                 return response
 
+	def get_expmeter_total(self):
+		response = self.send('get_expmeter total None',10)
+		return response
 
+	def reset_expmeter_total(self):
+		response = self.send('reset_expmeter_total None',10)
+		return response
 
         #S This is used to check how long the lamp has been turned on for
         #S from the LAST time it was turned on, not total time on. Used
