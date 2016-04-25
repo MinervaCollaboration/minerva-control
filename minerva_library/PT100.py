@@ -98,6 +98,7 @@ class PT100:
             
         lastupdate= datetime.datetime.utcnow()
         verbose = False
+        lastnight = ''
         while True:
             try:
 
@@ -143,6 +144,11 @@ class PT100:
             except:
                 self.logger.exception("error logging controller %s"%(self.controller))
     
+            thisnight = datetime.datetime.strftime(datetime.datetime.utcnow(),'n%Y%m%d')
+            if thisnight != lastnight:
+                path = self.base_directory + '/' + thisnight + '/' + self.logger_name
+                utils.update_logger_path(self.logger,path)
+                lastnight = thisnight
             
 if __name__ == "__main__":
 

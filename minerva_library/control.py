@@ -107,7 +107,7 @@ class control:
 	def update_logpaths(self,path):
 		if not os.path.exists(path): os.mkdir(path)
 
-		fmt = "%(asctime)s [%(filename)s:%(lineno)s,%(thread)d - %(funcName)s()] %(levelname)s: %(message)s"
+		fmt = "%(asctime)s.%(msecs).03d [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(threadName)s: %(message)s"
                 datefmt = "%Y-%m-%dT%H:%M:%S"
                 formatter = logging.Formatter(fmt,datefmt=datefmt)
                 formatter.converter = time.gmtime
@@ -315,7 +315,7 @@ class control:
                                 threads[t].join()
                 return
 
-	def m3port_switch_list(self,tele_list = 0, portstr):
+	def m3port_switch_list(self, portstr, tele_list = 0):
                 if type(tele_list) is int:
 			if (tele_list < 1) or (tele_list > len(self.telescopes)):
 				tele_list = [x+1 for x in range(len(self.telescopes))]
@@ -690,40 +690,6 @@ class control:
 
 		return cc
 
-	def stopFAU(self,tele_list):
-
-		# set camera.fau.guiding == False to stop guiders
-		self.logger.info("Stopping the guiding loop for all telescopes")
-		for i in range(len(tele_list)):
-			camera = utils.getCamera(self,tele_list[i])
-			camera.fau.guiding = False
-		return
-
-	def acquireFocusGuide(self,target,tel_num):
-		telescope = utils.getTelescope(self,tel_num)
-		camera = utils.getCamera(self,tel_num)
-		camera.fau.guiding=True
-
-		try:
-			# slew to the target
-			self.logger.info("beginning course acquisition")
-			telescope.acquireTarget(target,tracking=True,derotate=False,m3port=telescope.port['FAU'])
-
-			# put the target on the fiber
-			self.logger.info("beginning fine acquisition")
-			self.fauguide(target,tel_num,acquireonly=True)
-
-			# autofocus
-			self.logger.info("beginning autofocus")
-			newauto.autofocus(self, tel_num)
-
-			# guide
-			self.logger.info("beginning guiding")
-			self.fauguide(target,tel_num)
-		except:
-			self.logger.exception("T" + str(tel_num) + ": Pointing and guiding failed")
-#			mail.send("Pointing and guiding failed","",level="serious")
-			
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
 	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False):
@@ -768,11 +734,13 @@ class control:
                 #MAIN LOOP
 		i=0
 		while camera.fau.guiding:
+			self.logger.info("entering guiding loop")
 			if i>npts:
 				break
                         # Grab image data from FAU
 			filename = 'error'
 			while filename == 'error': 
+				self.logger.info("beginning image")
 				filename = self.takeFauImage(target,telescope_num=tel_num)
 #				if not dome.isOpen(): 
 #					# The target is no longer acquired
@@ -1396,12 +1364,13 @@ class control:
 
 		# check camera number is valid
 		if telescope_num > len(self.telescopes) or telescope_num < 0:
+			self.logger.error("invalid telescope number: " + str(telescope_num))
 			return 'error'
 		if telescope_num > 2: dome = 2
 		else: dome = 1
 
 		#S assign the camera
-		imager = self.cameras[telescope_num-1]
+		imager = utils.getCamera(self,telescope_num)
 		imager.logger.info('starting the FAU imaging thread')
 
 		#start imaging process in a different thread
@@ -1427,8 +1396,8 @@ class control:
 		imager.logger.error('takeImage failed: ' + imager.file_name)
 		return 'error'	
 
-	def addSpectrographKeys(self, f):
-
+	def addSpectrographKeys(self, f, target=None):
+		
 		# blank keys will be filled in from the image when it's taken
 #                f['SIMPLE'] = 'True'
 #                f['BITPIX'] = (16,'8 unsigned int, 16 & 32 int, -32 & -64 real')
@@ -1440,6 +1409,12 @@ class control:
 #                f['DATE-OBS'] = ("","UTC at exposure start")
                 f['EXPTIME'] = ("","Exposure time in seconds")               # derived from TIME keyword
                 f['MEXPTIME'] = ("","Maximum Exposure time in seconds")      # PARAM24/1000
+		f['EXPFLUX'] = ("","Exposure meter flux during exposure in counts")
+		try:
+			mexpmeter = target['expmeter']
+		except:
+			mexpmeter = 'NA'
+		f['MEXPFLUX'] = (mexpmeter,"Maximum Exposure meter flux in counts")
                 f['SET-TEMP'] = ("UNKNOWN",'CCD temperature setpoint (C)')            # PARAM62 (in comments!)
                 f['CCD-TEMP'] = ("UNKNOWN",'CCD temperature at start of exposure (C)')# PARAM0
                 f['BACKTEMP'] = ("UNKNOWN","Camera backplate temperature (C)")        # PARAM1
@@ -1853,7 +1828,7 @@ class control:
 		# add either the keywords specific to the spectrograph or imager
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
-				f = self.addSpectrographKeys(f)
+				f = self.addSpectrographKeys(f,target=target)
 			else: f = self.addImagerKeys(tele_list, f)
 		else: f = self.addImagerKeys(tele_list, f)
 

@@ -11,6 +11,7 @@ import time
 import utils
 import numpy as np
 import math
+import newauto
 
 def rv_observing(minerva):
 
@@ -100,7 +101,7 @@ def rv_observing(minerva):
                         kwargs = {'target':target,'fau':fau}
                         threads = []
                         for telescope in minerva.telescopes:
-                            thread = threading.Thread(target=newauto.autofocus,args=(minerva,telescope.num,),kwargs=kwargs)
+                            thread = threading.Thread(target=newauto.autofocus,args=(minerva,int(telescope.num),),kwargs=kwargs)
                             thread.name = 'T' + str(telescope.num)
                             threads.append(thread)
                         for thread in threads(): thread.start()
@@ -118,7 +119,7 @@ def rv_observing(minerva):
     minerva.endNight()
     
 
-def doSpectra(minerva, target, tele_list):
+def doSpectra(minerva, target, tele_list, test=False):
 
     # if after end time, return
     if datetime.datetime.utcnow() > target['endtime']:
@@ -131,14 +132,15 @@ def doSpectra(minerva, target, tele_list):
         minerva.logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
         time.sleep(waittime)
 
-    # if the dome isn't open, wait for it to open
-    for dome in minerva.domes:
-        while not dome.isOpen():
-            minerva.logger.info("Waiting for dome to open")
-            if datetime.datetime.utcnow() > target['endtime']: 
-                minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
-                return
-            time.sleep(60)
+    if not test:
+        # if the dome isn't open, wait for it to open
+        for dome in minerva.domes:
+            while not dome.isOpen():
+                minerva.logger.info("Waiting for dome to open")
+                if datetime.datetime.utcnow() > target['endtime']: 
+                    minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
+                    return
+                time.sleep(60)
 
     # acquire the target for each telescope
     if type(tele_list) is int:
@@ -199,14 +201,14 @@ def doSpectra(minerva, target, tele_list):
         camera.fau.guiding=True
 
     # switch all ports back to the FAU asynchronously
-    minerva.m3port_switch_list(minerva,tele_list,'FAU')
+    minerva.m3port_switch_list('FAU',tele_list)
     
     # acquire the target, run autofocus, then start guiding
     minerva.logger.info("Beginning fine acquisition, autofocus, and guiding")
     threads = []
     for t in range(len(tele_list)):
         telescope = minerva.telescopes[tele_list[t]-1]
-        thread = threading.Thread(target=minerva.acquireFocusGuide,args=(target,tele_list[t],))
+        thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,int(telescope.num),))
         thread.name = "T" + str(telescope.num)
         thread.start()
         threads.append(thread)
@@ -237,7 +239,7 @@ def doSpectra(minerva, target, tele_list):
         # make sure we're not past the end time
         if datetime.datetime.utcnow() > target['endtime']:
             minerva.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
-            minerva.stopFAU(tele_list)
+            stopFAU(minerva,tele_list)
             return
 
         # if the dome isn't open, wait for it to open
@@ -246,18 +248,54 @@ def doSpectra(minerva, target, tele_list):
                 minerva.logger.info("Waiting for dome to open")
                 if datetime.datetime.utcnow() > target['endtime']: 
                     minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
-                    minerva.stopFAU(tele_list)
+                    stopFAU(minerva,tele_list)
                     return
                 time.sleep(60)
 
         minerva.takeSpectrum(target)
-
-    minerva.stopFAU(tele_list)
+        
+    stopFAU(minerva,tele_list)
 
     # let's take another backlit image to see how stable it was
     backlight(minerva)
 
     return
+
+def acquireFocusGuide(minerva, target, telnum):
+    telescope = utils.getTelescope(minerva,telnum)
+    camera = utils.getCamera(minerva,telnum)
+    camera.fau.guiding=True
+
+    try:
+        # slew to the target
+        minerva.logger.info("beginning course acquisition")
+        telescope.acquireTarget(target,tracking=True,derotate=False,m3port=telescope.port['FAU'])
+        
+        # put the target on the fiber
+        minerva.logger.info("beginning fine acquisition")
+        try: minerva.fauguide(target,telnum,acquireonly=True, skiponfail=True)
+        except: minerva.logger.exception("acquisition failed")
+
+        # autofocus
+        minerva.logger.info("beginning autofocus")
+        try: newauto.autofocus(minerva, telnum)
+        except: minerva.logger.exception("autofocus failed")
+
+        # guide
+        minerva.logger.info("beginning guiding")
+        try: minerva.fauguide(target,telnum, skiponfail=True)
+        except: minerva.logger.exception("guiding failed")
+    except:
+        minerva.logger.exception("pointing and guiding failed")
+        #mail.send("Pointing and guiding failed","",level="serious")                                                                                
+
+
+def stopFAU(minerva,tele_list):
+    # set camera.fau.guiding == False to stop guiders                                                                                                  
+    minerva.logger.info("Stopping the guiding loop for all telescopes")
+    for i in range(len(tele_list)):
+        camera = utils.getCamera(minerva,tele_list[i])
+        camera.fau.guiding = False
 
 def peakupflux(minerva, target, telnum):
 
@@ -298,7 +336,7 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     t0 = datetime.datetime.utcnow()
 
     # swap to the imaging port to block light from the telescope
-    minerva.m3port_switch_list(minerva,tele_list,'IMAGER')
+    minerva.m3port_switch_list('IMAGER',tele_list)
 
     # wait for the LED to warm up
     elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()

@@ -59,14 +59,11 @@ if __name__ == '__main__':
 	for dome in minerva.domes:
 		status = dome.status()
 		while status['Shutter1'] <> 'OPEN' and datetime.datetime.utcnow() < endtime:
-			print 'Enclosure closed; waiting for dome to open (status["Shutter1"] = ' + status['Shutter1'] + ")"
+			minerva.logger.info('Enclosure closed; waiting for dome to open (status["Shutter1"] = ' + status['Shutter1'] + ")")
 			timeelapsed = (datetime.datetime.utcnow()-t0).total_seconds()
-#			if timeelapsed > 600:
-#				print 'Enclosure still closed after 10 minutes; exiting'
-#				sys.exit()
 			time.sleep(30)
 			status = dome.status()
-#	'''
+
        	target = {
 		"name" : "daytimeSkyExpmeter",
 		"ra" : 0.0, 

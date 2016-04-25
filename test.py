@@ -19,29 +19,64 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+
+
+	minerva.night = 'n20160422'
+	target = {
+		"name": "HD62613", 
+		"ra": 7.9381193, 
+		"dec": 80.26554, 
+		"starttime": datetime.datetime(2016,1,1),
+		"endtime": datetime.datetime(2017,1,1),
+		"spectroscopy": True, 
+		"filter": ["rp"], 
+		"num": [3], 
+		"exptime": [1800.0], 
+		"fauexptime": 5.0, 
+		"defocus": 0.0, 
+		"positionAngle": 0.0, 
+		"pmra": 0.0, 
+		"pmdec": 0.0, 
+		"parallax": 0.0, 
+		"rv": 0.0, 
+		"i2": True,
+		}
+
+#	rv_control.acquireFocusGuide(minerva,target,1)
+#	minerva.takeFauImage(target,telescope_num=1)
+#	ipdb.set_trace()
+
+	rv_control.doSpectra(minerva, target, [1,2,3,4], test=True)
+
+	ipdb.set_trace()
+
 #	minerva.telescopes[0].initialize()
 #	minerva.spectrograph.connect_si_imager()
 #	minerva.spectrograph.take_image(exptime=5)
-	ipdb.set_trace()
 
-	t0 = datetime.datetime(year=2016,month=4,day=14,hour=20,minute=48,second=42)
-	tf = t0 + datetime.timedelta(seconds=150)
-	exp = minerva.spectrograph.getexpflux(t0,tf)
 #	minerva.spectrograph.si_imager_set_format_params()
 
-	ipdb.set_trace()
-	minerva.telescopes[1].makePointingModel(minerva,npoints=100,exptime=2.0)
+#	ipdb.set_trace()
+#	t1 = datetime.datetime.utcnow()
+#	t0 = datetime.datetime(year=2016,month=04,day=22,hour=5)
+#	tf = datetime.datetime(year=2016,month=04,day=22,hour=5,minute=30)
+#	minerva.spectrograph.getexpflux(t0,tf=tf)
+#	print (datetime.datetime.utcnow()-t1).total_seconds()
+#	minerva.telescopes[1].makePointingModel(minerva,npoints=100,exptime=2.0)
 
 	ipdb.set_trace()
 
-	target = {'name':'autofocus',
-		  'exptime':[5],
+	target = {'name':'newexpmetertest',
+		  'exptime':[3],
 		  'fauexptime':1,#.1,
 		  'filter':["V"],
+		  'expmeter':3000,
 		  'tracking':False,
 		  'spectroscopy':True,
 		  'i2': True,
 		  }
+	minerva.takeSpectrum(target)
+	ipdb.set_trace()
 	newauto.autofocus(minerva,1,target=target,defocus_step=0.03,num_steps=3,dome_override=True)
 	ipdb.set_trace()
 	minerva.takeSpectrum(target,[1,2,3,4])

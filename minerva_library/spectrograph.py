@@ -321,20 +321,27 @@ class spectrograph:
                 elapsedtime = 0.0
                 flux = 0.0
                 if expmeter <> None:
+			#S reset the exposure meter
+			self.reset_expmeter_total()
+			#S begin the imaging thread
                         thread = threading.Thread(target=self.si_imager.do)
                         thread.start()
                         while elapsedtime < exptime:
-                                time.sleep(0.1)
+				#S we are going to query the expmeter total every second
+				#S probably could be finer resolution
+                                time.sleep(1.0)
                                 elapsedtime = (datetime.datetime.utcnow()-t0).total_seconds()
-                                flux = self.getexpflux(t0)
+                                flux = self.get_expmeter_total()
                                 self.logger.info("flux = " + str(flux))
                                 if expmeter < flux:
 					self.logger.info('got to flux of '+str(flux)+', greater then expmeter: '+str(expmeter))
                                         #imager.retrieve_image()
-                                        self.si_imager.interrupt()
-					time.sleep(25)
                                         break
-
+			#S this is on a level outside of the while for the elapsed time as the imager.do thread is 
+			#S is still running. e.g., we still want to wait whether the elapsed time has gone through or
+			#S the expmeter has triggered the interrupt.
+			self.si_imager.interrupt()
+			time.sleep(25)
                         
 		else:
                         self.si_imager.do()
@@ -668,8 +675,8 @@ class spectrograph:
                 return response
 
 	def get_expmeter_total(self):
-		response = self.send('get_expmeter total None',10)
-		return response
+		response = self.send('get_expmeter_total None',10)
+		return float(response.split()[1])
 
 	def reset_expmeter_total(self):
 		response = self.send('reset_expmeter_total None',10)

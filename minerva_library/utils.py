@@ -105,6 +105,17 @@ def night():
         today = today + datetime.timedelta(days=1)
     return 'n' + today.strftime('%Y%m%d')
 
+def update_logger_path(logger, newpath):
+    fmt = "%(asctime)s.%(msecs).03d [%(filename)s:%(lineno)s - %(funcName)s()] %(levelname)s: %(threadName)s: %(message)s"
+    datefmt = "%Y-%m-%dT%H:%M:%S"
+    formatter = logging.Formatter(fmt,datefmt=datefmt)
+    formatter.converter = time.gmtime
+
+    for fh in logger.handlers: logger.removeHandler(fh)
+    fh = logging.FileHandler(newpath, mode='a')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
 def setup_logger(base_dir, night, logger_name):
 
     path = base_dir + '/log/' + night
@@ -116,9 +127,6 @@ def setup_logger(base_dir, night, logger_name):
     logger = logging.getLogger(logger_name)
     formatter = logging.Formatter(fmt,datefmt=datefmt)
     formatter.converter = time.gmtime
-
-#    #clear handlers before setting new ones
-#    logger.handlers = []
 
     fileHandler = logging.FileHandler(path + '/' + logger_name + '.log', mode='a')
     fileHandler.setFormatter(formatter)
