@@ -1386,8 +1386,12 @@ class control:
 
 		imager.logger.info('waiting for imaging thread')
 		# wait for imaging process to complete
-		imaging_thread.join()
+		imaging_thread.join(target['fauexptime']+30)
 		
+		if imaging_thread.isAlive():
+			imager.logger.error('takeImage timed out: ' + imager.file_name)
+			return 'error'
+
 		# write header for image 
 		if imager.write_header(header):
 			imager.logger.info('finish writing image header')

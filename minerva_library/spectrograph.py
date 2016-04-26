@@ -293,6 +293,26 @@ class spectrograph:
 
 		self.si_imager_set_readoutmode()
 		self.si_imager_set_format_params()
+
+	def expose_with_timeout(self,exptime=1.0, exptype=1, expmeter=None, timeout=None):
+		if timeout == None:
+			timeout = exptime + 60.0
+
+		kwargs = {"exptime":exptime,"exptype":exptype,"expmeter":expmeter}
+		thread = threading.Thread(target=self.expose,kwargs=kwargs)
+		thread.name = 'kiwispec'
+		thread.start()
+		thread.join(timeout)
+		if thread.isalive():
+			mail.send("The SI imager timed out","Dear Benevolent Humans,\n\n" + 
+				  "The SI imager has timed out while exposing. This is usually "+
+				  "due to an improperly aborted exposure, in which case someone "+
+				  "needs to log into KIWISPEC-PC, click ok, and restart main.py\n\n"
+				  "Love,\n,MINERVA",level='serious')
+			self.logger.error("SI imager timed out")
+			sys.exit()
+
+
 	#start exposure
 	def expose(self, exptime=1.0, exptype=1, expmeter=None):
 		
@@ -414,7 +434,7 @@ class spectrograph:
 
                 self.set_file_name(self.file_name)
 		
-		if self.expose(exptime=exptime, expmeter=expmeter):
+		if self.expose_with_timeout(exptime=exptime, expmeter=expmeter):
 			self.logger.info('Finished taking image: ' + self.file_name)
 			self.nfailed = 0 # success; reset the failed counter
 			return
