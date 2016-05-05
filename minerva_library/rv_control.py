@@ -31,6 +31,13 @@ def rv_observing(minerva):
     minerva.telescope_initialize(tracking=False,derotate=False)
     minerva.telescope_park()
 
+    # turn off both monitors
+    self.logger.info('Turning off monitors')
+    try: self.pdus[0].monitor.off()
+    except: self.logger.exception("Turning off monitor in aqawan 1 failed")
+    try: self.pdus[2].monitor.off()
+    except: self.logger.exception("Turning off monitor in aqawan 2 failed")
+
     # if before the end of twilight, do calibrations
     if datetime.datetime.utcnow() < minerva.site.NautTwilEnd():
         backlight(minerva)

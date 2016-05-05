@@ -741,6 +741,8 @@ class control:
 			filename = 'error'
 			while filename == 'error': 
 				self.logger.info("beginning image")
+				#S need some recovery here, killed us n20160429 on t1
+				#TODO #XXX
 				filename = self.takeFauImage(target,telescope_num=tel_num)
 #				if not dome.isOpen(): 
 #					# The target is no longer acquired
@@ -2409,9 +2411,21 @@ class control:
 
 		#set correct path for the night
 		self.logger.info("Setting up directories for " + night)
-		self.imager_setDatapath(night,num)	
-		if email: mail.send('T' + str(num) + ' Starting observing','Love,\nMINERVA')
+		self.imager_setDatapath(night,num)
 
+		# turn off both monitors
+                self.logger.info('Turning off monitors')
+                try: self.pdus[0].monitor.off()
+                except: self.logger.exception("Turning off monitor in aqawan 1 failed")
+                try: self.pdus[2].monitor.off()
+                except: self.logger.exception("Turning off monitor in aqawan 2 failed")
+
+		for aqawan in self.domes:
+			self.logger.info('Turning off lights in aqawan ' + str(aqawan.num))
+			aqawan.lights_off()
+
+		if email: mail.send('T' + str(num) + ' Starting observing','Love,\nMINERVA')
+		
 	def backup(self, num, night=None):
 		
 		if night == None:

@@ -260,6 +260,14 @@ class aqawan:
 		if response == -1: return -1
 		self.logger.debug(anum + 'Shutter ' + str(second) + ' open')
 
+	def lights_off(self):
+		anum = "A" + str(self.num) + ': '
+		self.logger.debug(anum + 'Shutting off lights')
+		response = self.send('LIGHTS_OFF')
+		if response == 'error':
+			self.logger.error(anum + 'Could not turn off lights')
+		
+
 	#close both shutter
 	def close_both(self):
 		anum = "A" + str(self.num) + ': '
