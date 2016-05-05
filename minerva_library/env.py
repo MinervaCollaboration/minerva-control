@@ -410,6 +410,7 @@ if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	test_site = site('site_mtHopkins.ini',base_directory)
+	ipdb.set_trace()
 	print test_site.night
 	print test_site.oktoopen()
 	

@@ -74,7 +74,7 @@ if __name__ == '__main__':
 		"filter": ["rp"], 
 		"num": [10], 
 		"exptime": [600],
-		"expmeter": 3.0e8,
+		"expmeter": 2.5e8,
 		"fauexptime": 1, 
 		"defocus": 0.0, 
 		"selfguide": True, 
