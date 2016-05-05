@@ -270,10 +270,16 @@ class spectrograph:
 		self.logger.info('Setting CCD readout mode to ' +\
 					 self.si_settings['READOUT_MODE'])
 
-	def si_image_restart(self,timeout=30):
+
+	def si_imager_init(self):
+		self.si_imager_cooler_on()
+		self.si_imager_set_format_parameters()
+		self.si_imager_set_readout_mode()
+
+	def si_image_restart(self,sleeptime=1,timeout=30):
 		self.logger.info('Restarting SI Image')
 		self.kill_si_image()
-		time.sleep(1)
+		time.sleep(sleeptime)
 		self.start_si_image()
 		#S give it some time to start up, read readout modes, etc
 		connection_refused = True
@@ -289,10 +295,37 @@ class spectrograph:
 		
 		if (datetime.datetime.utcnow()-t0).total_seconds()>timeout:
 			self.logger.error('Timeout exceeded in si imager recovery')
+			return False
 			# add an email
 
 		self.si_imager_set_readoutmode()
 		self.si_imager_set_format_params()
+		return True
+
+	def si_recover(self):
+		try: self.recover_attempts += 1
+		except AttributeError: self.recover_attempts = 1
+
+		if self.recover_attempts == 1:
+			#S let's just try again? seems dangerous, could try a short exposure or something
+			return True
+
+		if self.recover_attempts == 2:
+			#S now restart si image
+			self.logger.info('si imager failed, attempting recovery '+str(self.recover_attempts))
+			
+			if self.si_image_restart():
+				self.logger.info('restarted si image, and continuing')
+			else:
+				#S should we make a hold here, like a file that needs to be deleted?
+				self.logger.exception('failed to restart si image')
+				subject = 'Failed to restart SI Image'
+				body = "Dear benevolent humans,\n\n"+\
+				    "The SI Image software on Kiwispec failed to restart when attempting a recovery. "+\
+				    "I need you to restart the software, and investigate why I went into recovery "+\
+				    "in the first place.\n\n Love,\n MINERVA"
+				mail.send(subject,body,level='serious')
+				return False
 
 	def expose_with_timeout(self,exptime=1.0, exptype=1, expmeter=None, timeout=None):
 		if timeout == None:
@@ -303,7 +336,7 @@ class spectrograph:
 		thread.name = 'kiwispec'
 		thread.start()
 		thread.join(timeout)
-		if thread.isalive():
+		if thread.isAlive():
 			mail.send("The SI imager timed out","Dear Benevolent Humans,\n\n" + 
 				  "The SI imager has timed out while exposing. This is usually "+
 				  "due to an improperly aborted exposure, in which case someone "+
@@ -311,6 +344,8 @@ class spectrograph:
 				  "Love,\n,MINERVA",level='serious')
 			self.logger.error("SI imager timed out")
 			sys.exit()
+			return False
+		return True
 
 
 	#start exposure
@@ -355,13 +390,19 @@ class spectrograph:
                                 self.logger.info("flux = " + str(flux))
                                 if expmeter < flux:
 					self.logger.info('got to flux of '+str(flux)+', greater then expmeter: '+str(expmeter))
+					self.si_imager.interrupt()
                                         #imager.retrieve_image()
                                         break
 			#S this is on a level outside of the while for the elapsed time as the imager.do thread is 
 			#S is still running. e.g., we still want to wait whether the elapsed time has gone through or
 			#S the expmeter has triggered the interrupt.
-			self.si_imager.interrupt()
-			time.sleep(25)
+			thread.join(30)
+#			time.sleep(25)
+			#S I don't know if this is true.. i think if we terminate it still might leave the imager.do thread alive..
+			#TODO, or did you test this?
+			if thread.isAlive():
+				self.logger.error("SI imaging thread timed out")
+				return False
                         
 		else:
                         self.si_imager.do()
@@ -442,6 +483,7 @@ class spectrograph:
         		self.logger.error('Failed to save image: ' + self.file_name)
 			self.file_name = ''
 			self.recover()
+			# self.si_recover()
 			return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter) 
 
         ###
