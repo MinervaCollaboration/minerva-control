@@ -525,9 +525,14 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
                 m3port = telescope.port['FAU']
             else:
                 m3port = telescope.port['IMAGER']
+                af_target['exptime'] = 5
+                af_target['filter'] = "V"
         else:
             m3port = telescope.port['IMAGER']                
             af_target['spectroscopy'] = False
+            af_target['exptime'] = 5
+            af_target['filter'] = "V"
+            
     else:
         status = telescope.getStatus()
         m3port = status.m3.port
@@ -536,9 +541,9 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         else:
             spectroscopy = False
         af_target = {'name':'autofocus',
-                     'exptime':[5],
+                     'exptime':5,
                      'fauexptime':10,
-                     'filter':["V"],
+                     'filter':"V",
                      'spectroscopy':spectroscopy}
         
     #S set the platescale for the image

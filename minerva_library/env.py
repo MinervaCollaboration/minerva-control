@@ -5,6 +5,8 @@ import time
 import math 
 import os
 import sys
+import matplotlib.pyplot as plt
+import numpy as np
 import urllib2
 from configobj import ConfigObj
 sys.dont_write_bytecode = True
@@ -89,7 +91,7 @@ class site:
 			'windSpeed'           : [0.0,30.0], 
 			'windDirectionDegrees': [0.0,360.0],
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-			'sunAltitude'         : [-90,0],
+			'sunAltitude'         : [-90,6],
 			'MearthCloud'         : [-999, openCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
 			'HATCloud'            : [-999, openCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
 			'AuroraCloud'         : [-999, openCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
@@ -108,7 +110,7 @@ class site:
 			'windSpeed'           : [0.0,35.0], 
 			'windDirectionDegrees': [0.0,360.0],
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-			'sunAltitude'         : [-90,0],
+			'sunAltitude'         : [-90,6],
 			'MearthCloud'         : [-999, closeCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
 			'HATCloud'            : [-999, closeCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
 			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
@@ -410,6 +412,42 @@ if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	test_site = site('site_mtHopkins.ini',base_directory)
+	ipdb.set_trace()
+	
+	start = 'n20160101'
+	end = 'n20191231'
+	start_dt = datetime.datetime.strptime(start,'n%Y%m%d')
+	end_dt = datetime.datetime.strptime(end,'n%Y%m%d')
+	dates = [start_dt + datetime.timedelta(days=x) for x in range(0, (end_dt-start_dt).days+1)]
+	
+	
+        nbias=11
+	ndark=11
+	nflat=11
+	darkexptime=300
+	flatexptime=1
+
+	ro_time = 22
+	b_time = nbias*ro_time
+	d_time = ndark*(darkexptime+ro_time)
+	sf_time = nflat*(flatexptime+ro_time)+120
+	cal_time = (b_time+d_time+sf_time)/3600.
+
+	nauttwils = []
+	
+	for today in dates:
+		test_site.obs.date = today
+		test_site.startNightTime = datetime.datetime(today.year, today.month, today.day, 17) - datetime.timedelta(days=1)
+		nauttwils.append((test_site.NautTwilEnd()-today).total_seconds())
+	nauttwils = np.array(nauttwils)/3600.
+	print 'fewest minutes between cals and twil: '+str((np.min(nauttwils)-cal_time)*60.)
+	plt.plot(nauttwils)
+	plt.plot([0,len(nauttwils)],[cal_time,cal_time],'r')
+	plt.plot([0,len(nauttwils)],[cal_time,cal_time],'r')
+	plt.plot([0,len(nauttwils)],[0,0],'k')
+	plt.show()
+		
+		
 	ipdb.set_trace()
 	print test_site.night
 	print test_site.oktoopen()

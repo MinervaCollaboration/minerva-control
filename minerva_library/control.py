@@ -2071,7 +2071,7 @@ class control:
 		# start off with the extreme exposure times
 		if morning: exptime = maxExpTime
 		else: exptime = minExpTime
-	  
+
 		# filters ordered from least transmissive to most transmissive
 		# flats will be taken in this order (or reverse order in the morning)
 		masterfilters = ['H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
@@ -2305,11 +2305,11 @@ class control:
 		telescope.acquireTarget(target,pa=pa)
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
-				newfocus = telescope.focus['FAU'] + target['defocus']*1000.0
+				newfocus = telescope.focus[telescope.port['FAU']] + target['defocus']*1000.0
 			else:
-				newfocus = telescope.focus['IMAGER'] + target['defocus']*1000.0
+				newfocus = telescope.focus[telescope.port['IMAGER']] + target['defocus']*1000.0
 		else:
-			newfocus = telescope.focus['IMAGER'] + target['defocus']*1000.0
+			newfocus = telescope.focus[telescope.port['IMAGER']] + target['defocus']*1000.0
 		status = telescope.getStatus()
 		m3port = telescope.port['IMAGER']
 		if newfocus <> status.focuser.position:
@@ -2399,6 +2399,8 @@ class control:
 						#S guide that thing
 						if target['selfguide'] and filename <> 'error': reference = self.guide('/Data/t'+str(telescope_num)+'/'+self.site.night\
 															       + '/' + filename,reference)
+
+	
 
 	#prepare logger and set imager data path
 	def prepNight(self,num=0,email=True):
@@ -2735,6 +2737,9 @@ class control:
 			self.doBias(CalibInfo['nbias'],telescope_num)
 			self.doDark(CalibInfo['ndark'], CalibInfo['darkexptime'],telescope_num)
 
+		if telescope_num > 2: dome = self.domes[1]
+		else: dome = self.domes[0]
+
 		# Take Evening Sky flats
 		#S Initialize again, but with tracking on.
 		if not telescope.initialize(tracking=True, derotate=True):
@@ -2742,15 +2747,11 @@ class control:
 		flatFilters = CalibInfo['flatFilters']
 		self.doSkyFlat(flatFilters, False, CalibInfo['nflat'],telescope_num)
 		
-		
 		# Wait until nautical twilight ends 
 		timeUntilTwilEnd = (self.site.NautTwilEnd() - datetime.datetime.utcnow()).total_seconds()
 		if timeUntilTwilEnd > 0:
 			self.logger.info(telescope_name + 'Waiting for nautical twilight to end (' + str(timeUntilTwilEnd) + 'seconds)')
 			time.sleep(timeUntilTwilEnd)
-
-		if telescope_num > 2: dome = self.domes[1]
-		else: dome = self.domes[0]
 
 		while not dome.isOpen() and datetime.datetime.utcnow() < self.site.NautTwilBegin():
 			self.logger.info(telescope_name + 'Enclosure closed; waiting for conditions to improve')
@@ -2764,7 +2765,7 @@ class control:
 #			# DON'T CHANGE PORTS (?)
 			telescope.inPosition()#m3port=self.telescopes[telescope_num-1].port['IMAGER'])
 
-			newauto.autofocus(self,telescope_num,fau=target['spectroscopy'])
+		#	newauto.autofocus(self,telescope_num)
 
 		# read the target list
 		with open(self.base_directory + '/schedule/' + self.site.night + '.T' + str(telescope_num) + '.txt', 'r') as targetfile:
@@ -2775,8 +2776,7 @@ class control:
 				if target <> -1:
 
 					# truncate the start and end times so it's observable
-					utils.truncate_observable_window(self,target)
-
+					utils.truncate_observable_window(self.site,target)
 					if target['starttime'] < target['endtime']:
 						if 'spectroscopy' in target.keys():
 							if target['spectroscopy']:
@@ -2855,6 +2855,16 @@ class control:
 			sys.exit()
 	
 	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1):
+		#S seconds for reading out si imager
+		ro_time = 22
+		#S seconds needed for biases
+		b_time = nbias*ro_time
+		#S seconds needed for darks
+		d_time = ndark*(darkexptime+ro_time)
+		#S seconds for slitflats, plus (liberal) 120 seconds for stage moving
+		sf_time = nflat*(flatexptime+ro_time)+120
+		total_caltime = b_time+d_time+sf_time
+		self.logger.info('Starting approx '+str(total_caltime)+ ' seconds of calibrations')
 		self.takeSpecBias(nbias)
 		self.takeSpecDark(ndark, darkexptime)
 		self.takeSlitFlat(nflat, flatexptime)

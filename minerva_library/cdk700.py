@@ -323,7 +323,9 @@ class CDK700:
 		Return a status object representing the tree structure of the XML text.
 		Example: getStatus().mount.tracking --> "False"
 		"""
-		return self.parseXml(self.getStatusXml())
+		status = self.parseXml(self.getStatusXml())
+		self.logger.debug('Alt/Az RMS error: ' + status.mount.alt_rms_error_arcsec + ',' + status.mount.azm_rms_error_arcsec)
+		return status
 
 	def write_status(self):
 		pass

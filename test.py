@@ -18,21 +18,36 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
-
-
-
-	minerva.night = 'n20160422'
+	
+	ipdb.set_trace()
+#	ipdb.set_trace()
+#	minerva.telescopes[1].makePointingModel(minerva,npoints=40,exptime=2.0)
+#	ipdb.set_trace()
+	"""
+	target = {'name':'newexpmetertest',
+		  'exptime':[15],
+		  'fauexptime':1,#.1,
+		  'filter':["V"],
+		  'expmeter':300,
+		  'tracking':False,
+		  'spectroscopy':True,
+		  'i2': True,
+		  }
+	minerva.takeSpectrum(target)
+	"""
+	ipdb.set_trace()
+#	minerva.night = 'n20160422'
 	target = {
 		"name": "HD62613", 
-		"ra": 7.9381193, 
-		"dec": 80.26554, 
+#		"ra": 7.9381193, 
+#		"dec": 80.26554, 
 		"starttime": datetime.datetime(2016,1,1),
 		"endtime": datetime.datetime(2017,1,1),
 		"spectroscopy": True, 
 		"filter": ["rp"], 
 		"num": [3], 
 		"exptime": [1800.0], 
-		"fauexptime": 5.0, 
+		"fauexptime": 1,#5.0, 
 		"defocus": 0.0, 
 		"positionAngle": 0.0, 
 		"pmra": 0.0, 
@@ -41,7 +56,8 @@ if __name__ == '__main__':
 		"rv": 0.0, 
 		"i2": True,
 		}
-
+	newauto.autofocus(minerva,4,target=target)
+	ipdb.set_trace()
 #	rv_control.acquireFocusGuide(minerva,target,1)
 #	minerva.takeFauImage(target,telescope_num=1)
 #	ipdb.set_trace()

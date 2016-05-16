@@ -186,7 +186,7 @@ def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0):
     # if it rises before it sets, redo with the previous day
     if risetime > settime:
         try:
-            risetime = site.obs.next_rising(body,start=sunset + datetime.timedelta(days=1)).datetime()
+            risetime = site.obs.next_rising(body,start=sunset - datetime.timedelta(days=1)).datetime()
         except ephem.AlwaysUpError:
             # if it's always up, don't modify the start time
             risetime = starttime

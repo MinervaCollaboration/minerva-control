@@ -32,11 +32,11 @@ def rv_observing(minerva):
     minerva.telescope_park()
 
     # turn off both monitors
-    self.logger.info('Turning off monitors')
-    try: self.pdus[0].monitor.off()
-    except: self.logger.exception("Turning off monitor in aqawan 1 failed")
-    try: self.pdus[2].monitor.off()
-    except: self.logger.exception("Turning off monitor in aqawan 2 failed")
+    minerva.logger.info('Turning off monitors')
+    try: minerva.pdus[0].monitor.off()
+    except: minerva.logger.exception("Turning off monitor in aqawan 1 failed")
+    try: minerva.pdus[2].monitor.off()
+    except: minerva.logger.exception("Turning off monitor in aqawan 2 failed")
 
     # if before the end of twilight, do calibrations
     if datetime.datetime.utcnow() < minerva.site.NautTwilEnd():
@@ -195,7 +195,7 @@ def doSpectra(minerva, target, tele_list, test=False):
         camera = utils.getCamera(minerva,tel_num)
         
         if 'backlight' not in camera.file_name:
-            minerva.logger.error("T" + str(tel_num) + ": failed to find fiber; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+            minerva.logger.error("T" + str(tel_num) + ": backlight image not taken; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
         else:
             xfiber, yfiber = find_fiber('/Data/t' + str(tel_num) + '/' + minerva.night + '/' + camera.file_name, camera)
             if xfiber <> None:
@@ -320,6 +320,12 @@ def endNight(minerva):
 
 def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'):
 
+    # Move the I2 stage in for backlight in thread, will join later.                                                                                
+    kwargs = {'locationstr' : 'in'}
+    i2stage_move_thread = threading.Thread(target = minerva.ctrl_i2stage_move,kwargs=kwargs)
+    i2stage_move_thread.name = "Kiwispec"
+    i2stage_move_thread.start()
+    
     #S check if tele_list is only an int
     if type(tele_list) is int:
         #S Catch to default a zero argument or outside array range tele_list 
@@ -337,6 +343,12 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     # Turn off the expmeter (high voltage, close shutter). this waits for a response that 
     # the high voltage supply has been turned off (in a weird way, look in spec_server)
     minerva.spectrograph.stop_log_expmeter()
+
+    #S rejoin i2 stage move, seems as long as we want to wait. 
+    #S if we put it after the light turning on, the led might be on for 
+    #S an unneccessary amount of time, flooding the pmt
+    minerva.logger.info('Waiting on i2stage_move_thread')
+    i2stage_move_thread.join()
 
     # turn on the backlight LED
     minerva.spectrograph.backlight_turn_on()
