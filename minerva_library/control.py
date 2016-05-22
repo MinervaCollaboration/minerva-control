@@ -2594,7 +2594,11 @@ class control:
 			       ('The process "PWI.exe" with PID ','could not be terminated.'),
 			       ('Could not copy schedule file',''),
 			       ('Failed to open shutter 1: Success=FALSE, Heartbeat timer expired',''),
-			       ('Failed to open shutter 2: Success=FALSE, Heartbeat timer expired','')]
+			       ('Failed to open shutter 2: Success=FALSE, Heartbeat timer expired',''),
+			       ('A1: Failed to open shutter 1: Success=FALSE, Enclosure not in AUTO',''),
+			       ('A1: Failed to open shutter 2: Success=FALSE, Enclosure not in AUTO',''),
+			       ('A2: Failed to open shutter 1: Success=FALSE, Enclosure not in AUTO',''),
+			       ('A2: Failed to open shutter 2: Success=FALSE, Enclosure not in AUTO','')]
 
 		for log in logs:
 			with open(log,'r') as f:
@@ -2836,7 +2840,7 @@ class control:
 			self.doBias(CalibEndInfo['nbiasEnd'],telescope_num)
 			self.doDark(CalibEndInfo['ndarkEnd'], CalibInfo['darkexptime'],telescope_num)
 		
-		self.endNight(telescope_num)
+		self.endNight(num=telescope_num, kiwispec=False)
 
 		
 	def observingScript_catch(self,telescope_num):
