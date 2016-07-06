@@ -37,6 +37,7 @@ import newauto
 from fix_fits import fix_fits
 import rv_control
 from plotweather import plotweather
+import scheduler
 
 # FAU guiding dependencies
 import PID_test as pid
@@ -88,7 +89,9 @@ class control:
 		for i in range(5):
 			self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
 		self.pdus.append(pdu.pdu('apc_bench.ini',self.base_directory))
-
+		
+		#S make the scheduler, which has the target list as an attribute
+		self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory)
 
 	def load_config(self):
 
@@ -795,7 +798,32 @@ class control:
  				if separation < camera.fau.acquisition_tolerance:
 					self.logger.info("T" + str(tel_num) + ": Target acquired")
 					camera.fau.acquired = True
-					if acquireonly: return True
+					if acquireonly:
+						'''
+						# sync the telescope
+						# determine ra/dec of the optical center (defined by camera.fau.xcenter/ycenter
+						xcenter = camera.fau.xcenter
+						ycenter = camera.fau.ycenter
+						platescale = camera.fau.platescale
+						telescopeStatus = telescope.getStatus()                                  
+						rotpos = float(telescopeStatus.rotator.position)
+						parang = self.parangle(useCurrent=True) 
+						rotoff = float(self.rotatoroffset[m3port])
+						skypa = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
+						
+						# apply the rotation matrix
+						raoffset  = ((camera.fau.xfiber-camera.fau.xcenter)*math.cos(-skypa) - 
+							     (camera.fau.yfiber-camera.fau.ycenter)*math.sin(-skypa))*camera.fau.platescale/math.cos(dec*math.pi/180.0)                
+						decoffset = ((camera.fau.xfiber-camera.fau.xcenter)*math.sin(-skypa) + 
+							     (camera.fau.yfiber-camera.fau.ycenter)*math.cos(-skypa))*camera.fau.platescale                                            
+						racen = target['ra'] - raoffset/240.0
+						deccen = target['dec'] - decoffset/3600.0
+
+						telescope.mountSync(target['ra'],target['dec'])
+						'''
+
+						# tell the calling function it has successfully acquired
+						return True
 				#else: camera.fau.acquired = False
 
 				if separation < camera.fau.bp:
@@ -1664,11 +1692,11 @@ class control:
 		
                 # loop over each telescope and insert the appropriate keywords
 		moonpos = self.site.moonpos()
-		moonra = float(moonpos[0])
-		moondec = float(moonpos[1])
+		moonra = float(moonpos[0])*180.0/math.pi
+		moondec = float(moonpos[1])*180.0/math.pi
 		moonphase = self.site.moonphase()
-		f['MOONRA'] = (moonra, "Moon RA (J2000)")    
-		f['MOONDEC'] =  (moondec, "Moon Dec (J2000)")
+		f['MOONRA'] = (moonra, "Moon RA (J2000 deg)")    
+		f['MOONDEC'] =  (moondec, "Moon Dec (J2000 deg)")
 		f['MOONPHAS'] = (moonphase, "Moon Phase (Fraction)")    
 
                 for telnum in tele_list:
@@ -1696,7 +1724,7 @@ class control:
 			az = float(telescopeStatus.mount.azm_radian)*180.0/math.pi
 			alt = float(telescopeStatus.mount.alt_radian)*180.0/math.pi
 			airmass = 1.0/math.cos((90.0 - float(alt))*math.pi/180.0)
-			moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),moonpos)*180.0/math.pi
+			moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),(moonra*math.pi/180.0,moondec*math.pi/180.0))*180.0/math.pi
 
 			m3port = telescopeStatus.m3.port
 			try:

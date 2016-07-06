@@ -8,7 +8,7 @@ import copy
 import datetime
 
 def downloadList(bstar=False):
-
+    ipdb.set_trace()
     filename = 'MINERVA target list'
     if bstar:
         sheetname = 'B stars'
@@ -20,7 +20,7 @@ def downloadList(bstar=False):
     key = '1w7RwP8P2hMYtM3MGusw8k7gXdCHzanRZZpvnWQtGkas'
 
     # authenticate with JSON credentials
-    json_key = json.load(open('../credentials/MINERVA_Key.json'))
+    json_key = json.load(open('/home/minerva/minerva-control/credentials/MINERVA_Key.json'))
     scope = ['https://spreadsheets.google.com/feeds']
     credentials = SignedJwtAssertionCredentials(json_key['client_email'], json_key['private_key'], scope)
     gc = gspread.authorize(credentials)
