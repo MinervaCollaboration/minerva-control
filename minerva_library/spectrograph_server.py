@@ -368,7 +368,9 @@ class server:
 				if isinstance(value, (str, unicode)):
 					f[0].header[key] = value
 				else:
-					if math.isnan(value[0]): f[0].header[key] = ('NaN',value[1])
+					if isinstance(value[0],float):
+						if math.isnan(value[0]): f[0].header[key] = ('NaN',value[1])
+						else: f[0].header[key] = (value[0],value[1])
 					else: f[0].header[key] = (value[0],value[1])
 
 			# convert DATE-OBS from local time to UTC
