@@ -38,7 +38,8 @@ from fix_fits import fix_fits
 import rv_control
 from plotweather import plotweather
 import scheduler
-
+import plot_pointing_error
+import Plot_fits
 # FAU guiding dependencies
 import PID_test as pid
 from read_guider_output import get_centroid
@@ -86,6 +87,7 @@ class control:
 				self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
 			except:
 				self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
+
 		for i in range(5):
 			self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
 		self.pdus.append(pdu.pdu('apc_bench.ini',self.base_directory))
@@ -1584,7 +1586,7 @@ class control:
 			self.thermalenclosureemailsent = False
 		else:
 			if self.thermalenclosureemailsent:
-				mail.send("Thermal enclosure logging died","Please restart me!")
+				mail.send("Thermal enclosure logging died","Please restart me! Note that you must be logged in as the temp users, not as minerva")
 			self.thermalenclosureemailsent = True
 
 		# iodine temperature and set point
@@ -2659,6 +2661,12 @@ class control:
 								weatherstats[key].append((time,value))
 							except: pass
 
+		try: Pointing_plot_name = plot_pointing_error.plot_pointing_error(night)
+		except: Pointing_plot_name = ''
+
+		try: fits_plot_name = Plot_fits.plot_fits(night)
+		except: fits_plot_name = ''
+
 		# compose the observing report
 		body = "Dear humans,\n\n" + \
 		    "While you were sleeping, I observed:\n\n"
@@ -2699,7 +2707,7 @@ class control:
 		if email: 
 			if num == 0: subject="MINERVA done observing"
 			else: subject = "T" + str(num) + ' done observing'
-			mail.send(subject,body,attachment=weatherplotname)
+			mail.send(subject,body,attachments=[weatherplotname,Pointing_plot_name,fits_plot_name])
 
 		print body
 

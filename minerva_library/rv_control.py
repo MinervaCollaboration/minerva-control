@@ -294,11 +294,10 @@ def acquireFocusGuide(minerva, target, telnum):
         except: minerva.logger.exception("guiding failed")
     except:
         minerva.logger.exception("pointing and guiding failed")
-        #mail.send("Pointing and guiding failed","",level="serious")                                                                                
-
+        #mail.send("Pointing and guiding failed","",level="serious")
 
 def stopFAU(minerva,tele_list):
-    # set camera.fau.guiding == False to stop guiders                                                                                                  
+    # set camera.fau.guiding == False to stop guiders
     minerva.logger.info("Stopping the guiding loop for all telescopes")
     for i in range(len(tele_list)):
         camera = utils.getCamera(minerva,tele_list[i])
@@ -351,7 +350,8 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     i2stage_move_thread.join()
 
     # turn on the backlight LED
-    minerva.spectrograph.backlight_turn_on()
+    minerva.logger.warning("***The backlight LED has been disabled!***")
+#    minerva.spectrograph.backlight_turn_on()
     t0 = datetime.datetime.utcnow()
 
     # swap to the imaging port to block light from the telescope
@@ -567,6 +567,11 @@ def mkschedule(minerva):
 
                 target['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
                 target['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
+
+ # *** DONT LEAVE THIS IN HERE, ONLY MAKING TEMPLATES FOR TESTING **** 
+                target['template'] = True
+                target['i2'] = False
+ # *** DONT LEAVE THIS IN HERE **** 
 
                 # add a target to the schedule
                 elapsedTime += acquisitionTime

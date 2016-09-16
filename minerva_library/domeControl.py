@@ -25,10 +25,10 @@ def domeControl(minerva,number,day=False):
         day = os.path.isfile(minerva.base_directory + '/minerva_library/sunOverride.txt')
 
         if not minerva.site.oktoopen(domeopen=dome.isOpen()):
-#            if minerva.site.sunalt() < 0.0:
-            minerva.logger.info('Weather not ok to open; resetting timeout')
-            minerva.site.lastClose = datetime.datetime.utcnow()
-            minerva.dome_close()
+            if minerva.site.oktoopen(domeopen=dome.isOpen(),ignoreSun=True):
+                minerva.logger.info('Weather not ok to open; resetting timeout')
+                minerva.site.lastClose = datetime.datetime.utcnow()
+                minerva.dome_close()
         elif (datetime.datetime.utcnow() - minerva.site.lastClose).total_seconds() < (20.0*60.0):
             minerva.logger.info('Conditions must be favorable for 20 minutes before opening; last bad weather at ' + str(minerva.site.lastClose))
             dome.close_both() # should already be closed, but for good measure...
@@ -57,7 +57,7 @@ def domeControl(minerva,number,day=False):
         # check for E-stops
         response = dome.send('CLEAR_FAULTS')
         if 'Estop' in response:
-            if not minerva.domes[i].estopmailsent:
+            if not dome.estopmailsent:
                 mail.send("Aqawan " + str(number) + " Estop has been pressed!",dome.estopmail,level='serious')
                 dome.estopmailsent = True
             else:

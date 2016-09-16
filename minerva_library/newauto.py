@@ -810,7 +810,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             subject = "Autofocus failed on T%s; no stars in image"\
                 %(str(telescope_number))
  
-        mail.send(subject,body,level='serious',attachment=afplot)
+        mail.send(subject,body,level='serious',attachments=[afplot])
 
 
 if __name__ == '__main__':

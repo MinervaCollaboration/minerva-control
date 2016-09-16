@@ -58,7 +58,7 @@ class scheduler:
 
     def load_config(self):
         try:
-            ipdb.set_trace()
+#            ipdb.set_trace()
             config = ConfigObj(self.base_directory+'/config/'+self.config_file)
             self.latitude = config['Setup']['LATITUDE']
             self.longitude = config['Setup']['LONGITUDE']
@@ -66,7 +66,7 @@ class scheduler:
             self.sitename = config['Setup']['SITENAME']
             self.sun_horizon = float(config['Setup']['HORIZON'])
             self.target_min_horizon = float(config['Setup']['MINALT'])
-            self.target_max_horizon = float(config['Setup']['MINALT'])
+            self.target_max_horizon = float(config['Setup']['MAXALT'])
             self.targets_file = config['Setup']['TARGETSFILE']
             self.min_moon_sep = float(config['Setup']['MINMOONSEP'])
             # used for minerva logging
@@ -93,49 +93,22 @@ class scheduler:
     def sort_target_list(self,key='weight'):
         #S sort the target_list list of target dictionaries by the given key
         try:
-            self.target_list = sorted(self.target_list, key=lambda x:x[key])
+            self.target_list = sorted(self.target_list, key=lambda x:-x[key])
             return True
         except:
             print 'Something went wrong when sorting with ' + key
             return False
 
-    def sort_target_list(self,key='weight'):
-        self.target_list = sorted(self.target_list, key=lambda x:-x[key])
-
-    def choose_target(self):
-        #S need to make a target class for being observered?
-        #S will return the selected target dictionary
-        #S need way to choose next best target
-
-        #S update the time, probably don't need this here
-        self.site.obs.date = datetime.datetime.utcnow()
-        #S update the weights for all the targets in our list
+    def choose_target(self,key='weight'):
+        #S we assume you need to update the weights of targets
+        #S this calculates weghts for those targets which are currently 
+        #S observable, using datetime.datetime.utcnow()
         self.calculate_weights()
-        #S sort the target list by weight, so that the list of dictionaries
-        #S is now in descending order based on weight.
-        self.sort_target_list('weight')
-        for target in self.target_list:
-            if self.can_observe(target):
-                return target
-            #S I thnik we should cover all this in can_observe()
-            """
-            #S Check to see if we already observed this target. Could be 
-            #S switched to check if observed less than a certain number
-            #S this condition may need to be removed for multiple observations
-            #S per night.
-            if target['observed'] == 1:
-                continue
-            #S Check to see if we will try and observe past sunset
-            if (datetime.datetime.utcnow()+\
-                    datetime.timedelta(seconds=target['exptime']))\
-                    >self.obs.NautTwilBegin():
-                continue
-            #S check to see if the target will go below horizon before 
-            #S finishing the observation.
-            
-            #S if all checks pass, we want to return the chosen target dict
-
-            """
+        #S next we sort the target list based on the weight key
+        self.sort_target_list(key=key)
+        #S now the highest weighted target is the first position of this list,
+        #S so we will just return the first entries dictionary
+        return self.target_list[0]
 
 
     def update_list(self,bstar=False,includeInactive=False):
@@ -154,12 +127,13 @@ class scheduler:
         #S going to use simple HA weighting for now.
         for target in self.target_list:
             if self.is_observable(target):
+                #S this is where you want to insert whatever weight function
                 target['weight'] = self.calc_weight(target)#,timeof=self.time)
             else:
                 target['weight'] = -999
-        self.target_list = sorted(self.target_list, key=lambda x:-x['weight'])
         #pass
 
+    
 
     def calc_weight(self,target):
         """
@@ -260,9 +234,9 @@ class scheduler:
         the beginning of the night.
         """
         if timeof == None:
-            timeof = self.time
+            timeof = datetime.datetime.utcnow()
         # temp set the horizon for targets
-        self.obs.date = self.time
+        self.obs.date = timeof
         self.obs.horizon = str(self.target_min_horizon)
         # get a random starting hour angle normally distrubted around an hour
         # angle of -2. this is for the three observations per night of MINERVA,
@@ -322,11 +296,11 @@ class scheduler:
         return obs_list
 
 
-    def is_observable(self,target,timeof=None):
+    def is_observable(self,target,timeof=None,max_exptime=86400):
         # if the timeof obs is not provided, use the schedulers clock for the 
         # time. this could cause issues, need to keep an eye on it
         if timeof == None:
-            timeof=self.time
+            timeof=datetime.datetime.utcnow()
         #S want to make sure taget is a legal candidate. this includes avoiding
         #S targets who:
         #S   - have not risen
@@ -342,8 +316,9 @@ class scheduler:
 #            continue
         #S Check to see if we will try and observe past sunset
         
-
-        
+        target['observable'] = False
+        if target['exptime']>max_exptime:
+            return False
         # check if the star will be rising sometime tonight
         #TODO:
         # i think this checks for just a 24 hour period, but needs more 
@@ -352,19 +327,19 @@ class scheduler:
             #print(target['name']+" is never up")
             return False
 
-        # check if the target is separated enough from the moon
-        #TODO test
-        moon = ephem.Moon()
-        moon.compute(self.obs)
-        if ephem.separation(moon,target['fixedbody'])<self.min_moon_sep:
-            pass# return False
-
-
         #TODO need coordinate propigation before this point, does pyephem do 
         #TODO this?
         # temporarily set the self.obs horizon to the minalt, will be 
         # switched back after check
         self.obs.date = timeof
+
+        # check if the target is separated enough from the moon
+        #TODO test
+        moon = ephem.Moon()
+        moon.compute(self.obs)
+        if ephem.separation(moon,target['fixedbody'])<self.min_moon_sep:
+            return False
+
         self.obs.horizon = str(self.target_min_horizon)
         target['fixedbody'].compute(self.obs)
         
@@ -383,6 +358,7 @@ class scheduler:
                 target['fixedbody'].compute(self.obs)
                 if target['fixedbody'].alt>math.radians(self.target_min_horizon):
                     # there is time to observe
+                    target['observable']=True
                     return True
                 else:
                     # the target will set before fully observable

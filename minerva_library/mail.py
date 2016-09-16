@@ -12,7 +12,7 @@ sys.dont_write_bytecode = True
 import os
 
 
-def send(subject,body,level='normal',attachment=None):
+def send(subject,body,level='normal',attachments=[]):
 #	return
 	host = socket.gethostname()
 	if host == 'Main':
@@ -49,7 +49,7 @@ def send(subject,body,level='normal',attachment=None):
 	msg.attach(MIMEText(body))
 
 	# doesn't work for pdf attachments (only tested for pngs)
-	if attachment <> None:
+	for attachment in attachments:
 		if os.path.exists(attachment):
 			fp = open(attachment,'rb')
 			img = MIMEImage(fp.read(),name=os.path.basename(attachment))

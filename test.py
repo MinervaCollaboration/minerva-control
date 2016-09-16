@@ -19,11 +19,13 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
-	minerva.endNight(num=3,email=False,kiwispec=False)
+#	ipdb.set_trace()
+#	minerva.telescopes[0].makePointingModel(minerva,npoints=50,exptime=2.0)
+#	minerva.endNight(num=3,email=False,kiwispec=False)
 	
 	ipdb.set_trace()
 #	ipdb.set_trace()
-#	minerva.telescopes[1].makePointingModel(minerva,npoints=40,exptime=2.0)
+
 #	ipdb.set_trace()
 	"""
 	target = {'name':'newexpmetertest',
@@ -58,7 +60,7 @@ if __name__ == '__main__':
 		"rv": 0.0, 
 		"i2": True,
 		}
-	newauto.autofocus(minerva,4,target=target)
+	newauto.autofocus(minerva,1,target=target)
 	ipdb.set_trace()
 #	rv_control.acquireFocusGuide(minerva,target,1)
 #	minerva.takeFauImage(target,telescope_num=1)

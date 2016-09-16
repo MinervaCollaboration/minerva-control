@@ -226,7 +226,7 @@ class site:
 		for key in weather.keys():
 			self.logger.debug(key + '=' + str(weather[key]))
 
-	def oktoopen(self, domeopen=False):
+	def oktoopen(self, domeopen=False, ignoreSun=False):
 		
 		retval = True
 		decisionFile = 'manualDecision.txt'
@@ -270,7 +270,7 @@ class site:
 			weatherLimits = copy.deepcopy(self.openLimits)
 			
 		# change it during execution
-		if os.path.exists(self.base_directory + '/minerva_library/sunOverride.txt'): self.sunOverride = True
+		if os.path.exists(self.base_directory + '/minerva_library/sunOverride.txt') or ignoreSun: self.sunOverride = True
 		else: self.sunOverride = False
 		if os.path.exists(self.base_directory + '/minerva_library/cloudOverride.txt'): self.cloudOverride = True
 		else: self.cloudOverride = False

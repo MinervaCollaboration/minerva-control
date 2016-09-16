@@ -8,7 +8,6 @@ import copy
 import datetime
 
 def downloadList(bstar=False):
-    ipdb.set_trace()
     filename = 'MINERVA target list'
     if bstar:
         sheetname = 'B stars'
