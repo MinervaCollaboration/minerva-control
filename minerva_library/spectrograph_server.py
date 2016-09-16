@@ -206,6 +206,10 @@ class server:
                         response = self.start_si_image()
                 elif tokens[0] == 'kill_si_image':
                         response = self.kill_si_image()
+                elif tokens[0] == 'get_expmeter_total':
+                        response = self.get_expmeter_total()
+                elif tokens[0] == 'reset_expmeter_total':
+                        response = self.reset_expmeter_total()
 #                elif tokens[0] == 'update_dynapower1':
 #                        response = self.update_dynapower1()
 #                elif tokens[0] == 'update_dynapower2':
@@ -950,6 +954,7 @@ class server:
                 #S Turn expmeter on
                 self.pdu.expmeter.on()
                 self.pause_for_backlight = False
+                self.expmeter_total = 0.
                 
                 #S The maximum count threshold we are currently allowing.
                 #S Used as trigger level for shutdown.
@@ -1050,6 +1055,9 @@ class server:
                         #? Not sure if we need this guy, seems like we are already logging?
                         path = self.base_directory + "/log/" + self.night() + "/"
                         if not os.path.exists(path): os.mkdir(path)
+
+                        #S add the reading to the running total
+                        self.expmeter_total += reading
                         
                         with open(path + "expmeter.dat", "a") as fh:
                                 fh.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(reading) + "\n")
@@ -1070,6 +1078,27 @@ class server:
                 self.logger.info('turned off exposure meter high voltage')
                 #S Turn off power to exposure meter
                 self.pdu.expmeter.off()
+
+        #S functions for locally tracking the expmeter total
+                
+        def get_expmeter_total(self):
+                #S put this in a try in case we aren't logging the exposure meter
+                #S because we initialize the self.expmeter_total in 
+                try:
+                        total = self.expmeter_total
+                        return 'success ' + str(total)
+                except:
+                        self.logger.error('No expmeter_total being tracked')
+                        return 'fail'
+
+        def reset_expmeter_total(self):
+                try:
+                        self.expmeter_total = 0
+                        return 'success'
+                except:
+                        self.logger.exception('Failed to reset the expmeter total')
+                        return 'fail'
+                                
                 
 
         #S going to log the pressures of the chamber and the pump
