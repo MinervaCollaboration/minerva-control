@@ -229,7 +229,7 @@ class site:
 	def oktoopen(self, domeopen=False, ignoreSun=False):
 		
 		retval = True
-		decisionFile = 'manualDecision.txt'
+		decisionFile = self.base_directory + '/manualDecision.txt'
 
 		# get the current weather, timestamp, and Sun's position
 		self.getWeather()

@@ -14,8 +14,10 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 
 	if os.path.exists('minerva_library/sunOverride.txt'): os.remove('minerva_library/sunOverride.txt')
-	if os.path.exists('minerva_library/aqawan1.request.txt'): os.remove('minerva_library/aqawan1.request.txt')
-	if os.path.exists('minerva_library/aqawan2.request.txt'): os.remove('minerva_library/aqawan2.request.txt')
+
+	#### don't want this if it starts in the middle of the night***********###
+#	if os.path.exists('minerva_library/aqawan1.request.txt'): os.remove('minerva_library/aqawan1.request.txt')
+#	if os.path.exists('minerva_library/aqawan2.request.txt'): os.remove('minerva_library/aqawan2.request.txt')
 
 	minerva = control.control('control.ini',base_directory)
 

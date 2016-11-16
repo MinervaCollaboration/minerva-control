@@ -133,7 +133,6 @@ class com:
                 self.logger.error("Command " + cmd + " not in allowed commands")
             self.close()
 
-        
 
 #S Looks like some testing code, will mess around with later though. 
 if __name__ == "__main__":

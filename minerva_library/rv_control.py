@@ -384,7 +384,7 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     for fau_thread in fau_threads:
         fau_thread.join()
 
-    # turn off the slit flat LED
+    # turn off the backlight LEDs
     minerva.spectrograph.backlight_turn_off()
     minerva.logger.info("Done with backlit images")
 

@@ -105,7 +105,7 @@ class aqawan:
 			self.logger.error(anum + 'Message not recognized: ' + message)
 			return 'error'
 
-		self.logger.debug("Beginning serial communications with the aqawan")
+		#self.logger.debug("Beginning serial communications with the aqawan")
 		with self.lock:
 
 			# connect to the aqawan
@@ -121,10 +121,14 @@ class aqawan:
 			# send the message
 			# repeatedly?! why is this necessary? this is quite unsettling...
 			response = ''
-			while response == '':
-				tn.write(message + "\r\n")
-				response = tn.read_until(b"/r/n/r/n#>",0.5)
-			
+			try:
+				while response == '':
+					tn.write(message + "\r\n")
+					response = tn.read_until(b"/r/n/r/n#>",0.5)
+			except:
+				self.logger.exception(anum + 'Error reading response from the aqawan')
+				return 'error'
+				
 			# close the connection
 			tn.close()
 			self.logger.debug(anum + 'command(' + message +') sent')
@@ -294,7 +298,7 @@ class aqawan:
 						mail.send("Aqawan " + str(self.num) + " Estop has been pressed, the aqawan is open, and it should be closed!",self.estopmail,level='critical')
 						self.estopmailsent = True
 				else:
-					self.logger.error(anum + 'Aqawan failed to close!')
+					self.logger.error(anum + 'Aqawan failed to close! Response = ' + response)
 					if not self.mailsent:
 						mail.send("Aqawan " + str(self.num) + " failed to close!","Love,\nMINERVA",level="critical")
 						self.mailsent = True
@@ -310,7 +314,7 @@ class aqawan:
 				if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
 					self.logger.error(anum + 'Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
 					if not self.mailsent:
-						mail.send("Aqawan " + str(self.num) + " failed to within the timeout!","Love,\nMINERVA",level="critical")
+						mail.send("Aqawan " + str(self.num) + " failed to close within the timeout!","Love,\nMINERVA",level="critical")
 						self.mailsent = True
 					self.close_both() # keep trying!
 				else:

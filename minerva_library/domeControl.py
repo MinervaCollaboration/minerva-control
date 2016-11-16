@@ -29,8 +29,8 @@ def domeControl(minerva,number,day=False):
                 minerva.logger.info('Weather not ok to open; resetting timeout')
                 minerva.site.lastClose = datetime.datetime.utcnow()
                 minerva.dome_close()
-        elif (datetime.datetime.utcnow() - minerva.site.lastClose).total_seconds() < (20.0*60.0):
-            minerva.logger.info('Conditions must be favorable for 20 minutes before opening; last bad weather at ' + str(minerva.site.lastClose))
+        elif (datetime.datetime.utcnow() - minerva.site.lastClose).total_seconds() < (30.0*60.0):
+            minerva.logger.info('Conditions must be favorable for 30 minutes before opening; last bad weather at ' + str(minerva.site.lastClose))
             dome.close_both() # should already be closed, but for good measure...
         elif not openRequested:
             minerva.logger.info("Weather is ok, but domes are not requested to be open")
@@ -49,7 +49,7 @@ def domeControl(minerva,number,day=False):
         status = dome.status()
         isOpen = (status['Shutter1'] == 'OPEN') and (status['Shutter2'] == 'OPEN')
 
-        filename = 'aqawan' + str(number) + '.stat'
+        filename = minerva.base_directory + '/minerva_library/aqawan' + str(number) + '.stat'
         with FileLock(filename):
             with open(filename,'w') as fh:
                 fh.write(str(datetime.datetime.utcnow()) + ' ' + str(isOpen))
@@ -80,11 +80,13 @@ def domeControl_catch(minerva, number, day=False):
             str(e.message) + "\n\n" + \
             "Check control.log for additional information. Please "+\
             "investigate, consider adding additional error handling, and "+\
-            "restart 'domeControl.py'. The heartbeat will close the domes, "+\
-            "but please restart.\n\n" + \
+            "restart 'domeControl.py'. The heartbeat *should* close the domes, "+\
+            "but if it is in MANUAL or DISABLE mode, or if the motors have "+\
+            "been overloaded or an E-stop has been pressed, it will not close. "+\
+            "Please investigate immediately.\n\n" + \
             "Love,\n" + \
             "MINERVA"
-        mail.send("DomeControl thread died",body,level='serious')
+        mail.send("DomeControl thread died",body,level='critical')
         sys.exit()
 
 def domeControlThread(minerva,day=False):

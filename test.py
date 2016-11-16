@@ -13,12 +13,36 @@ from minerva_library import rv_control
 from minerva_library import newauto
 from minerva_library import utils
 
+def cleanUpNight(minerva):
+	minerva.endNight(num=1)
+	minerva.endNight(num=2)
+	minerva.endNight(num=3)
+	minerva.endNight(num=4)
+
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
-
+	target = {
+		"name": "HD62613", 
+		"ra": 23.25, 
+		"dec": 45.75, 
+		"starttime": datetime.datetime(2016,1,1),
+		"endtime": datetime.datetime(2017,1,1),
+		#"spectroscopy": True, 
+		"filter": "rp", 
+		"num": 1, 
+		"exptime": 5.0, 
+		"fauexptime": 1,#5.0, 
+		"defocus": 0.0, 
+		"positionAngle": 0.0, 
+		"pmra": 0.0, 
+		"pmdec": 0.0, 
+		"parallax": 0.0, 
+		"rv": 0.0, 
+		#"i2": True,
+		}
 #	ipdb.set_trace()
 #	minerva.telescopes[0].makePointingModel(minerva,npoints=50,exptime=2.0)
 #	minerva.endNight(num=3,email=False,kiwispec=False)

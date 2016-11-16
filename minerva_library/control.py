@@ -1204,7 +1204,8 @@ class control:
                         i2stage_move_thread.start()
 
                         # Configure the lamps
-                        self.spectrograph.led_turn_on()
+			self.logger.warning("*** Slit flat LED disabled ***")
+#                        self.spectrograph.led_turn_on()
 #                        self.spectrograph.thar_turn_off()
 #                        self.spectrograph.flat_turn_off()
                         
@@ -1412,7 +1413,7 @@ class control:
 		imaging_thread.start()
 		
 		# Prepare header while waiting for imager to finish taking image
-		f = self.getHdr(target, telescope_num, dome, fau=True)
+		f = self.getHdr(target, [telescope_num], dome, fau=True)
 
 		header = json.dumps(f)
 
@@ -1882,62 +1883,70 @@ class control:
 		return f
 
 
-	def addImagerKeys(self, telnum, f, fau=False):
+	def addImagerKeys(self, tele_list, f, fau=False):
 
-		if type(telnum) is not int:
-			self.logger.error("invalid imager specified")
-			return f			
-		if telnum < 1 or telnum > 4:
-			self.logger.error("invalid imager specified (" + str(telnum) + ")")
-			return f
-		else: 
-			telescope = utils.getTelescope(self,telnum)
-			camera = utils.getCamera(self,telnum)
+		if type(tele_list) is int:
+			tele_list = [tele_list]
+
+                for telnum in tele_list:
 			
-		# WCS
-		if fau:
-			platescale = camera.fau.platescale/3600.0*camera.fau.xbin
-			xcenter = camera.fau.xcenter
-			ycenter = camera.fau.ycenter
-		else:
-			platescale = camera.platescale/3600.0*camera.xbin # deg/pix
-			xcenter = camera.xcenter
-			ycenter = camera.ycenter
+			# if there's only one telescope (i.e., imager), no need to specify
+			if len(tele_list) == 1:
+				telstr = ""
+			else:
+				telstr = str(telnum)
 
-		telescopeStatus = telescope.getStatus()
-		m3port = int(telescopeStatus.m3.port)
+			if telnum < 1 or telnum > 4:
+				self.logger.error("Invalid telescope number (" + str(telnum) + ")")
+				return f
+			else: 
+				telescope = utils.getTelescope(self,telnum)
+				camera = utils.getCamera(self,telnum)
+			
+			# WCS
+			if fau:
+				platescale = camera.fau.platescale/3600.0*camera.fau.xbin
+				xcenter = camera.fau.xcenter
+				ycenter = camera.fau.ycenter
+			else:
+				platescale = camera.platescale/3600.0*camera.xbin # deg/pix
+				xcenter = camera.xcenter
+				ycenter = camera.ycenter
+
+			telescopeStatus = telescope.getStatus()
+			m3port = int(telescopeStatus.m3.port)
 		
-		try: rotpos = float(telescopeStatus.rotator.position)
-		except: rotpos = "UNKNOWN"
+			try: rotpos = float(telescopeStatus.rotator.position)
+			except: rotpos = "UNKNOWN"
 
-		try: parang = float(telescope.parangle(useCurrent=True))
-		except: parang = "UNKNOWN"
+			try: parang = float(telescope.parangle(useCurrent=True))
+			except: parang = "UNKNOWN"
 
-		try: rotoff = float(telescope.rotatoroffset[str(m3port)])
-		except: rotoff = "UNKNOWN"
+			try: rotoff = float(telescope.rotatoroffset[str(m3port)])
+			except: rotoff = "UNKNOWN"
 
-		try: PA = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
-		except: PA = 0.0
+			try: PA = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
+			except: PA = 0.0
 
-		f['PIXSCALE'] = (platescale*3600.0,"Platescale in arc/pix, as binned")
-		f['CTYPE1'] = ("RA---TAN","TAN projection")
-		f['CTYPE2'] = ("DEC--TAN","TAN projection")
-		f['CUNIT1'] = ("deg","X pixel scale units")
-		f['CUNIT2'] = ("deg","Y pixel scale units")
+			f['PIXSCALE' + telstr] = (platescale*3600.0,"Platescale in arc/pix, as binned")
+			f['CTYPE1' + telstr] = ("RA---TAN","TAN projection")
+			f['CTYPE2' + telstr] = ("DEC--TAN","TAN projection")
+			f['CUNIT1' + telstr] = ("deg","X pixel scale units")
+			f['CUNIT2' + telstr] = ("deg","Y pixel scale units")
 		
-		telescopeStatus = telescope.getStatus()
-		telra = utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
-		teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
-		if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
+			telescopeStatus = telescope.getStatus()
+			telra = utils.ten(telescopeStatus.mount.ra_2000)*15.0 # J2000 degrees
+			teldec = utils.ten(telescopeStatus.mount.dec_2000) # J2000 degrees
+			if teldec > 90.0: teldec = teldec-360 # fixes bug in PWI's dec
 
-		f['CRVAL1'] = (float(telra),"RA of reference point")
-		f['CRVAL2'] = (float(teldec),"DEC of reference point")
-		f['CRPIX1'] = (float(xcenter),"X reference pixel")
-		f['CRPIX2'] = (float(ycenter),"Y reference pixel")
-		f['CD1_1'] = (float(-platescale*math.cos(PA)),"DL/DX")
-		f['CD1_2'] = (float(platescale*math.sin(PA)),"DL/DY")
-		f['CD2_1'] = (float(platescale*math.sin(PA)),"DM/DX")
-		f['CD2_2'] = (float(platescale*math.cos(PA)),"DM/DY")
+			f['CRVAL1' + telstr] = (float(telra),"RA of reference point")
+			f['CRVAL2' + telstr] = (float(teldec),"DEC of reference point")
+			f['CRPIX1' + telstr] = (float(xcenter),"X reference pixel")
+			f['CRPIX2' + telstr] = (float(ycenter),"Y reference pixel")
+			f['CD1_1' + telstr] = (float(-platescale*math.cos(PA)),"DL/DX")
+			f['CD1_2' + telstr] = (float(platescale*math.sin(PA)),"DL/DY")
+			f['CD2_1' + telstr] = (float(platescale*math.sin(PA)),"DM/DX")
+			f['CD2_2' + telstr] = (float(platescale*math.cos(PA)),"DM/DY")
 
 		return f
 
@@ -1961,7 +1970,7 @@ class control:
 		imaging_thread.start()
 		
 		#Prepare header while waiting for imager to finish taking image
-		f = self.getHdr(target, telescope_num, dome)
+		f = self.getHdr(target, [telescope_num], dome)
 
 		header = json.dumps(f)
 
@@ -2327,7 +2336,7 @@ class control:
 				fau = False
 			telescope.inPosition(m3port=telescope.port['IMAGER'])
 			try:
-				newauto.autofocus(self,telescope_num,fau=fau,target=target)
+				newauto.autofocus(self,telescope_num,target=target)
 			except:
 				telescope.logger.exception('Failed in autofocus')
 		
@@ -2440,6 +2449,27 @@ class control:
 		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
 			today = today + datetime.timedelta(days=1.0)
 		night = 'n' + today.strftime('%Y%m%d')
+
+		# delete various files that shouldn't carry over from night to night
+		# sunoverride, request, telescope_?.error, disableGuiding*.txt
+		for tel in ["1","2","3","4"]:
+			try: os.remove("disableGuiding.T" + tel + ".txt")
+			except: pass
+			try: os.remove("telescope_" + tel + ".error")
+			except: pass
+
+		# check that kiwispec is configured correctly
+		# check overscan set to 2090
+		# check mode = 3
+		# check cooler set to -90, camera within acceptable range
+		# check exposure meter logging
+		# check spectrograph pressure logging, pressure within acceptable range
+		# check spectrograph temperature logging, temperature within acceptable range
+		# check clocks?
+
+		# confirm domeControl.py is running
+		# confirm PT100.py is running
+		
 
 		#set correct path for the night
 		self.logger.info("Setting up directories for " + night)
@@ -2805,7 +2835,7 @@ class control:
 #			# DON'T CHANGE PORTS (?)
 			telescope.inPosition()#m3port=self.telescopes[telescope_num-1].port['IMAGER'])
 
-		#	newauto.autofocus(self,telescope_num)
+#			newauto.autofocus(self,telescope_num)
 
 		# read the target list
 		with open(self.base_directory + '/schedule/' + self.site.night + '.T' + str(telescope_num) + '.txt', 'r') as targetfile:
@@ -2894,7 +2924,7 @@ class control:
 			mail.send("T" + str(telescope_num) + " thread died",body,level='serious')
 			sys.exit()
 	
-	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1):
+	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1,checkiftime=True):
 		#S seconds for reading out si imager
 		ro_time = 22
 		#S seconds needed for biases
@@ -2904,6 +2934,9 @@ class control:
 		#S seconds for slitflats, plus (liberal) 120 seconds for stage moving
 		sf_time = nflat*(flatexptime+ro_time)+120
 		total_caltime = b_time+d_time+sf_time
+		# If there is no user override is in place (i.e. checkiftime==True) and total calibration time will go past sunset, then skip all spec calibrations
+		if datetime.timedelta(seconds=total_caltime)+datetime.datetime.utcnow() > self.site.NautTwilEnd() and checkiftime: 
+			return 
 		self.logger.info('Starting approx '+str(total_caltime)+ ' seconds of calibrations')
 		self.takeSpecBias(nbias)
 		self.takeSpecDark(ndark, darkexptime)

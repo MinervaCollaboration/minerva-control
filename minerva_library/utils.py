@@ -203,6 +203,8 @@ def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0):
     target['starttime'] = starttime
     target['endtime'] = endtime
 
+    return target
+
 # converts a sexigesimal string to a float
 # the string may be delimited by either spaces or colons
 def ten(string):
