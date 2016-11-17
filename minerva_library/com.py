@@ -5,6 +5,7 @@ import sys
 import time, struct, datetime
 import threading
 import utils
+import socket
 
 class com:
     
@@ -136,6 +137,22 @@ class com:
 
 #S Looks like some testing code, will mess around with later though. 
 if __name__ == "__main__":
+
+    hostname = socket.gethostname()
+    if hostname == 'Kiwispec-PC':
+        base = 'C:/minerva-control/'
+    else:
+        base = '/home/minerva/minerva-control'
+
+
+    backlight_motor = com('backlightmotor',base,'n20161115')
+#    backlight_motor.send('FFFFFD00010900037400000600009909') # IN
+    backlight_motor.send('FFFFFD0001090003740000040000B289') # OUT
+
+    ipdb.set_trace()
+
+#    backlight = com('backlight',base,'n20161115')
+
 
 #    specgauge = com('specgauge','n20150521')
 #    print specgauge.send('RD')

@@ -24,6 +24,7 @@ import pdu
 import mail
 import math
 import utils
+import dynamixel
 
 # minerva library dependency
 #S Put copy of dynapwoer.py in spectrograph_modules for power stuff on expmeter
@@ -53,7 +54,8 @@ class server:
                 self.create_class_objects()
 
                 # turn on cell heater to maintain temperature stablility
-                self.cell_heater_on()
+                self.logger.warning("******Cell heater disabled for testing; turn it back on for operations*****")
+#                self.cell_heater_on()
 
                 #S Set up closing procedures
                 win32api.SetConsoleCtrlHandler(self.safe_close,True)
@@ -115,11 +117,15 @@ class server:
 	def create_class_objects(self):
                 #S I would home here, or maybe it would be better to put it in the self.i2stage_connect()?
                 #S I would say it makes sense to put in the the stage connect
-                self.i2stage_connect()
-		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
-                self.gaugeController = com.com('gaugeController',self.base_directory,self.night())
-                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night())                
-                self.expmeter_com = com.com('expmeter',self.base_directory,self.night())
+                self.logger.info('**** many things disabled****')
+#                self.i2stage_connect()
+#		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
+#                self.gaugeController = com.com('gaugeController',self.base_directory,self.night())
+#                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night())                
+#                self.expmeter_com = com.com('expmeter',self.base_directory,self.night())
+                self.backlight_com = com.com('backlight',self.base_directory,self.night())
+                dyn = dynamixel.USB2Dynamixel_Device( 'COM7' )
+                self.backlight_motor = dynamixel.Robotis_Servo2(dyn, 1, series = "XM" )
                 return
 
 
@@ -211,6 +217,10 @@ class server:
                         response = self.get_expmeter_total()
                 elif tokens[0] == 'reset_expmeter_total':
                         response = self.reset_expmeter_total()
+                elif tokens[0] == 'backlight_on':
+                        response = self.backlight_on()
+                elif tokens[0] == 'backlight_off':
+                        response = self.backlight_off()
 #                elif tokens[0] == 'update_dynapower1':
 #                        response = self.update_dynapower1()
 #                elif tokens[0] == 'update_dynapower2':
@@ -439,6 +449,30 @@ class server:
 			self.logger.exception("failed to create header")
 			return 'fail'
 		return 'success'
+
+        ###
+        # LED for backlighting fiber
+        ###
+        def backlight_on(self):
+                self.backlight_move_motor(-45)
+                self.backlight_com.send('n8')
+                
+                return 'success'
+
+        def backlight_off(self):
+                self.backlight_move_motor(-90)
+                self.backlight_com.send('f8')
+                return 'success'
+
+        ###
+        # Dynamixel motor
+        ###
+        def backlight_move_motor(self,position):
+                self.backlight_motor.disable_torque()
+                self.backlight_motor.protocol2_write_address( 11, [3])
+                self.backlight_motor.enable_torque()
+                self.backlight_motor.move_angle(math.radians(position))
+                self.backlight_motor.enable_torque()
 
         ###
         # THORLABS STAGE, For Iodine Cell, i2stage, i2motor
@@ -1155,7 +1189,11 @@ if __name__ == '__main__':
 	base_directory = 'C:\\minerva-control'
 	test_server = server('spectrograph_server.ini',base_directory)
 
-#        ipdb.set_trace()
+        test_server.backlight_on()
+        time.sleep(1)
+        test_server.backlight_off()
+
+        ipdb.set_trace()
 #        test_server.kill_si_image()
 #        thisnight = 'n20991332'
 #        path = test_server.base_directory + '/log/' + thisnight
