@@ -37,7 +37,6 @@ class site:
 			# touch a file in the current directory to enable cloud override
 			self.cloudOverride = os.path.isfile(self.base_directory + '/minerva_library/cloudOverride.txt') 
 			self.sunOverride = os.path.isfile(self.base_directory + '/minerva_library/sunOverride.txt')
-			
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
@@ -275,16 +274,30 @@ class site:
 		if os.path.exists(self.base_directory + '/minerva_library/cloudOverride.txt'): self.cloudOverride = True
 		else: self.cloudOverride = False
 
-		if self.sunOverride:
-			weatherLimits['sunAltitude'] = [-90,90]
+		if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]
+		else: weatherLimits['sunAltitude'] = [-90,6]
+			
 		if self.cloudOverride: 
 			weatherLimits['MearthCloud'] = [-999,999]
 			weatherLimits['HATCloud'] = [-999,999]
 			weatherLimits['AuroraCloud'] = [-999,999]
 			weatherLimits['MINERVACloud'] = [-999,999]
+		else:
+			if domeopen:
+				weatherLimits['MearthCloud'] = self.closeLimits['MearthCloud']
+				weatherLimits['HATCloud'] = self.closeLimits['HATCloud']
+				weatherLimits['AuroraCloud'] = self.closeLimits['AuroraCloud']
+				weatherLimits['MINERVACloud'] = self.closeLimits['MINERVACloud']
+			else:
+				weatherLimits['MearthCloud'] = self.openLimits['MearthCloud']
+				weatherLimits['HATCloud'] = self.openLimits['HATCloud']
+				weatherLimits['AuroraCloud'] = self.openLimits['AuroraCloud']
+				weatherLimits['MINERVACloud'] = self.openLimits['MINERVACloud']
+			
+
 
 		if weatherLimits['sunAltitude'][1] == 90:
-			self.logger.info("Sun override in place!")
+			if not ignoreSun: self.logger.info("Sun override in place!")
 		if self.closeLimits['sunAltitude'][1] == 90:
 			self.logger.info("close limits have been modified; this shouldn't happen!")
 		if self.openLimits['sunAltitude'][1] == 90:

@@ -319,11 +319,11 @@ def endNight(minerva):
 
 def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'):
 
-    # Move the I2 stage in for backlight in thread, will join later.                                                                                
-    kwargs = {'locationstr' : 'in'}
-    i2stage_move_thread = threading.Thread(target = minerva.ctrl_i2stage_move,kwargs=kwargs)
-    i2stage_move_thread.name = "Kiwispec"
-    i2stage_move_thread.start()
+    # Move the I2 stage in for backlight in thread, will join later.                                                                       #         
+#    kwargs = {'locationstr' : 'in'}
+#    i2stage_move_thread = threading.Thread(target = minerva.ctrl_i2stage_move,kwargs=kwargs)
+#    i2stage_move_thread.name = "Kiwispec"
+#    i2stage_move_thread.start()
     
     #S check if tele_list is only an int
     if type(tele_list) is int:
@@ -341,27 +341,27 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
 
     # Turn off the expmeter (high voltage, close shutter). this waits for a response that 
     # the high voltage supply has been turned off (in a weird way, look in spec_server)
-    minerva.spectrograph.stop_log_expmeter()
+#    minerva.spectrograph.stop_log_expmeter()
 
     #S rejoin i2 stage move, seems as long as we want to wait. 
     #S if we put it after the light turning on, the led might be on for 
     #S an unneccessary amount of time, flooding the pmt
-    minerva.logger.info('Waiting on i2stage_move_thread')
-    i2stage_move_thread.join()
-
-    # turn on the backlight LED
-    minerva.logger.warning("***The backlight LED has been disabled!***")
-#    minerva.spectrograph.backlight_turn_on()
-    t0 = datetime.datetime.utcnow()
+#    minerva.logger.info('Waiting on i2stage_move_thread')
+#    i2stage_move_thread.join()
 
     # swap to the imaging port to block light from the telescope
     minerva.m3port_switch_list('IMAGER',tele_list)
 
-    # wait for the LED to warm up
-    elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-    warmuptime = 2.0
-    if elapsedTime < warmuptime:
-        time.sleep(warmuptime - elapsedTime)
+    # turn on the backlight LED
+    minerva.logger.info("Turning on the backlight")
+    minerva.spectrograph.backlight_on()
+    t0 = datetime.datetime.utcnow()
+
+#    # wait for the LED to warm up
+#    elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+#    warmuptime = 2.0
+#    if elapsedTime < warmuptime:
+#        time.sleep(warmuptime - elapsedTime)
 
     # take images with all FAUs
     fau_threads = []
@@ -385,11 +385,11 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
         fau_thread.join()
 
     # turn off the backlight LEDs
-    minerva.spectrograph.backlight_turn_off()
+    minerva.spectrograph.backlight_off()
     minerva.logger.info("Done with backlit images")
 
     # open expmeter shutter
-    minerva.spectrograph.start_log_expmeter()
+#    minerva.spectrograph.start_log_expmeter()
 
 # given a backlit FAU image, locate the fiber
 def find_fiber(imagename, camera, tolerance=5.,control=None):

@@ -64,7 +64,7 @@ class control:
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
 
-		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+#		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
@@ -146,11 +146,14 @@ class control:
 		fh.setFormatter(formatter)
 		self.site.logger.addHandler(fh)
 
-		for fh in self.spectrograph.logger.handlers: self.spectrograph.logger.removeHandler(fh)
-		fh = logging.FileHandler(path + '/' + self.spectrograph.logger_name + '.log', mode='a')	
-		fh.setFormatter(formatter)
-		self.spectrograph.logger.addHandler(fh)
-		self.logger_lock.release()
+		try:
+			for fh in self.spectrograph.logger.handlers: self.spectrograph.logger.removeHandler(fh)
+			fh = logging.FileHandler(path + '/' + self.spectrograph.logger_name + '.log', mode='a')	
+			fh.setFormatter(formatter)
+			self.spectrograph.logger.addHandler(fh)
+			self.logger_lock.release()
+		except:
+			pass
 	
 	#enable sending commands to telcom
 	#TODO what does this do?
