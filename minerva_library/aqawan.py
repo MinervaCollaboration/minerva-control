@@ -96,13 +96,9 @@ class aqawan:
 		
 	#send message to aqawan
 	def send(self,message):
-
-		anum = "A" + str(self.num) + ': '
-		
-
 		# not an allowed message
 		if not message in self.messages:
-			self.logger.error(anum + 'Message not recognized: ' + message)
+			self.logger.error('Message not recognized: ' + message)
 			return 'error'
 
 		#self.logger.debug("Beginning serial communications with the aqawan")
@@ -112,7 +108,7 @@ class aqawan:
 			try:
 				tn = telnetlib.Telnet(self.IP,self.PORT,1)
 			except:
-				self.logger.error(anum + 'Error connecting to the aqawan')
+				self.logger.error('Error connecting to the aqawan')
 				return 'error'
 
 			# configure the telnet terminal type
@@ -126,12 +122,12 @@ class aqawan:
 					tn.write(message + "\r\n")
 					response = tn.read_until(b"/r/n/r/n#>",0.5)
 			except:
-				self.logger.exception(anum + 'Error reading response from the aqawan')
+				self.logger.exception('Error reading response from the aqawan')
 				return 'error'
 				
 			# close the connection
 			tn.close()
-			self.logger.debug(anum + 'command(' + message +') sent')
+			self.logger.debug('command(' + message +') sent')
 			return response
 		
 	def heartbeat(self):
@@ -139,9 +135,6 @@ class aqawan:
 		
 	# get aqawan status
 	def status(self):
-
-		anum = "A" + str(self.num) + ': '
-
 		response = self.send('STATUS').split(',')
 		status = {}
 		for entry in response:
@@ -156,7 +149,7 @@ class aqawan:
         
 		for key in requiredKeys:
 			if not key in status.keys():
-				self.logger.error(anum + "Required key " + str(key) + " not present; trying again")
+				self.logger.error("Required key " + str(key) + " not present; trying again")
 				status = self.status() # potential infinite loop!
                 
 #		with open(self.currentStatusFile,'w') as outfile:
@@ -191,11 +184,9 @@ class aqawan:
 			time.sleep(1)
 			
 	def open_shutter(self,shutter):
-		anum = "A" + str(self.num) + ': '
-
 		# make sure this is an allowed shutter
 		if shutter not in [1,2]:
-			self.logger.error(anum + 'Invalid shutter specified (' + str(shutter) + ')')
+			self.logger.error('Invalid shutter specified (' + str(shutter) + ')')
 			return -1
 
 		status = self.status()
@@ -204,16 +195,16 @@ class aqawan:
 
 		# if it's already open, return
 		if status['Shutter' + str(shutter)] == 'OPEN':
-			self.logger.debug(anum + 'Shutter ' + str(shutter) + ' already open')
+			self.logger.debug('Shutter ' + str(shutter) + ' already open')
 			return
 
 		# open the shutter
 		start = datetime.datetime.utcnow()
 		response = self.send('OPEN_SHUTTER_' + str(shutter))                
-		self.logger.info(anum + response)
+		self.logger.info(response)
 		if not 'Success=TRUE' in response:
 			# did the command fail?
-			self.logger.warning(anum + 'Failed to open shutter ' + str(shutter) + ': ' + response)
+			self.logger.warning('Failed to open shutter ' + str(shutter) + ': ' + response)
 			# need to reset the PAC? ("Enclosure not in AUTO"?)
 			if "Estop active" in response:
 				if not self.mailsent:
@@ -223,7 +214,7 @@ class aqawan:
 
 		
 		# Wait for it to open
-		self.logger.info(anum + 'Waiting for shutter ' + str(shutter) + ' to open')
+		self.logger.info('Waiting for shutter ' + str(shutter) + ' to open')
 		status = self.status()
 		while status['Shutter' + str(shutter)] == 'OPENING' and elapsedTime < timeout:
 			status = self.status()
@@ -232,15 +223,13 @@ class aqawan:
 
 		# Did it fail to open?
 		if status['Shutter' + str(shutter)] <> 'OPEN':
-			self.logger.error(anum + 'Error opening Shutter ' + str(shutter) + ', status=' + status['Shutter' + str(shutter)] )
+			self.logger.error('Error opening Shutter ' + str(shutter) + ', status=' + status['Shutter' + str(shutter)] )
 			return -1
 
-		self.logger.info(anum + 'Shutter ' + str(shutter) + ' open')
+		self.logger.info('Shutter ' + str(shutter) + ' open')
 			
 	#open both shutters
 	def open_both(self, reverse=False):
-		anum = "A" + str(self.num) + ': '
-
 		if reverse:
 			first = 2
 			second = 1
@@ -249,43 +238,40 @@ class aqawan:
 			second = 2
 			
 
-		self.logger.debug(anum + 'Shutting off lights')
+		self.logger.debug('Shutting off lights')
 		response = self.send('LIGHTS_OFF')
 		if response == 'error':
-			self.logger.error(anum + 'Could not turn off lights')
+			self.logger.error('Could not turn off lights')
 
-		self.logger.debug(anum + 'Opening shutter ' + str(first))
+		self.logger.debug('Opening shutter ' + str(first))
 		response = self.open_shutter(first)
 		if response == -1: return -1
-		self.logger.debug(anum + 'Shutter ' + str(first) + ' open')
+		self.logger.debug('Shutter ' + str(first) + ' open')
 
-		self.logger.debug(anum + 'Opening shutter ' + str(second))
+		self.logger.debug('Opening shutter ' + str(second))
 		response = self.open_shutter(second)
 		if response == -1: return -1
-		self.logger.debug(anum + 'Shutter ' + str(second) + ' open')
+		self.logger.debug('Shutter ' + str(second) + ' open')
 
 	def lights_off(self):
-		anum = "A" + str(self.num) + ': '
-		self.logger.debug(anum + 'Shutting off lights')
+		self.logger.debug('Shutting off lights')
 		response = self.send('LIGHTS_OFF')
 		if response == 'error':
-			self.logger.error(anum + 'Could not turn off lights')
+			self.logger.error('Could not turn off lights')
 		
 
 	#close both shutter
 	def close_both(self):
-		anum = "A" + str(self.num) + ': '
-
 		timeout = 500
 		elapsedTime = 0
 		status = self.status()      
 		if status['Shutter1'] == "CLOSED" and status['Shutter2'] == "CLOSED":
-			self.logger.debug(anum + 'Both shutters already closed')
+			self.logger.debug('Both shutters already closed')
 			if self.mailsent:
 				mail.send("Aqawan " + str(self.num) + " closed!","Love,\nMINERVA",level="critical")
 				self.mailsent = False
 		elif status['EnclOpMode'] == "MANUAL":
-			self.logger.warning(anum + "Enclosure in manual; can't close")
+			self.logger.warning("Enclosure in manual; can't close")
 			if self.mailsent:
 				mail.send("Aqawan " + str(self.num) + " in manual","Please turn to 'AUTO' for computer control.\n Love,\nMINERVA")
 				self.mailsent = False
@@ -293,32 +279,32 @@ class aqawan:
 			response = self.send('CLOSE_SEQUENTIAL')
 			if not 'Success=TRUE' in response:
 				if "Estop active" in response:
-					self.logger.error(anum + 'Estop has been pressed!')					
+					self.logger.error('Estop has been pressed!')					
 					if not self.estopmailsent:
 						mail.send("Aqawan " + str(self.num) + " Estop has been pressed, the aqawan is open, and it should be closed!",self.estopmail,level='critical')
 						self.estopmailsent = True
 				else:
-					self.logger.error(anum + 'Aqawan failed to close! Response = ' + response)
+					self.logger.error('Aqawan failed to close! Response = ' + response)
 					if not self.mailsent:
 						mail.send("Aqawan " + str(self.num) + " failed to close!","Love,\nMINERVA",level="critical")
 						self.mailsent = True
-					self.logger.info(anum + 'Trying to close again!')
+					self.logger.info('Trying to close again!')
 					self.close_both() # keep trying!
 				return -1
 			else:
-				self.logger.info(anum + response)    
+				self.logger.info(response)    
 				start = datetime.datetime.utcnow()
 				while (status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED") and elapsedTime < timeout:
 					elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 					status = self.status()
 				if status['Shutter1'] <> "CLOSED" or status['Shutter2'] <> "CLOSED":
-					self.logger.error(anum + 'Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
+					self.logger.error('Aqawan failed to close after ' + str(elapsedTime) + 'seconds!')
 					if not self.mailsent:
 						mail.send("Aqawan " + str(self.num) + " failed to close within the timeout!","Love,\nMINERVA",level="critical")
 						self.mailsent = True
 					self.close_both() # keep trying!
 				else:
-					self.logger.info(anum + 'Closed both shutters')
+					self.logger.info('Closed both shutters')
 					if self.mailsent or self.estopmailsent:
 						mail.send("Aqawan " + str(self.num) + " closed; crisis averted!","Love,\nMINERVA",level="critical")
 						self.mailsent = False

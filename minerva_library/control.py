@@ -151,9 +151,10 @@ class control:
 			fh = logging.FileHandler(path + '/' + self.spectrograph.logger_name + '.log', mode='a')	
 			fh.setFormatter(formatter)
 			self.spectrograph.logger.addHandler(fh)
-			self.logger_lock.release()
 		except:
 			pass
+
+		self.logger_lock.release()
 	
 	#enable sending commands to telcom
 	#TODO what does this do?
@@ -700,7 +701,7 @@ class control:
 
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
-	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False):
+	def fauguide(self, target, tel_num, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False, ao=False):
 
 		telescope = utils.getTelescope(self,tel_num)
 		camera = utils.getCamera(self,tel_num)
@@ -865,8 +866,8 @@ class control:
 					if artificial:
 						telescope.mountOffsetAltAzFixed(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
 					else:
-						telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
-					
+						if ao: camera.ao.move(updateval[0],updateval[1])
+						else: telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
 
 					if fast:
 						time.sleep(5)

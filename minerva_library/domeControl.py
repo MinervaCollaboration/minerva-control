@@ -9,6 +9,7 @@ import sys, os
 # check weather condition; close if bad, open and send heartbeat if good; update dome status
 def domeControl(minerva,number,day=False):
 
+    minerva.logger.info("Starting domeControl")
     dome = minerva.domes[number-1]
     lastnight = ''
     while True:
@@ -48,7 +49,8 @@ def domeControl(minerva,number,day=False):
 
         status = dome.status()
         isOpen = (status['Shutter1'] == 'OPEN') and (status['Shutter2'] == 'OPEN')
-
+        
+        minerva.logger.info("Writing aqawan status file")
         filename = minerva.base_directory + '/minerva_library/aqawan' + str(number) + '.stat'
         with FileLock(filename):
             with open(filename,'w') as fh:
@@ -92,10 +94,11 @@ def domeControl_catch(minerva, number, day=False):
 def domeControlThread(minerva,day=False):
     threads = []
     for dome in [1,2]:
+        minerva.logger.info("Starting dome control thread for Aqawan " + str(dome))
         thread = threading.Thread(target = domeControl_catch,args=(minerva,dome,)) 
         thread.name = 'A' + str(dome)
         threads.append(thread)
-        
+
     for thread in threads:
         thread.start()
 
