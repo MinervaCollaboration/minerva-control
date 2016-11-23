@@ -54,8 +54,7 @@ class server:
                 self.create_class_objects()
 
                 # turn on cell heater to maintain temperature stablility
-                self.logger.warning("******Cell heater disabled for testing; turn it back on for operations*****")
-#                self.cell_heater_on()
+                self.cell_heater_on()
 
                 #S Set up closing procedures
                 win32api.SetConsoleCtrlHandler(self.safe_close,True)
@@ -117,14 +116,13 @@ class server:
 	def create_class_objects(self):
                 #S I would home here, or maybe it would be better to put it in the self.i2stage_connect()?
                 #S I would say it makes sense to put in the the stage connect
-                self.logger.info('**** many things disabled****')
-#                self.i2stage_connect()
-#		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
-#                self.gaugeController = com.com('gaugeController',self.base_directory,self.night())
-#                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night())                
-#                self.expmeter_com = com.com('expmeter',self.base_directory,self.night())
+                self.i2stage_connect()
+		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
+                self.gaugeController = com.com('gaugeController',self.base_directory,self.night())
+                self.cellheater_com = com.com('I2Heater',self.base_directory,self.night())                
+                self.expmeter_com = com.com('expmeter',self.base_directory,self.night())
                 self.backlight_com = com.com('backlight',self.base_directory,self.night())
-                dyn = dynamixel.USB2Dynamixel_Device( 'COM7' )
+                dyn = dynamixel.USB2Dynamixel_Device('COM7')
                 self.backlight_motor = dynamixel.Robotis_Servo2(dyn, 1, series = "XM" )
                 return
 
@@ -455,13 +453,13 @@ class server:
         ###
         def backlight_on(self):
                 self.backlight_move_motor(-45)
+                time.sleep(0.1)
                 self.backlight_com.send('n8')
-                
                 return 'success'
 
         def backlight_off(self):
-                self.backlight_move_motor(-90)
                 self.backlight_com.send('f8')
+                self.backlight_move_motor(-90)
                 return 'success'
 
         ###
@@ -472,7 +470,9 @@ class server:
                 self.backlight_motor.protocol2_write_address( 11, [3])
                 self.backlight_motor.enable_torque()
                 self.backlight_motor.move_angle(math.radians(position))
-                self.backlight_motor.enable_torque()
+                if position == -90:
+                        time.sleep(0.25)
+                        self.backlight_motor.disable_torque()
 
         ###
         # THORLABS STAGE, For Iodine Cell, i2stage, i2motor
@@ -545,7 +545,7 @@ class server:
 		try:
                         self.motorI2.mAbs(0)
                 except:
-                         #throw and log error on bad position
+                        #throw and log error on bad position
                         self.logger.exception("ERROR: Iodine failed to move.")
                         return 'fail'
                 try:
@@ -1189,11 +1189,7 @@ if __name__ == '__main__':
 	base_directory = 'C:\\minerva-control'
 	test_server = server('spectrograph_server.ini',base_directory)
 
-        test_server.backlight_on()
-        time.sleep(1)
-        test_server.backlight_off()
-
-        ipdb.set_trace()
+#        ipdb.set_trace()
 #        test_server.kill_si_image()
 #        thisnight = 'n20991332'
 #        path = test_server.base_directory + '/log/' + thisnight
@@ -1207,7 +1203,7 @@ if __name__ == '__main__':
         pressure_thread = threading.Thread(target=test_server.log_pressures)
 	pressure_thread.name = 'Kiwispec'
         pressure_thread.start()
-	
+
         expmeter_thread = threading.Thread(target=test_server.logexpmeter)
         expmeter_thread.name = 'Kiwispec'
         expmeter_thread.start()
