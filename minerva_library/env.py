@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg',warn=False)
 import datetime
 import logging
 import ephem

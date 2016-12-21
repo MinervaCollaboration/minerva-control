@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg',warn=False)
 import threading
 import control
 import mail
@@ -158,7 +160,8 @@ def doSpectra(minerva, target, tele_list, test=False):
     threads = [None] * len(tele_list)
     for t in range(len(tele_list)):
         if minerva.telcom_enabled[tele_list[t]-1]:
-            m3port = minerva.telescopes[tele_list[t]-1].port['IMAGER']
+            m3port = minerva.telescopes[tele_list[t]-1].port['FAU']
+#            m3port = minerva.telescopes[tele_list[t]-1].port['IMAGER'] # why was this the imager JDE 2016-12-18??
             kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
             threads[t] = threading.Thread(target = minerva.telescopes[tele_list[t]-1].acquireTarget,args=(target,),kwargs=kwargs)
             threads[t].name = "T" + str(minerva.telescopes[tele_list[t]-1].num)
@@ -317,14 +320,8 @@ def endNight(minerva):
         minerva.endNight(num=int(telescope.num), email=False)
     minerva.endNight(kiwispec=True)
 
-def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'):
+def backlight(minerva, tele_list=0, exptime=0.03, name='backlight'):
 
-    # Move the I2 stage in for backlight in thread, will join later.                                                                       #         
-#    kwargs = {'locationstr' : 'in'}
-#    i2stage_move_thread = threading.Thread(target = minerva.ctrl_i2stage_move,kwargs=kwargs)
-#    i2stage_move_thread.name = "Kiwispec"
-#    i2stage_move_thread.start()
-    
     #S check if tele_list is only an int
     if type(tele_list) is int:
         #S Catch to default a zero argument or outside array range tele_list 
@@ -343,16 +340,10 @@ def backlight(minerva, tele_list=0, exptime=1.0, stagepos='in', name='backlight'
     # the high voltage supply has been turned off (in a weird way, look in spec_server)
 #    minerva.spectrograph.stop_log_expmeter()
 
-    #S rejoin i2 stage move, seems as long as we want to wait. 
-    #S if we put it after the light turning on, the led might be on for 
-    #S an unneccessary amount of time, flooding the pmt
-#    minerva.logger.info('Waiting on i2stage_move_thread')
-#    i2stage_move_thread.join()
-
     # swap to the imaging port to block light from the telescope
-    minerva.m3port_switch_list('IMAGER',tele_list)
+#    minerva.m3port_switch_list('IMAGER',tele_list)
 
-    # turn on the backlight LED
+    # turn on the backlight LED and move the motor to cover the input optics
     minerva.logger.info("Turning on the backlight")
     minerva.spectrograph.backlight_on()
     t0 = datetime.datetime.utcnow()
@@ -537,7 +528,8 @@ def mkschedule(minerva):
     sunset = minerva.site.sunset(horizon=-18)
     sunrise = minerva.site.sunrise(horizon=-18)
 
-    num = 3
+    num = 1
+    bnum = 1
     
     targets = get_rv_target(minerva)
     bstars = get_rv_target(minerva,bstar=True)
@@ -545,7 +537,7 @@ def mkschedule(minerva):
     for target in targets:
         target['num'] = [num]
     for bstar in bstars:
-        bstar['num'] = [num]
+        bstar['num'] = [bnum]
 
     acquisitionOverhead = 300.0
     readTime = 21.7
@@ -555,10 +547,29 @@ def mkschedule(minerva):
 
     print scheduleFile
     fh = open(scheduleFile,'w')
-    while ((sunrise-sunset).total_seconds() + 3600.0) > elapsedTime:
-        for target in targets:
-            target['num'] = [num]
 
+    # add a B star to the beginning of the night
+    added = False
+    for bstar in bstars:
+        acquisitionTime = (acquisitionOverhead + bnum*(readTime+bstar['exptime'][0]))
+        starttime = sunset + datetime.timedelta(seconds=elapsedTime)
+        endtime = sunset + datetime.timedelta(seconds=elapsedTime+acquisitionTime)
+        print starttime, endtime, bstar['starttime'], bstar['endtime']
+        if (endtime <= bstar['endtime'] and starttime >= bstar['starttime']) or (starttime >= bstar['starttime'] and bstar['endtime'] == sunrise) and not added:
+            bstar['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
+            bstar['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
+                
+            elapsedTime += acquisitionTime
+
+            jsonstr = targetlist.target2json(bstar)
+            fh.write(jsonstr + '\n')
+            added = True
+            print "added " +bstar['name']
+            break
+
+    while ((sunrise-sunset).total_seconds() + 3600.0) > elapsedTime:
+
+        for target in targets:
             acquisitionTime = acquisitionOverhead + num*(readTime+target['exptime'][0])
 
             starttime = sunset + datetime.timedelta(seconds=elapsedTime)
@@ -568,34 +579,16 @@ def mkschedule(minerva):
                 target['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
                 target['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
 
- # *** DONT LEAVE THIS IN HERE, ONLY MAKING TEMPLATES FOR TESTING **** 
-                target['template'] = True
-                target['i2'] = False
- # *** DONT LEAVE THIS IN HERE **** 
+# # *** DONT LEAVE THIS IN HERE, ONLY MAKING TEMPLATES FOR TESTING **** 
+#                target['template'] = True
+#                target['i2'] = False
+# # *** DONT LEAVE THIS IN HERE **** 
 
                 # add a target to the schedule
                 elapsedTime += acquisitionTime
                 jsonstr = targetlist.target2json(target)
                 fh.write(jsonstr + '\n')
 
-                # add a B star to the schedule
-                added = False
-                for bstar in bstars:
-                    acquisitionTime = (acquisitionOverhead + num*(readTime+bstar['exptime'][0]))
-                    starttime = sunset + datetime.timedelta(seconds=elapsedTime)
-                    endtime = sunset + datetime.timedelta(seconds=elapsedTime+acquisitionTime)
-                    print starttime, endtime, bstar['starttime'], bstar['endtime']
-                    if (endtime <= bstar['endtime'] and starttime >= bstar['starttime']) or (starttime >= bstar['starttime'] and bstar['endtime'] == sunrise) and not added:
-                        bstar['expectedStart'] = str(sunset + datetime.timedelta(seconds=elapsedTime))
-                        bstar['expectedEnd'] = str(sunset + datetime.timedelta(seconds=elapsedTime + acquisitionTime))
-
-                        elapsedTime += acquisitionTime
-
-                        jsonstr = targetlist.target2json(bstar)
-                        fh.write(jsonstr + '\n')
-                        added = True
-                        print "added " +bstar['name']
-          
             if ((sunrise-sunset).total_seconds() + 3600.0) < elapsedTime:
                 break
         if elapsedTime == 0:

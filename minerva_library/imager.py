@@ -30,6 +30,7 @@ class imager:
 		self.initialize()
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
+		self.mailsent = False
 		# threading.Thread(target=self.write_status_thread).start()
 
 	def initialize(self):
@@ -302,7 +303,7 @@ class imager:
 			if res[1] == 'true':
 				return True
 		return False
-	
+
 	def remove(self):
 		res = self.send('remove none',5).split()
 		if res[0] == 'success':
@@ -350,6 +351,16 @@ class imager:
 			self.logger.exception(telescope_name + 'Unknown error getting temperature')
 			return 'fail'
 
+	def moveAO(self,north,east):
+		cmd = 'moveAO ' + str(north) + ',' + str(east)
+		if (self.send(cmd,30)).split()[0] == 'success': return True
+		return False
+
+	def homeAO(self):
+		cmd = 'homeAO'
+		if (self.send(cmd,30)).split()[0] == 'success': return True
+		return False
+
 	#start exposure
 	def expose(self, exptime=1, exptype=0, filterInd=1,guider=False):
 		self.logger.info('Starting exposure')
@@ -391,7 +402,7 @@ class imager:
 	# returns file name of the image saved, return 'error' if error occurs
 	def take_image(self,exptime=1,filterInd='zp',objname = 'test' , fau=False):		
 		telescope_name = 'T' + self.telnum + ': '
-		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
+#		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
 		ndx = self.get_index()
 		if ndx == -1:
@@ -450,41 +461,33 @@ class imager:
                 self.pdu.inst.on()
 		time.sleep(30)
 
+	# this requires winexe on linux and a registry key on each Windows (7?) machine (apply keys.reg in dependencies folder):
 	def recover_server(self):
                 telescope_name = 'T' + self.telnum + ': '
 
 		self.nserver_failed += 1
 
-		# this requires winexe on linux and a registry key on each Windows (7?) machine (apply keys.reg in dependencies folder):
-		self.logger.warning(telescope_name + 'Server failed, beginning recovery') 
-	
-
-		# ****** with improved self.recover() function, I don't think this is necessary...*******
-		if self.nserver_failed > 1:
-			self.logger.warning(telescope_name + 'Server failed more than once; try power cycling the camera')
-
-			# if these don't work, we're in trouble
-			if not self.kill_server(): ipdb.set_trace()
-			if not self.kill_maxim(): ipdb.set_trace()
-			self.powercycle()
-			time.sleep(10)
-			if not self.start_server(): 
-				self.logger.error(telescope_name + "failed to start server")
-				return False
-
+		# if it's failed more than 3 times, something is seriously wrong -- give up
 		if self.nserver_failed > 3:
-			mail.send(telescope_name + 'Server failed','',level='serious')
+			if not self.mailsent: mail.send(telescope_name + 'Server failed','',level='serious')
+			self.mailsent = True
 			sys.exit()
-		# ****** with improved self.recover() function, I don't think this is necessary...*******
-
 		
-		# restart the server
-                self.logger.warning(telescope_name + 'Restarting server') 
+		self.logger.warning(telescope_name + 'Server failed, beginning recovery') 
 
-		# if these don't work, we're in big trouble
-                if not self.kill_server(): return False
-                if not self.kill_maxim(): return False
+		# if these don't work, we're in trouble		
+		if not self.kill_server(): return False
+		if not self.kill_maxim(): return False
+
+		# if it's failed more than once, try power cycling the camera before restarting
+		if self.nserver_failed > 1:
+			self.logger.warning(telescope_name + 'Server failed more than once; power cycling the camera')
+			self.powercycle()
+			time.sleep(20)
+
+		# restart the server
 		time.sleep(10)
+                self.logger.warning(telescope_name + 'Restarting server') 		
                 if not self.start_server(): 
 			self.logger.error(telescope_name + "failed to start server")
 			return False
@@ -509,7 +512,7 @@ class imager:
                 return self.kill_remote_task('PWI.exe')
         def start_server(self):
                 ret_val = self.send_to_computer('schtasks /Run /TN "telcom server"')
-		time.sleep(20)
+		time.sleep(30)
 		return ret_val
 
         def send_to_computer(self, cmd):

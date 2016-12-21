@@ -5,6 +5,7 @@ import threading
 import mail
 import datetime, time
 import sys, os
+import utils
 
 # check weather condition; close if bad, open and send heartbeat if good; update dome status
 def domeControl(minerva,number,day=False):
@@ -29,7 +30,7 @@ def domeControl(minerva,number,day=False):
             if minerva.site.oktoopen(domeopen=dome.isOpen(),ignoreSun=True):
                 minerva.logger.info('Weather not ok to open; resetting timeout')
                 minerva.site.lastClose = datetime.datetime.utcnow()
-                minerva.dome_close()
+                dome.close_both()
         elif (datetime.datetime.utcnow() - minerva.site.lastClose).total_seconds() < (30.0*60.0):
             minerva.logger.info('Conditions must be favorable for 30 minutes before opening; last bad weather at ' + str(minerva.site.lastClose))
             dome.close_both() # should already be closed, but for good measure...
@@ -39,7 +40,7 @@ def domeControl(minerva,number,day=False):
         else:
             minerva.logger.debug('Weather is good; opening dome')
 
-            kwargs={'day' : day}
+            kwargs={'day' : day, 'num' : number}
             openthread = threading.Thread(target=minerva.dome_open,kwargs=kwargs)
             openthread.name = "A" + str(number) + '_OPEN'
             openthread.start()
@@ -50,7 +51,6 @@ def domeControl(minerva,number,day=False):
         status = dome.status()
         isOpen = (status['Shutter1'] == 'OPEN') and (status['Shutter2'] == 'OPEN')
         
-        minerva.logger.info("Writing aqawan status file")
         filename = minerva.base_directory + '/minerva_library/aqawan' + str(number) + '.stat'
         with FileLock(filename):
             with open(filename,'w') as fh:

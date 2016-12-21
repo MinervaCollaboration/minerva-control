@@ -117,8 +117,9 @@ class spectrograph:
 				return 'fail'
 			data = repr(data).strip("'")
 
-			if data.split() == '': ipdb.set_trace()
-			if data.split()[0] == 'success':
+			if len(data.split()) == 0:
+				self.logger.error(msg.split()[0] + " command failed")
+			elif data.split()[0] == 'success':
 				self.logger.info(msg.split()[0] + " command completed")
 			else:
 				self.logger.error(msg.split()[0] + " command failed")

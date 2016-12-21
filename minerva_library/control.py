@@ -64,7 +64,7 @@ class control:
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
 
-#		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
@@ -81,6 +81,7 @@ class control:
 				self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 
 		# initialize the 4 telescopes
+#		for i in range(0):
 		for i in range(4):
 			try: 
 				self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
@@ -709,6 +710,9 @@ class control:
 
 		camera.fau.acquired = False
 
+		# center the AO unit
+		if ao: camera.homeAO()
+
 		if xfiber <> None:
 			camera.fau.xfiber = xfiber
 		if yfiber <> None: 
@@ -866,8 +870,10 @@ class control:
 					if artificial:
 						telescope.mountOffsetAltAzFixed(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
 					else:
-						if ao: camera.ao.move(updateval[0],updateval[1])
+						# if we're using the AO unit and the object is already acquired, send commands to the tip/tilt
+						if ao and camera.fau.acquired: camera.moveAO(updateval[0],updateval[1]) # in pixel units
 						else: telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
+						# otherwise, send commands to the mount
 
 					if fast:
 						time.sleep(5)
@@ -1133,6 +1139,9 @@ class control:
 	#TODO TODO
         def spec_equipment_check(self,target):#objname,filterwheel=None,template = False):
 
+		# make sure the back light is off and out of the way
+		self.spectrograph.backlight_off()
+
 		kwargs = {
 			'locationstr':'in',
 			}
@@ -1208,8 +1217,8 @@ class control:
                         i2stage_move_thread.start()
 
                         # Configure the lamps
-			self.logger.warning("*** Slit flat LED disabled ***")
-#                        self.spectrograph.led_turn_on()
+#			self.logger.warning("*** Slit flat LED disabled ***")
+                        self.spectrograph.led_turn_on()
 #                        self.spectrograph.thar_turn_off()
 #                        self.spectrograph.flat_turn_off()
                         
@@ -2222,7 +2231,7 @@ class control:
 
 		if not os.path.exists(self.base_directory + '/schedule/' + targetFile):
 			self.logger.error(telescope_name + 'No schedule file: ' + targetFile)
-			if email: mail.send("No schedule file: " + targetFile,"Cannot observe!",level='serious')
+			
 			return False
 
 		emailbody = ''
@@ -2360,6 +2369,7 @@ class control:
 			if not telescope.focuserMoveAndWait(newfocus,port=m3port):
 				self.logger.info("Focuser failed to move; beginning recovery")
 				telescope.recoverFocuser(newfocus, m3port)
+				telescope.acquireTarget(target,pa=pa)
 
 		reference = None
 

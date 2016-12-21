@@ -16,8 +16,9 @@ if __name__ == '__main__':
 	if os.path.exists('minerva_library/sunOverride.txt'): os.remove('minerva_library/sunOverride.txt')
 
 	#### don't want this if it starts in the middle of the night***********###
-#	if os.path.exists('minerva_library/aqawan1.request.txt'): os.remove('minerva_library/aqawan1.request.txt')
-#	if os.path.exists('minerva_library/aqawan2.request.txt'): os.remove('minerva_library/aqawan2.request.txt')
+	if datetime.datetime.utcnow().hour < 2 or datetime.datetime.utcnow().hour > 20:
+		if os.path.exists('minerva_library/aqawan1.request.txt'): os.remove('minerva_library/aqawan1.request.txt')
+		if os.path.exists('minerva_library/aqawan2.request.txt'): os.remove('minerva_library/aqawan2.request.txt')
 
 	minerva = control.control('control.ini',base_directory)
 
