@@ -12,7 +12,7 @@ sys.dont_write_bytecode = True
 import os
 
 
-def send(subject,body,level='normal',attachments=[]):
+def send(subject,body,level='normal',attachments=[],logger=None):
 #	return
 	host = socket.gethostname()
 	if host == 'Main':
@@ -60,7 +60,13 @@ def send(subject,body,level='normal',attachments=[]):
 	server = smtplib.SMTP('smtp.gmail.com')
 	server.starttls()
 	server.login(username,password)
-	server.sendmail(username, recipients, msg.as_string())
+	try:
+		server.sendmail(username, recipients, msg.as_string())
+	except:
+		if logger != None: 
+			logger.exception('****SENDMAIL FAILED****')
+		else:
+			print '****SENDMAIL FAILED****'
 	server.quit()
 
 if __name__ == "__main__":

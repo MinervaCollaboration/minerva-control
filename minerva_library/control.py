@@ -188,6 +188,7 @@ class control:
 #if no argument or num outside of array command all domes
 
 	def dome_open(self,num=0,day=False):
+
 		if num >= 1 and num <= len(self.domes):
 			if day: self.domes[num-1].open_shutter(1)
 			else: self.domes[num-1].open_both()
@@ -427,7 +428,7 @@ class control:
 				return [calibinfo,calibendinfo]
 		except:
 			self.logger.info(telescope_name + 'error loading calib info: ' + self.site.night + '.T' + str(num) + '.txt')
-			sys.exit()
+			return [None, None]
 
         # run astrometry.net on imageName, update solution in header                                             
 	def astrometry(self, imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None):
@@ -2496,6 +2497,17 @@ class control:
                 try: self.pdus[2].monitor.off()
                 except: self.logger.exception("Turning off monitor in aqawan 2 failed")
 
+		# turn off shutter heaters
+                self.logger.info('Turning off shutter heaters')
+                try: self.pdus[0].heater.off()
+                except: self.logger.exception("Turning off heater 1 failed")
+                try: self.pdus[1].heater.off()
+                except: self.logger.exception("Turning off heater 2 failed")
+                try: self.pdus[2].heater.off()
+                except: self.logger.exception("Turning off heater 3 failed")
+                try: self.pdus[3].heater.off()
+                except: self.logger.exception("Turning off heater 4 failed")
+
 		for aqawan in self.domes:
 			self.logger.info('Turning off lights in aqawan ' + str(aqawan.num))
 			aqawan.lights_off()
@@ -2634,7 +2646,7 @@ class control:
 
 		# these messages contain variables; trim them down so they can be consolidated
 		toospecific = [('The camera was unable to reach its setpoint','in the elapsed time'),
-			       ('failed to find fiber in image','using default'),
+			       ('fa iled to find fiber in image','using default'),
 			       ('The process "MaxIm_DL.exe" with PID','could not be terminated'),
 			       ("Stars are too elliptical, can't use",''),
 			       ('The process "python.exe" with PID','could not be terminated'),
@@ -2669,6 +2681,20 @@ class control:
 			       ('Could not copy schedule file',''),
 			       ('Failed to open shutter 1: Success=FALSE, Heartbeat timer expired',''),
 			       ('Failed to open shutter 2: Success=FALSE, Heartbeat timer expired',''),
+			       ('A1: Error reading the cloud page',''),
+			       ('A2: Error reading the cloud page',''),
+			       ('T1: Fitted focus',' was outside of limits'),
+			       ('T2: Fitted focus',' was outside of limits'),
+			       ('T3: Fitted focus',' was outside of limits'),
+			       ('T4: Fitted focus',' was outside of limits'),
+			       ('T1: Autofocus failed, using best measured focus',''),
+			       ('T2: Autofocus failed, using best measured focus',''),
+			       ('T3: Autofocus failed, using best measured focus',''),
+			       ('T4: Autofocus failed, using best measured focus',''),
+			       ('T1: Focuser',' not at requested position'),
+			       ('T2: Focuser',' not at requested position'),
+			       ('T3: Focuser',' not at requested position'),
+			       ('T4: Focuser',' not at requested position'),
 			       ('A1: Failed to open shutter 1: Success=FALSE, Enclosure not in AUTO',''),
 			       ('A1: Failed to open shutter 2: Success=FALSE, Enclosure not in AUTO',''),
 			       ('A2: Failed to open shutter 1: Success=FALSE, Enclosure not in AUTO',''),

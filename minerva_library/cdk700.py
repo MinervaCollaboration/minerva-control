@@ -102,9 +102,9 @@ class CDK700:
 		# check to see if it's properly initialized
 		telescopeStatus = self.getStatus()
 
-		if telescopeStatus.mount.encoders_have_been_set <> 'True':
-			self.logger.info('encoders not set (' + telescopeStatus.mount.encoders_have_been_set + '), telescope not initialized')
-			return False
+		#if telescopeStatus.mount.encoders_have_been_set <> 'True':
+		#	self.logger.info('encoders not set (' + telescopeStatus.mount.encoders_have_been_set + '), telescope not initialized')
+		#	return False
 		if telescopeStatus.mount.alt_enabled <> 'True':
 			self.logger.info('altitude motor not enabled (' + telescopeStatus.mount.alt_enabled + '), telescope not initialized')
 			return False
@@ -175,12 +175,13 @@ class CDK700:
 			time.sleep(0.25)
 			telescopeStatus = self.getStatus()
 
-		# home if not homed
-                if telescopeStatus.mount.encoders_have_been_set <> 'True':
-			self.logger.info('Homing telescope')
-                        if not self.home(): return False
-			time.sleep(0.25)
-			telescopeStatus = self.getStatus()
+### Usually not necessary -- now part of the recovery procedure 
+#		# home if not homed
+#                if telescopeStatus.mount.encoders_have_been_set <> 'True':
+#			self.logger.info('Homing telescope')
+#                        if not self.home(): return False
+#			time.sleep(0.25)
+#			telescopeStatus = self.getStatus()
 
 		# reload the pointing model
 		self.logger.info('re-loading pointing model for the current port')
@@ -372,28 +373,38 @@ class CDK700:
 		Move the focuser to the specified position in microns
 		"""
 
+		# make sure it's a legal move first
+		if self.num == '1' and str(port) == '2' and position < 455: return False
+		if position < 0 or position > 33000: return False
+
 		return self.pwiRequestAndParse(device="focuser"+str(port), cmd="move", position=position)
 
 	def focuserMoveAndWait(self,position,port=1,timeout=90.0):
-		self.focuserMove(position,port=port)
+		if not self.focuserMove(position,port=port):
+			self.logger.warning('Focuser on port ' + str(port) + ' could not move to requested position (' + str(position) + ')')
+			return False
 
 		# wait for the focuser to start moving
-		time.sleep(2.0) 
+		time.sleep(3.0) 
 		status = self.getStatus()
+		if port == '1': focuser = status.focuser1
+		else: focuser = status.focuser2
 
 		t0 = datetime.datetime.utcnow()
 		elapsedTime = 0.0
 		
 		# wait for the focuser to finish moving
 		# or the timeout (90 seconds is about how long it takes to go from one extreme to the other)
-		while status.focuser.moving == 'True' and elapsedTime < timeout:
-			self.logger.info('Focuser moving (' + str(status.focuser.position) + ')')
+		while focuser.moving == 'True' and elapsedTime < timeout:
+			self.logger.info('Focuser on port ' + str(port) + ' moving (' + str(focuser.position) + ')')
 			time.sleep(0.3)
 			status = self.getStatus()
+			if port == '1': focuser = status.focuser1
+			else: focuser = status.focuser2
 			elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
 
-		if abs(float(status.focuser.position) - float(position)) > 10:
-			self.logger.warning('Focuser at ' + status.focuser.position + ' not requested position (' + str(position) + ') after ' + str(elapsedTime) + ' seconds')
+		if abs(float(focuser.position) - float(position)) > 10:
+			self.logger.warning('Focuser on port ' + str(port) + ' (' + focuser.position + ') not at requested position (' + str(position) + ') after ' + str(elapsedTime) + ' seconds')
 			return False
 
 		self.logger.info('Focuser completed move in ' + str(elapsedTime) + ' seconds')
@@ -643,6 +654,15 @@ class CDK700:
 				self.logger.info('recovered after reconnecting')
 				return True
 
+
+		if self.nfailed >= 2:
+			telescopeStatus = self.getStatus()
+			if telescopeStatus.mount.encoders_have_been_set <> 'True':
+				self.logger.info('Homing telescope')
+				if not self.home(): return False
+				time.sleep(0.25)
+				telescopeStatus = self.getStatus()
+
 		# restart PWI
 		self.logger.warning('reconnecting failed; restarting PWI')
 		try: self.shutdown()
@@ -652,7 +672,7 @@ class CDK700:
 		if self.initialize(tracking=tracking, derotate=derotate):
 			self.logger.info('recovered after restarting PWI')
 			return True
-
+		
 		# power cycle and rehome the scope
 		self.logger.info('restarting PWI failed, power cycling the mount')
 		try: self.shutdown()
@@ -664,6 +684,7 @@ class CDK700:
 			self.logger.info('recovered after power cycling the mount')
 			return True
 
+		'''
 		# reboot the telcom machine
 		self.logger.info('power cycling the mount failed, rebooting the machine')
 		try: self.shutdown()
@@ -680,6 +701,7 @@ class CDK700:
 		if self.initialize():
 			self.logger.warning('recovered after rebooting the machine')
 			return True
+		'''
 
 		# unrecoverable error
 		filename = "telescope_" + self.num + '.error'
@@ -803,7 +825,7 @@ class CDK700:
 				
 				# save to the model file
 				self.mountSaveModel(self.model[m3port])
-	
+
 				pointsAdded += 1
 				if pointsAdded >= npoints: return
 			continue
@@ -1480,9 +1502,14 @@ class CDK700:
                 password = f.readline().strip()
                 f.close()
 
-                process = subprocess.Popen(["winexe","-U","HOME/" + username + "%" + password,"//" + self.HOST, cmd],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                out,err = process.communicate()
+#                process = subprocess.Popen(["winexe","-U","HOME/" + username + "%" + password,"//" + self.HOST, cmd],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#                out,err = process.communicate()
+                out = ''
+                err = ''
+                cmdstr = "cat </dev/null | winexe -U HOME/" + username + "%" + password + " //" + self.HOST + " '" + cmd + "'"
+                os.system(cmdstr)
                 self.logger.info('cmd=' + cmd + ', out=' + out + ', err=' + err)
+                self.logger.info(cmdstr)
 
                 if 'NT_STATUS_HOST_UNREACHABLE' in out:
                         self.logger.error('the host is not reachable')

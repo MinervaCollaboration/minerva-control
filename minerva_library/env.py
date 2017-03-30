@@ -241,21 +241,27 @@ class site:
 		# conditions have necessitated a manual decision to open the domes
 		if os.path.exists(decisionFile):
 			f = open(decisionFile,'r')
-			date = datetime.datetime.strptime(f.readline().strip(),'%Y-%m-%d %H:%M:%S.%f')
+			try: date = datetime.datetime.strptime(f.readline().strip(),'%Y-%m-%d %H:%M:%S.%f')
+			except: date = datetime.datetime.utcnow() - datetime.timedelta(days=1.1)
+			f.close()
+
 			if (datetime.datetime.utcnow() - date).total_seconds() > 86400.0:
 				if not self.mailSent:
 					mail.send("Possible snow/ice on enclosures; manual inspection required",
 						  "Dear benevolent humans,\n\n"+
 						  "Recent conditions have been wet and cold (" + str(self.coldestTemp) + " C), which means ice and/or snow is likely. "+ 
 						  "I have disabled operations until someone can check the camera (http://minervacam.sao.arizona.edu) "+ 
-						  "to ensure there is no snow or ice on the roof and the snow is not deep enough (< 6 in) for the roof "+
-						  "to dig into it. If the snow on the ground is too deep, please email the site staff to ask them to shovel. "+ 
+						  "to ensure there is no snow or ice on the roof and the snow is not more than 2 inches deep "+
+						  "(which will stall the roof. There are presets on the camera for 'A1 Snow line' and 'A2 Snow line'. The you must "+ 
+						  "be able to see the red line below the black line for it to be safe to open. If the snow on the ground "+
+						  "is too deep, please email the site staff to ask them to shovel.\n\n"+ 
 						  "If everything looks good, either delete the '/home/minerva/minerva-control/manualDecision.txt' file "+
 						  "(if current conditions will not trip this warning again) or edit the date in that file to UTC now (" +
 						  str(datetime.datetime.utcnow()) + "). Note that this warning will be tripped again 24 hours after the "+
 						  "date in that file.\n\n"
 						  "Love,\nMINERVA",level='serious')
 					self.mailSent = True
+				self.logger.info("Not OK to open -- manual decision required")
 				return False
 		if self.mailSent:
 			mail.send("Snow/ice conditions have been manually checked and OK'ed",
@@ -321,7 +327,7 @@ class site:
 			retval = False
 
 		# if it has (or might have) snowed in the last 24 hours, we need manual approval to open
-		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 86400.0 and self.coldestTemp < 1.0:
+		if ((datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 86400.0 and self.coldestTemp < 1.0) or os.path.exists(decisionFile):
 			if os.path.exists(decisionFile):
 				f = open(decisionFile,'r')
 				date = datetime.datetime.strptime(f.readline().strip(),'%Y-%m-%d %H:%M:%S.%f')

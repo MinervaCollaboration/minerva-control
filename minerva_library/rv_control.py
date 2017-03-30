@@ -145,7 +145,7 @@ def doSpectra(minerva, target, tele_list, test=False):
         # if the dome isn't open, wait for it to open
         for dome in minerva.domes:
             while not dome.isOpen():
-                minerva.logger.info("Waiting for dome to open")
+                minerva.logger.info("Waiting for dome to open or until the target's end time (" + str(target['endtime']) + ')')
                 if datetime.datetime.utcnow() > target['endtime']: 
                     minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
                     return
@@ -185,6 +185,8 @@ def doSpectra(minerva, target, tele_list, test=False):
                       "T" + str(tele_list[t]) + " thread timed out waiting for slew. "+
                       "This shouldn't happen. Please fix me and note what was done."+
                       "Love,\nMINERVA",level='serious')
+            # should kill the errant thread, otherwise all hell breaks loose
+            
 
     # take the backlit images
     minerva.logger.info("Locating Fiber")

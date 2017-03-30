@@ -22,7 +22,6 @@ def domeControl(minerva,number,day=False):
             minerva.update_logpaths(minerva.base_directory + '/log/' + thisnight)
             lastnight = thisnight
 
-        # see if the dome was requested to be open
         openRequested = os.path.isfile(minerva.base_directory + '/minerva_library/aqawan' + str(number) + '.request.txt')
         day = os.path.isfile(minerva.base_directory + '/minerva_library/sunOverride.txt')
 
@@ -30,7 +29,7 @@ def domeControl(minerva,number,day=False):
             if minerva.site.oktoopen(domeopen=dome.isOpen(),ignoreSun=True):
                 minerva.logger.info('Weather not ok to open; resetting timeout')
                 minerva.site.lastClose = datetime.datetime.utcnow()
-                dome.close_both()
+            dome.close_both()
         elif (datetime.datetime.utcnow() - minerva.site.lastClose).total_seconds() < (30.0*60.0):
             minerva.logger.info('Conditions must be favorable for 30 minutes before opening; last bad weather at ' + str(minerva.site.lastClose))
             dome.close_both() # should already be closed, but for good measure...
@@ -90,6 +89,7 @@ def domeControl_catch(minerva, number, day=False):
             "MINERVA"
         mail.send("DomeControl thread died",body,level='critical')
         sys.exit()
+
 
 def domeControlThread(minerva,day=False):
     threads = []

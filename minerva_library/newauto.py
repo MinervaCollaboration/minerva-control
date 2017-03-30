@@ -393,7 +393,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         newfocus = telescope.focus[m3port] + step*1000.0
 
         # if new focus out of mechanical range, skip this step
-        if newfocus < 0 or newfocus > 33000 or (telescope.num == '1' and m3port == '2' and newfocus < 455): 
+        if newfocus < 100 or newfocus > 33000 or (telescope.num == '1' and m3port == '2' and newfocus < 455): 
             telescope.logger.info("Autofocus step (" + str(newfocus) + ") out of range; skipping")
             continue 
 
@@ -402,7 +402,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         #S ensure we have the correct port
         telescope.m3port_switch(m3port)
         #S move and wait for focuser
-        telescope.logger.info("Defocusing by " + str(step) + " mm, to " + str(newfocus))
+        telescope.logger.info("Defocusing port " + str(m3port) + " by " + str(step) + " mm, to " + str(newfocus))
 
         median,stddev,numstars,imnum = autofocus_step(control,telescope,newfocus,af_target)
         imagenum_list = np.append(imagenum_list,str(imnum))

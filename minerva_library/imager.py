@@ -96,7 +96,7 @@ class imager:
 
 		try:
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			s.settimeout(10)
+			s.settimeout(3)
 			s.connect((self.ip, self.port))
 		except socket.error as e:
 			if e.errno == errno.ECONNREFUSED:
@@ -232,7 +232,7 @@ class imager:
 	def disconnect_camera(self):
 		
 		telescope_name = 'T' + self.telnum + ': '
-		if self.send('disconnect_camera none',5) == 'success':
+		if self.send('disconnect_camera none',15) == 'success':
 			self.logger.info(telescope_name + 'successfully disconnected camera')
 			return True
 		else:
@@ -241,7 +241,7 @@ class imager:
 			
 	#get camera status and write into a json file with name == (self.logger_name + 'json')
 	def write_status(self):
-		res = self.send('get_status none',5).split(None,1)
+		res = self.send('get_status none',15).split(None,1)
 		if res[0] == 'success':
 			self.status_lock.acquire()
 			status = open(self.base_directory+'/status/' + self.logger_name + '.json','w')
@@ -479,6 +479,14 @@ class imager:
 		if not self.kill_server(): return False
 		if not self.kill_maxim(): return False
 
+		# restart the server
+		time.sleep(10)
+                self.logger.warning(telescope_name + 'Restarting server') 		
+                if not self.start_server(): 
+			self.logger.error(telescope_name + "failed to start server")
+			return False
+		return True
+
 		# if it's failed more than once, try power cycling the camera before restarting
 		if self.nserver_failed > 1:
 			self.logger.warning(telescope_name + 'Server failed more than once; power cycling the camera')
@@ -521,9 +529,17 @@ class imager:
                 password = f.readline().strip()
 		f.close()
 
-                process = subprocess.Popen(["winexe","-U","HOME/" + username + "%" + password,"//" + self.ip, cmd],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                out,err = process.communicate()
-                self.logger.info('T' + self.telnum + ': cmd=' + cmd + ', out=' + out + ', err=' + err)
+#                process = subprocess.Popen(["winexe","-U","HOME/" + username + "%" + password,"//" + self.ip, cmd],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#		out,err = process.communicate()
+#		FNULL = open(os.devnull, 'w')
+#                process = subprocess.Popen(["winexe","-U","HOME/" + username + "%" + password,"//" + self.ip, cmd],stdout=FNULL, stderr=FNULL)
+#		out,err = process.communicate()
+		out = ''
+		err = ''
+		cmdstr = "cat </dev/null | winexe -U HOME/" + username + "%" + password + " //" + self.ip + " '" + cmd + "'"
+		os.system(cmdstr)
+		self.logger.info('T' + self.telnum + ': cmd=' + cmd + ', out=' + out + ', err=' + err)
+		self.logger.info(cmdstr)
 
                 if 'NT_STATUS_HOST_UNREACHABLE' in out:
                         self.logger.error('T' + self.telnum + ': the host is not reachable')
@@ -561,28 +577,29 @@ class imager:
                         return True
 
 		# quit and restart maxim
-                self.logger.warning('T' + self.telnum + ': Camera failed to connect; restarting maxim') 
+                self.logger.warning('T' + self.telnum + ': Camera failed to connect; quitting maxim') 
 		self.quit_maxim()
                 if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by restarting maxim') 
+                        self.logger.info('T' + self.telnum + ': Camera recovered by quitting maxim') 
                         return True
 
 		# force quit and restart maxim
-                self.logger.warning('T' + self.telnum + ': Camera failed to connect; restarting maxim') 
+                self.logger.warning('T' + self.telnum + ': Camera failed to connect; killing maxim') 
 		self.quit_maxim()
 		self.kill_maxim()
                 if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by restarting maxim') 
+                        self.logger.info('T' + self.telnum + ': Camera recovered by killing maxim') 
                         return True
 
-		# power cycle camera
-                self.logger.warning('T' + self.telnum + ': Camera failed to recover after restarting maxim; power cycling the camera') 
-                self.quit_maxim()
-		self.kill_maxim()
-                self.powercycle()
-                if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it') 
-                        return True
+		self.logger.info('*** camera power cycle disabled due to black box messiness ***')
+#		# power cycle camera
+#                self.logger.warning('T' + self.telnum + ': Camera failed to recover after restarting maxim; power cycling the camera') 
+#                self.quit_maxim()
+#		self.kill_maxim()
+#                self.powercycle()
+#                if self.connect_camera():
+#                        self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it') 
+#                        return True
 
 		'''
 		# power cycle camera and wait longer?

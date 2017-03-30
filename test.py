@@ -31,9 +31,9 @@ if __name__ == '__main__':
 		"starttime": datetime.datetime(2016,1,1),
 		"endtime": datetime.datetime(2017,1,1),
 		#"spectroscopy": True, 
-		"filter": "rp", 
-		"num": 1, 
-		"exptime": 5.0, 
+		"filter": ["rp"], 
+		"num": [1], 
+		"exptime": [5.0], 
 		"fauexptime": 1,#5.0, 
 		"defocus": 0.0, 
 		"positionAngle": 0.0, 
@@ -41,11 +41,13 @@ if __name__ == '__main__':
 		"pmdec": 0.0, 
 		"parallax": 0.0, 
 		"rv": 0.0, 
-		#"i2": True,
+		"i2": False,
 		}
 #	ipdb.set_trace()
 #	minerva.telescopes[0].makePointingModel(minerva,npoints=50,exptime=2.0)
 #	minerva.endNight(num=3,email=False,kiwispec=False)
+
+#	newauto.autofocus(minerva,1)
 	
 	ipdb.set_trace()
 #	ipdb.set_trace()
