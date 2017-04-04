@@ -35,6 +35,7 @@ for p in psutil.process_iter():
         elif p.name() == 'PWI.exe':
             try:
                 # create a telescope object
+                ipdb.set_trace()
                 telescope = cdk700.CDK700(telescope_config, base_directory)
                 # gracefully disconnect from the telescope
                 telescope.shutdown()
