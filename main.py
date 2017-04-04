@@ -7,11 +7,17 @@ sys.dont_write_bytecode = True
 from minerva_library import control
 from minerva_library import rv_control
 import datetime
-
+import argparse
 
 if __name__ == '__main__':
 
+	parser = argparse.ArgumentParser(description='Observe with MINERVA')
+	parser.add_argument('--red'  , dest='red'  , action='store_true', default=False, help='run with MINERVA red configuration')
+	parser.add_argument('--south', dest='south', action='store_true', default=False, help='run with MINERVA Australis configuration')
+	opt = parser.parse_args()
+
 	base_directory = '/home/minerva/minerva-control'
+
 
 	if os.path.exists('minerva_library/sunOverride.txt'): os.remove('minerva_library/sunOverride.txt')
 
@@ -20,7 +26,7 @@ if __name__ == '__main__':
 		if os.path.exists('minerva_library/aqawan1.request.txt'): os.remove('minerva_library/aqawan1.request.txt')
 		if os.path.exists('minerva_library/aqawan2.request.txt'): os.remove('minerva_library/aqawan2.request.txt')
 
-	minerva = control.control('control.ini',base_directory)
+	minerva = control.control('control.ini',base_directory,red=opt.red,south=opt.south)
 
 	# if a file for kiwispec exists, use that. If not, observe with all four telescopes
 	if os.path.exists(minerva.base_directory + '/schedule/' + minerva.site.night + '.kiwispec.txt'):

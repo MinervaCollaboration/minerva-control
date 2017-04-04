@@ -60,6 +60,11 @@ class imager:
 			self.y2 = config['Setup']['Y2']
 			self.biaslevel = float(config['Setup']['BIASLEVEL'])
 			self.saturation = float(config['Setup']['SATURATION'])
+			self.flattargetcount = float(config['Setup']['FLATTARGETCOUNT'])
+			self.flatminexptime = float(config['Setup']['FLATMINEXPTIME'])
+			self.flatmaxexptime = float(config['Setup']['FLATMAXEXPTIME'])
+			self.flatminsunalt = float(config['Setup']['FLATMINSUNALT'])
+			self.flatmaxsunalt = float(config['Setup']['FLATMAXSUNALT'])
 			self.datapath = ''
 			self.gitpath = ''
 			self.file_name = 'test'

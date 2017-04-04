@@ -99,11 +99,11 @@ class scheduler:
             print 'Something went wrong when sorting with ' + key
             return False
 
-    def choose_target(self,key='weight',remaining_time=86400.0):
+    def choose_target(self,key='weight',remaining_time=86400.0, logger=None):
         #S we assume you need to update the weights of targets
         #S this calculates weghts for those targets which are currently 
         #S observable, using datetime.datetime.utcnow()
-        self.calculate_weights(remaining_time=remaining_time)
+        self.calculate_weights(remaining_time=remaining_time, logger=logger)
         #S next we sort the target list based on the weight key
         self.sort_target_list(key=key)
         #S now the highest weighted target is the first position of this list,
@@ -126,21 +126,24 @@ class scheduler:
             pass
         
 
-    def calculate_weights(self, tels=None, remaining_time=86400.0):
+    def calculate_weights(self, tels=None, remaining_time=86400.0, logger=None):
         #S need to update weights for all the targets in the list.
         #S going to use simple HA weighting for now.
         for target in self.target_list:
 #            print target
+            
             if self.is_observable(target,max_exptime=remaining_time):
                 #S this is where you want to insert whatever weight function
                 target['weight'] = self.calc_weight(target)#,timeof=self.time)
+                if logger != None: logger.debug(target['name'] + ' is has a weight of ' + str(target['weight']))
             else:
+                if logger != None: logger.debug(target['name'] + ' is not observable')
                 target['weight'] = -999
         #pass
 
     
 
-    def calc_weight(self,target):
+    def calc_weight(self,target,logger=None):
         """
         simple, just going to weight for current ha sort of
         weight = 1 - abs(HA/RA)
@@ -300,9 +303,9 @@ class scheduler:
             ipdb.set_trace()
         return obs_list
 
-    def is_observable(self,target,timeof=None,max_exptime=86400.0):
-#        self.logger.info("Checking observability of " + target['name'])
-        print("Checking observability of " + target['name'])
+    def is_observable(self,target,timeof=None,max_exptime=86400.0, logger=None):
+        if logger != None: self.logger.info("Checking observability of " + target['name'])
+#        print("Checking observability of " + target['name'])
 
         # if the timeof obs is not provided, use the schedulers clock for the 
         # time. this could cause issues, need to keep an eye on it
@@ -325,7 +328,7 @@ class scheduler:
         
         target['observable'] = False
         if target['exptime'][0]>max_exptime:
-            print(target['name'] + ": exptime (" + str(target['exptime'][0]) + " longer than max_exptime (" + str(max_exptime) + ")")
+            if logger != None: logger.info(target['name'] + ": exptime (" + str(target['exptime'][0]) + " longer than max_exptime (" + str(max_exptime) + ")")
             return False
 
         self.obs.horizon = str(self.target_min_horizon)
@@ -334,13 +337,13 @@ class scheduler:
         # check if the star will be rising sometime tonight
         #TODO:
         # i think this checks for just a 24 hour period, but needs more 
-        # invetigation
+        # investigation
 #        if target['neverup']:
 #            #print(target['name']+" is never up")
 #            print(target['name'] + ": never up")
 #            return False
 
-        #TODO need coordinate propigation before this point, does pyephem do 
+        #TODO need coordinate propagation before this point, does pyephem do 
         #TODO this?
         # temporarily set the self.obs horizon to the minalt, will be 
         # switched back after check
@@ -351,7 +354,7 @@ class scheduler:
         moon = ephem.Moon()
         moon.compute(self.obs)
         if math.degrees(ephem.separation(moon,target['fixedbody']))<self.min_moon_sep:
-            print(target['name'] + ": too close to the moon")
+            if logger != None: logger.info(target['name'] + ": too close to the moon")
             return False
 
         # next is some nested if-statements for checking observability
@@ -368,30 +371,26 @@ class scheduler:
                 target['fixedbody'].compute(self.obs)
                 if target['fixedbody'].alt>math.radians(self.target_min_horizon):
                     # there is time to observe
+                    if logger != None: logger.info(target['name'] + ": is observable")
                     target['observable']=True
                     return True
                 else:
                     # the target will set before fully observable
-                    print(target['name'] + " not observable; target sets before finish")
+                    if logger != None: logger.info(target['name'] + " not observable; target sets before finish")
                     return False
             else:
                 # there is not enought time to observe this target before the 
                 # sun rises
                 #print("can't observe"+target['name'])
 
-                print(target['name'] + " not observable; sunrise before finish")
+                if logger != None: logger.info(target['name'] + " not observable; sunrise before finish")
                 return False
         else:
-            print(target['name'] + ": too low (" + str(math.degrees(target['fixedbody'].alt)) + ")")
-            return False
-
-
-        
+            if logger != None: logger.info(target['name'] + ": too low (" + str(math.degrees(target['fixedbody'].alt)) + ")")
+            return False       
         
         # reset the horizon for the sun
         self.obs.horizon = str(self.sun_horizon)
-
-
 
     def nextsunrise(self, currenttime, horizon=-12):
         self.obs.horizon=str(horizon)

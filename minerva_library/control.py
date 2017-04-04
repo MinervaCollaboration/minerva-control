@@ -48,7 +48,7 @@ class control:
 	
 #============Initialize class===============#
 	#S The standard init
-	def __init__(self,config,base):#telescope_list=0,dome_control=1):
+	def __init__(self,config,base, red=False):#telescope_list=0,dome_control=1):
 		self.config_file = config
 		self.base_directory = base
 		#S Only sets logger name right now
@@ -57,14 +57,12 @@ class control:
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		
 		#S See below, lots of new objects created here. 
-		self.create_class_objects()
+		self.create_class_objects(red=red)
 		self.logger_lock = threading.Lock()
 		self.telcom_enable()
 		
 	#create class objects needed to control Minerva system
-	def create_class_objects(self):
-
-		self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+	def create_class_objects(self,red=False, south=False):
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
@@ -72,29 +70,39 @@ class control:
 		self.site = env.site('site_mtHopkins.ini',self.base_directory)
 		self.thermalenclosureemailsent = False
 
-		for i in range(2):
-			try:
-				aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
-				if aqawanob.heartbeat(): self.domes.append(aqawanob)
-				else: self.logger.error("Failed to initialize Aqawan " + str(i+1))
-			except:
-				self.logger.exception("Failed to initialize Aqawan " +str(i+1))
+		if red:
+#			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory)
+#			self.domes.append(astrohaven.astrohaven('astrohaven_1.ini',self.base_directory))
+			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory))
+			self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
+			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
+#			self.pdus.append(pdu.pdu('apc_mred.ini',self.base_directory))
+#			self.pdus.append(pdu.pdu('apc_mredrack.ini',self.base_directory))
+		elif south:
+			pass
+		else:
+			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+			for i in range(2):
+				try:
+					aqawanob = aqawan.aqawan('aqawan_' + str(i+1) + '.ini',self.base_directory)
+					if aqawanob.heartbeat(): self.domes.append(aqawanob)
+					else: self.logger.error("Failed to initialize Aqawan " + str(i+1))
+				except:
+					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
+			# initialize the 4 telescopes
+			for i in range(4):
+				try: 
+					self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
+					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
+				except:
+					self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
 
-		# initialize the 4 telescopes
-#		for i in range(0):
-		for i in range(4):
-			try: 
-				self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
-				self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
-			except:
-				self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
-
-		for i in range(5):
-			self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
-		self.pdus.append(pdu.pdu('apc_bench.ini',self.base_directory))
+			for i in range(5):
+				self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
+			self.pdus.append(pdu.pdu('apc_bench.ini',self.base_directory))
 		
-		#S make the scheduler, which has the target list as an attribute
-		self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory)
+		        #S make the scheduler, which has the target list as an attribute
+			self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory)
 
 	def load_config(self):
 
@@ -2065,14 +2073,14 @@ class control:
 		telescope = utils.getTelescope(self,telescope_num)
 		camera = utils.getCamera(self,telescope_num)
 		
-		minSunAlt = -12
-		maxSunAlt = -2
+		minSunAlt = camera.flatminsunalt
+		maxSunAlt = camera.flatmaxsunalt
 
-		targetCounts = 30000
+		targetCounts = camera.flattargetcounts
 		biasLevel = camera.biaslevel
 		saturation = camera.saturation
-		maxExpTime = 60
-		minExpTime = 10
+		maxExpTime = camera.flatmaxexptime
+		minExpTime = camera.flatminexptime
 	   
 		# can we actually do flats right now?
 		if datetime.datetime.now().hour > 12:
@@ -2820,7 +2828,7 @@ class control:
 		#S do a single bias to get the shutters to close, a cludge till we can get there and
 		#S check things out ourselves.
 		self.doBias(num=1,telescope_num=telescope_num,objectName='testBias')
-
+		
 		# wait for the camera to cool down
 		camera.cool()
 
@@ -2830,11 +2838,11 @@ class control:
 		readtime = 10.0
 
 		# turn off both monitors
-		self.logger.info('Turning off monitors')
-		try: self.pdus[0].monitor.off()
-		except: self.logger.exception("Turning off monitor in aqawan 1 failed")
-		try: self.pdus[2].monitor.off()
-		except: self.logger.exception("Turning off monitor in aqawan 2 failed")
+		#self.logger.info('Turning off monitors')
+		#try: self.pdus[0].monitor.off()
+		#except: self.logger.exception("Turning off monitor in aqawan 1 failed")
+		#try: self.pdus[2].monitor.off()
+		#except: self.logger.exception("Turning off monitor in aqawan 2 failed")
 
 		bias_seconds = CalibInfo['nbias']*readtime+CalibInfo['ndark']*sum(CalibInfo['darkexptime']) + CalibInfo['ndark']*readtime*len(CalibInfo['darkexptime']) + 600.0
 		biastime = self.site.sunset() - datetime.timedelta(seconds=bias_seconds)
