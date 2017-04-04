@@ -23,6 +23,7 @@ for p in psutil.process_iter():
             print 'here'
             try:
                 # create a camera object
+                ipdb.set_trace()
                 camera = imager.imager(imager_config,base_directory)
                 # gracefully disconnect from the camera
                 camera.disconnect_camera()
@@ -35,7 +36,6 @@ for p in psutil.process_iter():
         elif p.name() == 'PWI.exe':
             try:
                 # create a telescope object
-                ipdb.set_trace()
                 telescope = cdk700.CDK700(telescope_config, base_directory)
                 # gracefully disconnect from the telescope
                 telescope.shutdown()
