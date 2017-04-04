@@ -61,7 +61,7 @@ class imager:
 			self.y2 = config['Setup']['Y2']
 			self.biaslevel = float(config['Setup']['BIASLEVEL'])
 			self.saturation = float(config['Setup']['SATURATION'])
-			self.flattargetcount = float(config['Setup']['FLATTARGETCOUNT'])
+			self.flattargetcounts = float(config['Setup']['FLATTARGETCOUNTS'])
 			self.flatminexptime = float(config['Setup']['FLATMINEXPTIME'])
 			self.flatmaxexptime = float(config['Setup']['FLATMAXEXPTIME'])
 			self.flatminsunalt = float(config['Setup']['FLATMINSUNALT'])
