@@ -14,6 +14,10 @@ else:
 base_directory = 'C:/minerva-control//'
 
 for p in psutil.process_iter():
+
+    print p
+    time.sleep(5)
+    
     try:
         print p.name()
         if p.name() == 'MaxIm_DL.exe':
@@ -44,4 +48,4 @@ for p in psutil.process_iter():
 # reboot computer
 os.system('shutdown -r -t 60')
 
-time.sleep(60)
+
