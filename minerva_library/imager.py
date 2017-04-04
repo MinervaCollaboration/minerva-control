@@ -42,7 +42,7 @@ class imager:
 	def load_config(self):
 
 #		try:
-		if True
+		if True:
                         # common to spectrograph detector and imaging camera
                         config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.ip = config['Setup']['SERVER_IP']
