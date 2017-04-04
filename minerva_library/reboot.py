@@ -23,7 +23,6 @@ for p in psutil.process_iter():
             print 'here'
             try:
                 # create a camera object
-                ipdb.set_trace()
                 camera = imager.imager(imager_config,base_directory)
                 # gracefully disconnect from the camera
                 camera.disconnect_camera()
