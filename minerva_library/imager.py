@@ -41,8 +41,7 @@ class imager:
 		
 	def load_config(self):
 
-#		try:
-		if True:
+		try:
                         # common to spectrograph detector and imaging camera
                         config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.ip = config['Setup']['SERVER_IP']
@@ -87,7 +86,7 @@ class imager:
 			# fau
 			self.fau = fau.fau(self.fau_config,self.base_directory)
 
-#		except:
+		except:
 			print('ERROR accessing config file: ' + self.config_file)
 			sys.exit()
 
