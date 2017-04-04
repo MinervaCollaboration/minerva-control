@@ -4,7 +4,7 @@ import ipdb
 
 computername = socket.gethostname()
 if computername == 'Minervared2-PC':
-    imagerconfig = 'imager_mred.ini'
+    imager_config = 'imager_mred.ini'
     telescope_config = 'telescope_mred.ini'
 else:
     telnum = socket.gethostname()[1]
