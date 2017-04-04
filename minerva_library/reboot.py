@@ -2,9 +2,15 @@ import imager, cdk700
 import os, socket, time, subprocess, psutil
 import ipdb
 
-telnum = socket.gethostname()[1]
-imager_config = 'imager_t' + telnum + '.ini'
-telescope_config = 'telescope_' + telnum + '.ini'
+computername = socket.gethostname()
+if computername == 'Minervared2-PC':
+    imagerconfig = 'imager_mred.ini'
+    telescope_config = 'telescope_mred.ini'
+else:
+    telnum = socket.gethostname()[1]
+    imager_config = 'imager_t' + telnum + '.ini'
+    telescope_config = 'telescope_' + telnum + '.ini'
+
 base_directory = 'C:/minerva-control//'
 
 for p in psutil.process_iter():
