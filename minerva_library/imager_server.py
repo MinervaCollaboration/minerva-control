@@ -184,11 +184,11 @@ class server:
 			param = param.split()
 			exptime = int(param[0])
 			exptype = int(param[1])
-			if len(param) == 3:
-				filter_num = int(param[2])
-				self.cam.Expose(exptime,exptype,filter_num)
-			else:
+			filter_num = int(param[2])
+			if filter_num == 'None':
 				self.cam.Expose(exptime,exptype)
+			else:
+				self.cam.Expose(exptime,exptype,filter_num)
 			return 'success'
 		except:
 			return 'fail'
