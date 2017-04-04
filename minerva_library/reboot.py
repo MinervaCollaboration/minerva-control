@@ -16,7 +16,6 @@ base_directory = 'C:/minerva-control//'
 for p in psutil.process_iter():
 
     print p
-    time.sleep(5)
     
     try:
         print p.name()
