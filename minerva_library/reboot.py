@@ -43,3 +43,5 @@ for p in psutil.process_iter():
 
 # reboot computer
 os.system('shutdown -r -t 60')
+
+time.sleep(60)
