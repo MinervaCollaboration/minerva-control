@@ -40,10 +40,10 @@ class imager:
 		self.set_temperature()
 		
 	def load_config(self):
-
 		try:
                         # common to spectrograph detector and imaging camera
                         config = ConfigObj(self.base_directory + '/config/' + self.config_file)
+
 			self.ip = config['Setup']['SERVER_IP']
 			self.port = int(config['Setup']['SERVER_PORT'])
 			self.logger_name = config['Setup']['LOGNAME']
@@ -86,7 +86,7 @@ class imager:
 			# fau
 			self.fau = fau.fau(self.fau_config,self.base_directory)
 
-		except:
+ 		except:
 			print('ERROR accessing config file: ' + self.config_file)
 			sys.exit()
 
@@ -367,12 +367,17 @@ class imager:
 		return False
 
 	#start exposure
-	def expose(self, exptime=1, exptype=0, filterInd=1,guider=False):
+	def expose(self, exptime=1, exptype=0, filterInd=None,guider=False):
 		self.logger.info('Starting exposure')
 		cmd = 'expose'
 		if guider: cmd += 'Guider'
 		cmd += " " + str(exptime)
-		if not guider: cmd += ' ' + str(exptype) + ' ' + str(filterInd)
+
+		if not guider:
+			if filterInd != None:
+				cmd += ' ' + str(exptype) + ' ' + str(filterInd)
+			else:
+				cmd += ' ' + str(exptype) + ' ' + str(filterInd)
 
 		if (self.send(cmd,30)).split()[0] == 'success': return True
 		else: return False
@@ -405,7 +410,7 @@ class imager:
 			return False
 
 	# returns file name of the image saved, return 'error' if error occurs
-	def take_image(self,exptime=1,filterInd='zp',objname = 'test' , fau=False):		
+	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False):		
 		telescope_name = 'T' + self.telnum + ': '
 #		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
@@ -420,21 +425,24 @@ class imager:
 			self.file_name = self.night + "." + self.telescope_name + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
 			exptype = 1
 		else: 
-			self.file_name = self.night + "." + self.telescope_name + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
+			if filterInd == None: self.file_name = self.night + "." + self.telescope_name + "." + objname + "." + str(ndx).zfill(4) + ".fits"
+			else: self.file_name = self.night + "." + self.telescope_name + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
 			# chose exposure type
 			if objname in self.exptypes.keys():
 				exptype = self.exptypes[objname] 
 			else: exptype = 1 # science exposure
 
 			# chose appropriate filter
-			if filterInd not in self.filters:
+			if filterInd != None and filterInd not in self.filters:
 				self.logger.error(telescope_name + "Requested filter (" + filterInd + ") not present")
 				self.file_name = ''
 				return 'error'
 
 		self.logger.info(telescope_name + 'start taking image: ' + self.file_name)
+		if filterInd != None: filt = filt = self.filters[filterInd]
+		else: filt = None
 		
-		if self.expose(exptime,exptype,self.filters[filterInd],guider=fau):
+		if self.expose(exptime,exptype,filt,guider=fau):
 			self.write_status()
 			time.sleep(exptime)
 			if self.save_image(self.file_name, fau=fau):
