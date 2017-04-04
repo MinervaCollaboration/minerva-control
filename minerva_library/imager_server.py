@@ -180,11 +180,16 @@ class server:
 			return 'fail'
 
 	def expose(self,param):
+		print '*********'
+		print param
+		print '*********'
+
 		try:
 			param = param.split()
 			exptime = int(param[0])
 			exptype = int(param[1])
 			filter_num = int(param[2])
+
 			if filter_num == 'None':
 				self.cam.Expose(exptime,exptype)
 			else:
