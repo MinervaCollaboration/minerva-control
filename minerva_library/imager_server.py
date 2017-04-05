@@ -7,6 +7,7 @@ import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, pyfi
 import atexit, win32api
 import utils
 import math
+import ao
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
