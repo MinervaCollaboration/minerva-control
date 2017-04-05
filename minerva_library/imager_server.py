@@ -32,8 +32,8 @@ class server:
                 self.maxim = None
 		self.connect_camera()
 
-		if socket.gethostname() == 't2-PC':
-			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
+#		if socket.gethostname() == 't2-PC':
+#			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
 		#XXX These do not work
 		#S Setup shut down procedures
 		#win32api.SetConsoleCtrlHandler(self.safe_close,True)

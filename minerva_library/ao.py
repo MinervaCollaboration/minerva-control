@@ -51,7 +51,7 @@ class ao:
         except:
             print('ERROR accessing config file: ' + self.config_file)
             sys.exit()
-            
+
         today = datetime.datetime.utcnow()
         if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                 today = today + datetime.timedelta(days=1)
