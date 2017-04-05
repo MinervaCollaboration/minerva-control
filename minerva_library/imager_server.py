@@ -30,6 +30,9 @@ class server:
 		self.cam = None
                 self.maxim = None
 		self.connect_camera()
+
+		if socket.gethostname() == 't2-PC':
+			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
 		#XXX These do not work
 		#S Setup shut down procedures
 		#win32api.SetConsoleCtrlHandler(self.safe_close,True)
@@ -435,6 +438,11 @@ class server:
 			response = self.getMode()
 		elif tokens[0] == 'isSuperSaturated':
 			response = self.isSuperSaturated()
+		elif tokens[0] == 'moveAO':
+			array = tokens[1].split(',')
+			response = self.ao.move(array[0],array[1])
+		elif tokens[0] == 'homeAO':
+			response = self.ao.home()
 		elif tokens[0] == 'remove':
 			response = self.remove()
 		elif tokens[0] == 'connect_camera':
