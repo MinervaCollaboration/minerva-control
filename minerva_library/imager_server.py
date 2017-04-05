@@ -186,7 +186,7 @@ class server:
 	def expose(self,param):
 		try:
 			param = param.split()
-			exptime = int(param[0])
+			exptime = float(param[0])
 			exptype = int(param[1])
 			filter_num = param[2]
 
