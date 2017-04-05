@@ -180,10 +180,6 @@ class server:
 			return 'fail'
 
 	def expose(self,param):
-		print '*********'
-		print param
-		print '*********'
-
 		try:
 			param = param.split()
 			exptime = int(param[0])
