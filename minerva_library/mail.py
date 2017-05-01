@@ -12,7 +12,7 @@ sys.dont_write_bytecode = True
 import os
 
 
-def send(subject,body,level='normal',attachments=[],logger=None):
+def send(subject,body,level='normal',attachments=[],logger=None,directory='directory.txt'):
 #	return
 	host = socket.gethostname()
 	if host == 'Main':
@@ -20,7 +20,7 @@ def send(subject,body,level='normal',attachments=[],logger=None):
         else:
                 credential_directory = 'C:/minerva-control/credentials/'
 	# read in the contacts directory (proprietary)
-	with open(credential_directory + 'directory.txt') as dirfile:
+	with open(credential_directory + directory) as dirfile:
 		directory = json.load(dirfile)
 
 	# filter recipients according to alert level, preferences

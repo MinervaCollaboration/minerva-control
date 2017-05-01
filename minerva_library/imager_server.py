@@ -7,6 +7,7 @@ import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, pyfi
 import atexit, win32api
 import utils
 import math
+import ao
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
@@ -30,6 +31,9 @@ class server:
 		self.cam = None
                 self.maxim = None
 		self.connect_camera()
+
+#		if socket.gethostname() == 't2-PC':
+#			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
 		#XXX These do not work
 		#S Setup shut down procedures
 		#win32api.SetConsoleCtrlHandler(self.safe_close,True)
@@ -180,13 +184,9 @@ class server:
 			return 'fail'
 
 	def expose(self,param):
-		print '*********'
-		print param
-		print '*********'
-
 		try:
 			param = param.split()
-			exptime = int(param[0])
+			exptime = float(param[0])
 			exptype = int(param[1])
 			filter_num = param[2]
 
@@ -439,6 +439,11 @@ class server:
 			response = self.getMode()
 		elif tokens[0] == 'isSuperSaturated':
 			response = self.isSuperSaturated()
+		elif tokens[0] == 'moveAO':
+			array = tokens[1].split(',')
+			response = self.ao.move(array[0],array[1])
+		elif tokens[0] == 'homeAO':
+			response = self.ao.home()
 		elif tokens[0] == 'remove':
 			response = self.remove()
 		elif tokens[0] == 'connect_camera':

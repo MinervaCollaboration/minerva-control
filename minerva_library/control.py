@@ -48,21 +48,30 @@ class control:
 	
 #============Initialize class===============#
 	#S The standard init
-	def __init__(self,config,base, red=False):#telescope_list=0,dome_control=1):
+	def __init__(self,config,base, red=False, south=False, directory=None):#telescope_list=0,dome_control=1):
+
 		self.config_file = config
 		self.base_directory = base
 		#S Only sets logger name right now
 		self.load_config()
+		self.red = red
+		self.south = south
+
+		if directory == None:
+			if self.red: self.directory = 'directory_red.txt'
+			elif self.south: self.directory = 'directory_south.txt'
+			else: self.directory = 'directory.txt'
+		else: self.directory=directory
 
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		
 		#S See below, lots of new objects created here. 
-		self.create_class_objects(red=red)
+		self.create_class_objects()
 		self.logger_lock = threading.Lock()
 		self.telcom_enable()
 		
 	#create class objects needed to control Minerva system
-	def create_class_objects(self,red=False, south=False):
+	def create_class_objects(self):
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
@@ -70,15 +79,15 @@ class control:
 		self.site = env.site('site_mtHopkins.ini',self.base_directory)
 		self.thermalenclosureemailsent = False
 
-		if red:
+		if self.red:
 #			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory)
 #			self.domes.append(astrohaven.astrohaven('astrohaven_1.ini',self.base_directory))
 			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory))
 			self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
-			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
+#			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mred.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mredrack.ini',self.base_directory))
-		elif south:
+		elif self.south:
 			pass
 		else:
 			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
@@ -573,7 +582,7 @@ class control:
 						    "5) Delete 'minerva-control/" + guideFile + "\n\n" + \
 						    "Love,\n" + \
 						    "MINERVA"
-						mail.send("PA error too large",body,level='serious')
+						mail.send("PA error too large",body,level='serious',directory=self.directory)
 			else:
 				if os.path.exists(guideFile):
 					self.logger.error(telescope_name + "PA in range, re-enabling guiding")
@@ -583,7 +592,7 @@ class control:
 						    "The PA error is within range again. Re-enabling guiding.\n\n" + \
 						    "Love,\n" + \
 						    "MINERVA"
-						mail.send("PA error fixed",body,level='serious')
+						mail.send("PA error fixed",body,level='serious',directory=self.directory)
 					                            
 			if dtheta > 600:
 				body =  "Dear benevolent humans,\n\n" + \
@@ -602,7 +611,7 @@ class control:
 				
 				try: self.logger.error(telescope_name + "Pointing error too large")
 				except: pass
-				if email: mail.send("Pointing error too large",body,level='serious')
+				if email: mail.send("Pointing error too large",body,level='serious',directory=self.directory)
 
 		else:
 			# insert keyword to indicated WCS failed
@@ -1139,7 +1148,7 @@ class control:
                        'wrong, and I could be stuck. Please investigate. \n\n'\
                        'Love,\nMINERVA'
                        
-                mail.send("The iodine stage is not moving.",body,level='serious')
+                mail.send("The iodine stage is not moving.",body,level='serious',directory=self.directory)
                 
                         
         #S Here is the general spectrograph equipment check function.
@@ -1609,7 +1618,7 @@ class control:
 			self.thermalenclosureemailsent = False
 		else:
 			if self.thermalenclosureemailsent:
-				mail.send("Thermal enclosure logging died","Please restart me! Note that you must be logged in as the temp users, not as minerva")
+				mail.send("Thermal enclosure logging died","Please restart me! Note that you must be logged in as the temp users, not as minerva",directory=self.directory)
 			self.thermalenclosureemailsent = True
 
 		# iodine temperature and set point
@@ -2312,7 +2321,7 @@ class control:
 								pass            
 				linenum = linenum + 1
 				if emailbody <> '':
-					if email: mail.send("Errors in target file: " + targetFile,emailbody,level='serious')
+					if email: mail.send("Errors in target file: " + targetFile,emailbody,level='serious',directory=self.directory)
 					return False
 		return True
 
@@ -2499,28 +2508,29 @@ class control:
 		self.imager_setDatapath(night,num)
 
 		# turn off both monitors
-                self.logger.info('Turning off monitors')
-                try: self.pdus[0].monitor.off()
-                except: self.logger.exception("Turning off monitor in aqawan 1 failed")
-                try: self.pdus[2].monitor.off()
-                except: self.logger.exception("Turning off monitor in aqawan 2 failed")
+#                self.logger.info('Turning off monitors')
+#                try: self.pdus[0].monitor.off()
+#                except: self.logger.exception("Turning off monitor in aqawan 1 failed")
+#                try: self.pdus[2].monitor.off()
+#                except: self.logger.exception("Turning off monitor in aqawan 2 failed")
 
 		# turn off shutter heaters
-                self.logger.info('Turning off shutter heaters')
-                try: self.pdus[0].heater.off()
-                except: self.logger.exception("Turning off heater 1 failed")
-                try: self.pdus[1].heater.off()
-                except: self.logger.exception("Turning off heater 2 failed")
-                try: self.pdus[2].heater.off()
-                except: self.logger.exception("Turning off heater 3 failed")
-                try: self.pdus[3].heater.off()
-                except: self.logger.exception("Turning off heater 4 failed")
+		if not self.red and not self.south:
+			self.logger.info('Turning off shutter heaters')
+			try: self.pdus[0].heater.off()
+			except: self.logger.exception("Turning off heater 1 failed")
+			try: self.pdus[1].heater.off()
+			except: self.logger.exception("Turning off heater 2 failed")
+			try: self.pdus[2].heater.off()
+			except: self.logger.exception("Turning off heater 3 failed")
+			try: self.pdus[3].heater.off()
+			except: self.logger.exception("Turning off heater 4 failed")
 
-		for aqawan in self.domes:
-			self.logger.info('Turning off lights in aqawan ' + str(aqawan.num))
-			aqawan.lights_off()
+			for aqawan in self.domes:
+				self.logger.info('Turning off lights in aqawan ' + str(aqawan.num))
+				aqawan.lights_off()
 
-		if email: mail.send('T' + str(num) + ' Starting observing','Love,\nMINERVA')
+		if email: mail.send('T' + str(num) + ' Starting observing','Love,\nMINERVA',directory=self.directory)
 		
 	def backup(self, num, night=None):
 		
@@ -2785,7 +2795,7 @@ class control:
 		if email: 
 			if num == 0: subject="MINERVA done observing"
 			else: subject = "T" + str(num) + ' done observing'
-			mail.send(subject,body,attachments=[weatherplotname,Pointing_plot_name,fits_plot_name])
+			mail.send(subject,body,attachments=[weatherplotname,Pointing_plot_name,fits_plot_name],directory=self.directory)
 
 		print body
 
@@ -2969,7 +2979,7 @@ class control:
 			    "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart this telescope thread only.\n\n" + \
 			    "Love,\n" + \
 			    "MINERVA"
-			mail.send("T" + str(telescope_num) + " thread died",body,level='serious')
+			mail.send("T" + str(telescope_num) + " thread died",body,level='serious',directory=self.directory)
 			sys.exit()
 	
 	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1,checkiftime=True):
@@ -3001,7 +3011,7 @@ class control:
 			    "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart 'main.py\n\n'" + \
                             "Love,\n" + \
                             "MINERVA"
-                        mail.send("specCalib thread died",body,level='serious')
+                        mail.send("specCalib thread died",body,level='serious',directory=self.directory)
                         sys.exit()
 
 	def observingScript_all(self):
