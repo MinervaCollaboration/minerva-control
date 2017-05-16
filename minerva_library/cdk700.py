@@ -72,7 +72,7 @@ class CDK700:
 		#S Get values from config_file
 		self.load_config()
 
-		self.num = self.logger_name[-1]
+		self.num = self.logger_name[-1]		
 
 		#S Set up logger
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
@@ -219,6 +219,7 @@ class CDK700:
 			self.guider = config['Setup']['GUIDER']
 			self.fau = config['Setup']['FAU']
 			self.logger_name = config['Setup']['LOGNAME']
+			self.id = config['Setup']['ID']
 			self.pdu_config = config['Setup']['PDU']
 			self.latitude = float(config['Setup']['LATITUDE'])
 			self.longitude = float(config['Setup']['LONGITUDE'])

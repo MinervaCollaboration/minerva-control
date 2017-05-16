@@ -25,7 +25,9 @@ def SetupTech(minerva, telescope, camera, telescope_num=0):
 
     if not telescope.initialize(tracking=False, derotate=False):
         telescope.recover(tracking=False, derotate=False)
-        
+
+
+    telescope.home()    
     #S Finally (re)park the telescope.
     telescope.park()     
 
@@ -377,7 +379,7 @@ def omniObserve(minerva, states):
             #state_index = state_ind
             
         minerva.logger.info('Beginning nightly loop')
-        remaining_time = (time_thresh - datetime.datetime.utcnow()).seconds
+        remaining_time = (time_thresh - datetime.datetime.utcnow()).total_seconds()
 #        while  time_thresh > datetime.datetime.utcnow():
         while remaining_time > 0.0:
             
@@ -391,7 +393,7 @@ def omniObserve(minerva, states):
             else:
                 # tell the dynamic scheduler the remaining time gap and free telescopes
                 RV_target =  minerva.scheduler.choose_target(remaining_time=remaining_time,logger=minerva.logger)#dynamicSched(rv_teles_num, remaining_time)
-
+                
                 # Figure out the error result for the dynamicSched function
                 if len(RV_target) > 0:
                     minerva.logger.info('Taking spectrum of ' + RV_target['name'])
@@ -404,6 +406,16 @@ def omniObserve(minerva, states):
                     threads[-1].name = 'RV_Obs'
                     threads[-1].start()
                     minerva.logger.info('RV thread is activated.')
+
+                    # tell the scheduler that we observed the target
+                    for ii,target in enumerate(minerva.scheduler.target_list):
+                        if target['name'] == RV_target['name']:
+                            if 'observed' in minerva.scheduler.target_list[ii].keys(): 
+                                minerva.scheduler.target_list[ii]['observed'] += 1
+                            else:
+                                minerva.scheduler.target_list[ii]['observed'] = 1
+                            break
+
                 else:
                     minerva.logger.info("The scheduler did not return any viable RV targets")
 
@@ -430,7 +442,7 @@ def omniObserve(minerva, states):
                 threads[p].join()
 
         
-            remaining_time = (time_thresh - datetime.datetime.utcnow()).seconds
+            remaining_time = (time_thresh - datetime.datetime.utcnow()).total_seconds()
 
     
     return
@@ -442,6 +454,7 @@ def omniObserve(minerva, states):
 
 if __name__ == '__main__':  # do a bunch of threading stuff
 
+    utils.killmain()
 
     base_directory = '/home/minerva/minerva-control'
     minerva = control.control('control.ini',base_directory)
@@ -600,7 +613,6 @@ if __name__ == '__main__':  # do a bunch of threading stuff
                         if target['starttime'] < target['endtime']:
                             p_targets.append( target )
                             # starttime and endtime only represent when the object is observable
-                                  
                              
                 #tel_p_targets['T'+tele.num].append( p_targets )
                 tel_p_targets['T'+tele.num] = p_targets

@@ -1,7 +1,6 @@
 # this file contains a set of generally useful utility functions for MINERVA operations
 import re
-import subprocess
-import os
+import subprocess, psutil, os, signal
 import pyfits
 import numpy as np
 import ephem
@@ -10,6 +9,24 @@ import ipdb
 import logging
 import unicodecsv
 
+
+# this kills main.py if running (use before runninging to ensure a clean start)
+def killmain(red=False,south=False):
+    for pid in psutil.pids():
+        p = psutil.Process(pid)
+        if p.name() == "python" and pid != os.getpid():
+            if len(p.cmdline()) > 1:
+                if (p.cmdline())[1] == 'main_mw_TV.py' or (p.cmdline())[1] == 'main.py' or (p.cmdline())[1] == 'daytimespec.py' :
+                    if len(p.cmdline()) == 3:
+                        if (p.cmdline())[2] == '--red' and red:
+                            # kill main.py --red
+                            os.kill(pid, signal.SIGKILL)
+                        elif (p.cmdline())[2] == '--south' and south:
+                            # kill main.py --south
+                            os.kill(pid, signal.SIGKILL)    
+                    else:
+                        # kill main.py
+                        os.kill(pid, signal.SIGKILL)    
 
 def dateobs2jd(dateobs):
     t0 = datetime.datetime(2000,1,1)

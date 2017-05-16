@@ -52,6 +52,7 @@ class aqawan:
 			self.PORT = config['Setup']['PORT']
 			self.logger_name = config['Setup']['LOGNAME']
 			self.num = config['Setup']['NUM']
+			self.id = config['Setup']['ID']
 			self.mailsent = False
 			self.estopmailsent = False
 		except:

@@ -21,6 +21,7 @@ from configobj import ConfigObj
 sys.dont_write_bytecode = True
 import copy
 
+
 #Minerva library dependency
 import env
 import aqawan
@@ -28,6 +29,7 @@ import cdk700
 import imager
 import fau
 import spectrograph
+import astrohaven
 import utils
 import pdu
 import mail
@@ -81,12 +83,13 @@ class control:
 
 		if self.red:
 #			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory)
-#			self.domes.append(astrohaven.astrohaven('astrohaven_1.ini',self.base_directory))
+			self.domes.append(astrohaven.astrohaven('astrohaven_red.ini',self.base_directory))
 			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory))
 			self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
 #			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mred.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mredrack.ini',self.base_directory))
+			print 'done connecting to everything'
 		elif self.south:
 			pass
 		else:
@@ -204,30 +207,13 @@ class control:
 #operate dome specified by num arguments
 #if no argument or num outside of array command all domes
 
-	def dome_open(self,num=0,day=False):
+	def dome_open(self,dome,day=False):
 
-		if num >= 1 and num <= len(self.domes):
-			if day: self.domes[num-1].open_shutter(1)
-			else: self.domes[num-1].open_both()
-		else:
-			threads = [None]*len(self.domes)
-			for t in range(len(self.domes)):
-				if t == 0:
-					kwargs={'reverse' : True}
-				elif t == 1:
-					kwargs={'reverse' : False}
-				if day:
-					threads[t] = threading.Thread(target = self.domes[t].open_shutter,args=[1,])
-				else:
-					threads[t] = threading.Thread(target = self.domes[t].open_both,kwargs=kwargs)
-				threads[t].name = 'A' + str(self.domes[t].num)
-				threads[t].start()
-			for t in range(len(self.domes)):
-				threads[t].join()
-		for t in self.domes:
-			if t.isOpen() == False:
-				return False
-		return True
+		reverse = (dome.id == 'aqawan1')
+
+		if day and dome.id != 'astrohaven1': dome.open_shutter(1)
+		else: dome.open_both(reverse)
+
 	def dome_close(self,num=0):
 		if num >= 1 and num <= len(self.domes):
 			self.domes[num-1].close_both()
@@ -1741,7 +1727,7 @@ class control:
 			else:
 				telstr = str(telnum)
 
-			if telnum < 1 or telnum > 4:
+			if telnum < 1 or telnum > 5:
 				self.logger.error("Invalid telescope number (" + str(telnum) + ")")
 				return f
 
@@ -1927,7 +1913,7 @@ class control:
 			else:
 				telstr = str(telnum)
 
-			if telnum < 1 or telnum > 4:
+			if telnum < 1 or telnum > 5:
 				self.logger.error("Invalid telescope number (" + str(telnum) + ")")
 				return f
 			else: 
@@ -1984,7 +1970,7 @@ class control:
 	def takeImage(self, target, telescope_num=0):
 		telescope_name = 'T' + str(telescope_num) +': '
 		#check camera number is valid
-		if telescope_num > len(self.telescopes) or telescope_num < 0:
+		if telescope_num > 5 or telescope_num < 0:
 			return 'error'
 		if telescope_num > 2:
 			dome = 2
@@ -1996,7 +1982,8 @@ class control:
 		camera.logger.info("starting imaging thread")
 
 		#start imaging process in a different thread
-		imaging_thread = threading.Thread(target = camera.take_image, args = (target['exptime'], target['filter'], target['name']))
+		kwargs = {"filterInd":target['filter'],'objname':target['name']}
+		imaging_thread = threading.Thread(target = camera.take_image, args = (target['exptime'],),kwargs=kwargs)
 		imaging_thread.name = 'T' + str(camera.telnum)
 		imaging_thread.start()
 		
@@ -2036,7 +2023,7 @@ class control:
 			biastarget['name'] = 'Bias'
 		else:
 			biastarget['name'] = objectName
-		biastarget['filter'] = 'V'
+		biastarget['filter'] = None
 		biastarget['exptime'] = 0
 		camera = utils.getCamera(self,telescope_num)
 		for x in range(num):
@@ -2051,7 +2038,7 @@ class control:
 		#S Need to build dictionary to get up to date with new takeimage
 		darktarget = {}
 		darktarget['name'] = 'Dark'
-		darktarget['filter'] = 'V'
+		darktarget['filter'] = None
 		darktarget
 		telescope_name = 'T' + str(telescope_num) +': '
 		objectName = 'Dark'
@@ -2074,7 +2061,7 @@ class control:
 		target['name']='SkyFlat'
 
 		telescope_name = 'T' + str(telescope_num) +': '
-		if telescope_num < 1 or telescope_num > 4:
+		if telescope_num < 1 or telescope_num > 5:
 			self.logger.error(telescope_name + 'invalid telescope index')
 			return
 
@@ -2332,7 +2319,7 @@ class control:
 
 		telescope_name = 'T' + str(telescope_num) +': '
 		
-		if telescope_num < 1 or telescope_num > 4:
+		if telescope_num < 1 or telescope_num > 5:
 			self.logger.error('invalid telescope index')
 			return
 
@@ -2817,8 +2804,8 @@ class control:
 		
 		telescope_name = 'T' + str(telescope_num) +': '
 
-		if telescope_num < 1 or telescope_num > 4:
-			self.logger.error(telescope_name + 'invalid telescope index')
+		if telescope_num < 1 or telescope_num > 5:
+			self.logger.error(telescope_name + 'invalid telescope index (' + str(telescope_num) + ')')
 			return
 		
 		#set up night's directory
@@ -2960,9 +2947,20 @@ class control:
 			while dome.isOpen() and (datetime.datetime.utcnow()-t0).total_seconds() < timeout:
 				self.logger.info(telescope_name + 'Waiting for dome to close')
 				time.sleep(60)
-				
+
+#########################################				
+			print "**********************************************"
+			print CalibInfo
+			print "**********************************************"
+########################################
 			self.doBias(CalibEndInfo['nbiasEnd'],telescope_num)
+			print "**********************************************"
+			print CalibInfo
+			print "**********************************************"
 			self.doDark(CalibEndInfo['ndarkEnd'], CalibInfo['darkexptime'],telescope_num)
+			print "**********************************************"
+			print CalibInfo
+			print "**********************************************"
 		
 		self.endNight(num=telescope_num, kiwispec=False)
 
@@ -3021,15 +3019,13 @@ class control:
 		with open(self.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
 			fh.write(str(datetime.datetime.utcnow()))
 
-
-
 		# python bug work around -- strptime not thread safe. Must call this once before starting threads
 		junk = datetime.datetime.strptime('2000-01-01 00:00:00','%Y-%m-%d %H:%M:%S')
 
 		threads = [None]*len(self.telescopes)
 		self.logger.info('Starting '+str(len(self.telescopes))+ ' telecopes.')
 		for t in range(len(self.telescopes)):
-			threads[t] = threading.Thread(target = self.observingScript_catch,args = (t+1,))
+			threads[t] = threading.Thread(target = self.observingScript_catch,args = (int(self.telescopes[t].num),))
 			threads[t].name = 'T' + str(self.telescopes[t].num)
 			threads[t].start()
 

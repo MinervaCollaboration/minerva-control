@@ -22,6 +22,7 @@ import time
 import subprocess
 import targetlist
 from configobj import ConfigObj
+import utils, env
 
 ###
 # SCHEDULER
@@ -55,6 +56,8 @@ class scheduler:
         # get the target list
         self.target_list = targetlist.mkdict()
         self.make_fixedBodies()
+
+        self.site = env.site('site_mtHopkins.ini',self.base_directory)
 
     def load_config(self):
         try:
@@ -112,7 +115,9 @@ class scheduler:
         # if no targets are observable, return an empty dictionary
         if self.target_list[0]['weight'] == -999: return {}
         
-        return self.target_list[0]
+        target = utils.truncate_observable_window(self.site, self.target_list[0])
+
+        return target
 
 
     def update_list(self,bstar=False,includeInactive=False):
@@ -134,7 +139,7 @@ class scheduler:
             
             if self.is_observable(target,max_exptime=remaining_time):
                 #S this is where you want to insert whatever weight function
-                target['weight'] = self.calc_weight(target)#,timeof=self.time)
+                target['weight'] = self.calc_weight_ha(target)#,timeof=self.time)
                 if logger != None: logger.debug(target['name'] + ' is has a weight of ' + str(target['weight']))
             else:
                 if logger != None: logger.debug(target['name'] + ' is not observable')
@@ -143,15 +148,19 @@ class scheduler:
 
     
 
-    def calc_weight(self,target,logger=None):
+    def calc_weight_ha(self,target,logger=None,time=None):
         """
         simple, just going to weight for current ha sort of
         weight = 1 - abs(HA/RA)
         """
-#        if target['observed']>0:
-#            return -1
+        if 'observed' in target.keys():
+            if target['observed']>2:
+                return -1
+
         # temp set the horizon for targets
-        self.obs.date = self.time
+        if time == None: time = datetime.datetime.utcnow()
+        
+        self.obs.date = time
         lst = math.degrees(self.obs.sidereal_time())/15.
         target['fixedbody'].compute(self.obs)
         return 1.-np.abs((lst-target['ra'])/12.)
@@ -166,7 +175,7 @@ class scheduler:
             target['fixedbody'].compute(self.obs)
 
         
-    def calc_weight1(self,target,timeof=None,obspath=None):
+    def calc_weight_multi(self,target,timeof=None,obspath=None):
 
         # need some sort of default for the obs path
         if obspath == None:

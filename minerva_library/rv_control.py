@@ -171,7 +171,7 @@ def doSpectra(minerva, target, tele_list, test=False):
     # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
     minerva.logger.info("Waiting for all telescopes to slew")
     t0 = datetime.datetime.utcnow()
-    slewTimeout = 600.0 # sometimes it needs to home as part of a recovery, give it time for that
+    slewTimeout = 660.0 # sometimes it needs to home as part of a recovery, give it time for that
     for thread in threads:
         elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
         thread.join(slewTimeout - elapsedTime)

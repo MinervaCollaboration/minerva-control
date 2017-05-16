@@ -100,7 +100,7 @@ class astrohaven:
                 status = ''
 
                 while self.ser.inWaiting() > 0: status = self.ser.read(1)
-                print status, direction, shutter
+                #print status, direction, shutter
                 if direction == 'open':
                     if shutter == 1 and status == 'x': break
                     elif shutter == 2 and status == 'y': break
@@ -139,21 +139,21 @@ class astrohaven:
                 
             self.ser.close()
          
-        def openshutter(self,shutter, desiredcounts = 20):
+        def open_shutter(self,shutter, desiredcounts = 20):
             self.nudgeshutter('open',shutter,desiredcounts=desiredcounts)
              
-        def closeshutter(self,shutter, desiredcounts = 20):
+        def close_shutter(self,shutter, desiredcounts = 20):
             self.nudgeshutter('close',shutter,desiredcounts=desiredcounts)
             # TODO: check pressure sensors
             # TODO: if not closed, send an email
                       
-        def open_both(self):
-            self.openshutter(1)
-            self.openshutter(2)
+        def open_both(self,reverse):
+            self.open_shutter(1)
+            self.open_shutter(2)
                              
         def close_both(self):
-           self.closeshutter(1)
-           self.closeshutter(2)   
+           self.close_shutter(1)
+           self.close_shutter(2)   
     
         def get_status(self):
             if self.status['Shutter1'] != 'UNKNOWN' and \
