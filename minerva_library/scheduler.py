@@ -50,9 +50,8 @@ class scheduler:
         self.sun.compute(self.obs)
         self.moon = ephem.Moon()
         self.moon.compute(self.obs)
+        self.obspath = self.base_directory + 'schedule/rvobshistory/'
         
-        # seconds between three obs
-        self.sep_limit = 120.*60.
         # get the target list
         self.target_list = targetlist.mkdict()
         self.make_fixedBodies()
@@ -102,11 +101,11 @@ class scheduler:
             print 'Something went wrong when sorting with ' + key
             return False
 
-    def choose_target(self,key='weight',remaining_time=86400.0, logger=None):
+    def choose_target(self,key='weight',remaining_time=86400.0, logger=None, timeof=None):
         #S we assume you need to update the weights of targets
         #S this calculates weghts for those targets which are currently 
         #S observable, using datetime.datetime.utcnow()
-        self.calculate_weights(remaining_time=remaining_time, logger=logger)
+        self.calculate_weights(remaining_time=remaining_time, logger=logger, timeof=timeof)
         #S next we sort the target list based on the weight key
         self.sort_target_list(key=key)
         #S now the highest weighted target is the first position of this list,
@@ -114,10 +113,11 @@ class scheduler:
 
         # if no targets are observable, return an empty dictionary
         if self.target_list[0]['weight'] == -999: return {}
-        
-        target = utils.truncate_observable_window(self.site, self.target_list[0])
+ 
+        # this is done within calculate_weights (right?)
+#        target = utils.truncate_observable_window(self.site, self.target_list[0])
 
-        return target
+        return self.target_list[0]
 
 
     def update_list(self,bstar=False,includeInactive=False):
@@ -130,25 +130,42 @@ class scheduler:
             #S Placeholder for logger
             pass
         
-
-    def calculate_weights(self, tels=None, remaining_time=86400.0, logger=None):
+    def calculate_weights(self, tels=None, remaining_time=86400.0, logger=None, timeof=None):
         #S need to update weights for all the targets in the list.
         #S going to use simple HA weighting for now.
+        if timeof == None: timeof = datetime.datetime.utcnow()
+
         for target in self.target_list:
-#            print target
-            
-            if self.is_observable(target,max_exptime=remaining_time):
+
+            target = utils.truncate_observable_window(self.site, target,timeof=timeof)
+            print target['name'], target['starttime'], target['endtime'], timeof,  target['exptime']
+
+            # if the target is observable
+            if (target['starttime'] <= timeof) and (target['endtime'] >= (timeof + datetime.timedelta(seconds=target['exptime'][0]))):
+#            if self.is_observable(target,max_exptime=remaining_time,logger=logger,timeof=timeof):
                 #S this is where you want to insert whatever weight function
-                target['weight'] = self.calc_weight_ha(target)#,timeof=self.time)
-                if logger != None: logger.debug(target['name'] + ' is has a weight of ' + str(target['weight']))
+
+#                target['weight'] = self.calc_weight_ha(target,timeof=timeof)*target['priority']
+                target['weight'] = self.calc_weight_multi(target,timeof=timeof)*target['priority']
+                if logger != None: 
+                    logger.debug(target['name'] + ' is has a weight of ' + str(target['weight']))
+                else:
+                    print target['name'] + ' is has a weight of ' + str(target['weight'])
+
             else:
-                if logger != None: logger.debug(target['name'] + ' is not observable')
+                if logger != None: 
+                    logger.debug(target['name'] + ' is not observable')
+                else:
+                    print target['name'] + ' is not observable'
+                    
                 target['weight'] = -999
+                
+
         #pass
 
     
 
-    def calc_weight_ha(self,target,logger=None,time=None):
+    def calc_weight_ha(self,target,logger=None,timeof=None):
         """
         simple, just going to weight for current ha sort of
         weight = 1 - abs(HA/RA)
@@ -158,9 +175,10 @@ class scheduler:
                 return -1
 
         # temp set the horizon for targets
-        if time == None: time = datetime.datetime.utcnow()
-        
-        self.obs.date = time
+        if timeof == None: timeof = datetime.datetime.utcnow()
+        if logger != None: logger.info("Scheduler time is " + str(timeof))
+
+        self.obs.date = timeof
         lst = math.degrees(self.obs.sidereal_time())/15.
         target['fixedbody'].compute(self.obs)
         return 1.-np.abs((lst-target['ra'])/12.)
@@ -178,32 +196,30 @@ class scheduler:
     def calc_weight_multi(self,target,timeof=None,obspath=None):
 
         # need some sort of default for the obs path
-        if obspath == None:
-            obspath = self.sim_path
+#        if obspath == None:
+#            obspath = self.sim_path
 
-        # if now timeof provided, use current utc
+        # if timeof not provided, use current utc
         if timeof == None:
             timeof = datetime.datetime.utcnow()
 
         #S if the target was observed less than the separation time limit
         #S between observations, then we give it an 'unobservable' weight.
         # just comment out if you want a random start time
-#        self.start_ha = -self.sep_limit/3600.
+#        self.start_ha = -self.seplimit/3600.
         try:
-            if (timeof-target['last_obs'][-1][0]).total_seconds()<\
-                    self.sep_limit:
+            if (timeof-target['last_obs'][-1][0]).total_seconds() < target['seplimit']:
                 return -1.
         except:
             ipdb.set_trace()
-                
 
         if target['observed']>3:
             return -1.
 
-        cad_weight = 0.
+        cad_weight = 0.0
         try:
             
- #           if os.stat(obspath+target['name']+'.txt'):
+#            if os.stat(obspath+target['name']+'.txt'):
 #                obs_hist = self.get_obs_history(target,simpath=obspath)
             
                 cad_weight = 0.
@@ -233,17 +249,16 @@ class scheduler:
             #S observation will always be prioritized.
             threeobs_weight=np.min(\
                 [2.,1.+((timeof-target['last_obs'][-1][0]).total_seconds()-\
-                            -self.sep_limit)/self.sep_limit])
+                            -target['seplimit'])/target['seplimit']])
 
         #S weight for the third observation of a three obs run, but note that
         #S there is no cap on this one.
         elif target['observed']%3 == 2:
             threeobs_weight=2.+\
                 ((timeof-target['last_obs'][-1][0]).total_seconds()-\
-                     self.sep_limit)/self.sep_limit
+                     target['seplimit'])/target['seplimit']
 
         return threeobs_weight+cad_weight
-            
             
     def prep_night(self,timeof=None,init_run=False):
         """
@@ -284,42 +299,81 @@ class scheduler:
         # reset to sun horizon
         self.obs.horizon = str(self.sun_horizon)
                 
-        
-    def get_obs_history(self,target,prev_obs=1,simpath=None):
-        if simpath == None:
-            simpath = self.sim_path
+    def get_obs_history(self,target,prev_obs=1,obspath=None):
+        if obspath == None:
+            obspath = self.obspath
         # a function that 'tail's a target file to get the last prev_obs and
         # places the details in a list?
         # add a line for the empty one at the end of a file?
-        target_file = simpath+target['name']+'.txt'
-        raw_obs=\
-            subprocess.check_output(['tail','-n',str(prev_obs),target_file])
-        obs_lines = raw_obs.split('\n')[:-1]
-        obs_list = []
-        for line in obs_lines:
-            try:
-                line = line.split('\t')
-                line[0] = datetime.datetime.strptime(line[0],self.dt_fmt)
-                line[1] = datetime.datetime.strptime(line[1],self.dt_fmt)
-                line[2] = float(line[2])
-                line[3] = float(line[3])
-                line[4] = float(line[4])
-                obs_list.append(line)
-            except:
-                # so it doesn't try and parse the header
-                pass
-        if obs_list is []:
-            ipdb.set_trace()
+
+        # TODO: update from spectrograph.take_image
+        target_file = obspath+target['name']+'.txt'
+        if os.path.exists(target_file):
+            raw_obs=\
+                subprocess.check_output(['tail','-n',str(prev_obs),target_file])
+            obs_lines = raw_obs.split('\n')[:-1]
+            obs_list = []
+            for line in obs_lines:
+                try:
+                    line = line.split('\t')
+                    line[0] = datetime.datetime.strptime(line[0],self.dt_fmt) # start time of exposure
+                    line[1] = datetime.datetime.strptime(line[1],self.dt_fmt) # end time of exposure
+                    line[2] = float(line[2]) # duration in seconds of exposure
+                    line[3] = float(line[3]) # altitude (degrees)
+                    line[4] = float(line[4]) # azimuth (degrees)
+                #                line[5] = float(line[5]) # quality flag
+                    obs_list.append(line)
+                except:
+                    # so it doesn't try and parse the header
+                    pass
+            if obs_list is []:
+                ipdb.set_trace()
+        else:
+            # default to observed a long time ago
+            obs_list = [datetime.datetime(2000,1,1,0,0,0),datetime.datetime(2000,1,1,0,0,59),59,80,0,1]
+
         return obs_list
 
+    def record_observation(self,target,telescopes=None):
+        obs_start = self.time
+        exptime = self.calc_exptime(target)
+        obs_end = self.time + datetime.timedelta(minutes=exptime)
+        duration = (obs_end-obs_start).total_seconds()
+        try: os.stat(self.sim_path+target['name']+'.txt')
+        except: self.write_target_file(target)
+        self.scheduler.obs.date=self.time
+        # the observation 'quality', or whether it was a good observation or 
+        # not (1 is good, 0 is unusable)
+        obs_quality = 1
+        target['fixedbody'].compute(self.scheduler.obs)
+        alt = target['fixedbody'].alt
+        azm = target['fixedbody'].az
+#        if target['fixedbody'].alt < 0:
+#            ipdb.set_trace()
+        with open(self.sim_path+target['name']+'.txt','a') as target_file:
+            obs_string = obs_start.strftime(self.dt_fmt)+'\t'+\
+                obs_end.strftime(self.dt_fmt)+'\t'+\
+                '%08.2f'%duration+'\t'+\
+                '%06.2f'%math.degrees(alt)+'\t'+\
+                '%07.2f'%math.degrees(azm)+' \t '+\
+                '%i'%obs_quality+\
+                '\n'         
+            print(target['name']+': '+obs_string)
+            target_file.write(obs_string)
+        obs_list = [obs_start,obs_end,duration,alt,azm,obs_quality]
+        target['last_obs'].append(obs_list)
+        pass
+
     def is_observable(self,target,timeof=None,max_exptime=86400.0, logger=None):
-        if logger != None: self.logger.info("Checking observability of " + target['name'])
-#        print("Checking observability of " + target['name'])
 
         # if the timeof obs is not provided, use the schedulers clock for the 
         # time. this could cause issues, need to keep an eye on it
         if timeof == None:
             timeof=datetime.datetime.utcnow()
+
+        if logger != None: self.logger.info("Checking observability of " + target['name'] + " at " + str(timeof))
+#        print("Checking observability of " + target['name'])
+
         #S want to make sure taget is a legal candidate. this includes avoiding
         #S targets who:
         #S   - have not risen
