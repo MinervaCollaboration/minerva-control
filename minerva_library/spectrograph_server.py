@@ -56,6 +56,9 @@ class server:
                 # turn on cell heater to maintain temperature stablility
                 self.cell_heater_on()
 
+                self.nspecfail = 0
+                self.lastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+
                 #S Set up closing procedures
                 win32api.SetConsoleCtrlHandler(self.safe_close,True)
                 atexit.register(self.safe_close,'signal_arguement')
@@ -1153,7 +1156,7 @@ class server:
                                 now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
                                 response = self.get_spec_pressure()
                                 if response <> 'fail':
-                                        specpres = response.split()[1]
+                                        specpres = float(response.split()[1])
                                         fh.write('%s,%s\n'%(now,specpres))
 					self.nfailspec = 0 
 				else:
@@ -1165,7 +1168,7 @@ class server:
                                 now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
                                 response = self.get_pump_pressure()
                                 if response <> 'fail':
-                                        pumppres = response.split()[1]
+                                        pumppres = float(response.split()[1])
                                         fh.write('%s,%s\n'%(now,pumppres))
 					self.nfailpump = 0 
 				else: 
@@ -1173,46 +1176,67 @@ class server:
 					self.nfailpump += 1
 
 			# get the status of each port
-			ventvalveopen = self.benchpdu.ventvalve.status()
-			if ventvalveopen: ventvalvetxt = "open"
-			else: ventvalvetxt = "closed"
+        		try:
+                                ventvalveopen = self.benchpdu.ventvalve.status()
+        			if ventvalveopen: ventvalvetxt = "open"
+                		else: ventvalvetxt = "closed"
+                        except:
+                                ventvalveopen = "unknown"
+        			ventvalvetxt = "unknown"
+                		
+                        try:
+        			pumpvalveopen = self.benchpdu.pumpvalve.status()
+                		if pumpvalveopen: pumpvalvetxt = "open"
+                        	else: pumpvalvetxt = "closed"
+                        except:
+                                pumpvalveopen = "unknown"
+        			pumpvalvetxt = "unknown"
 
-			pumpvalveopen = self.benchpdu.pumpvalve.status()
-			if pumpvalveopen: pumpvalvetxt = "open"
-			else: pumpvalvetxt = "closed"
+                        try:        
+                                pumpon = self.controlroompdu.pump.status()
+                		if pumpon: pumptxt = 'on'
+        			else: pumptxt = 'off'
+                        except:
+                                pumpon = "unknown"
+                                pumptxt = 'unknown'
 
-			pumpon = self.controlroompdu.pump.status()
-			if pumpon: pumptxt = 'on'
-			else: pumptxt = 'off'
-
-			compressoron = self.controlroompdu.compressor.status()
-			if compressoron: compressortxt = 'on'
-			else: compressortxt = 'off'
-
+                        try:
+        			compressoron = self.controlroompdu.compressor.status()
+                		if compressoron: compressortxt = 'on'
+                        	else: compressortxt = 'off'
+                        except:
+                                compressoron = "unknown"
+                                compressortxt = "unknown"
 
 			# Catch potential failure modes
 			# spectrograph pressure gauge failed
 			if specpres == 'UNKNOWN':
 				self.logger.error('The spectograph gauge has failed to read ' + str(self.nfailspec) + ' consecutive times')
-				if self.nfailspec > 3 and (self.lastemailed - datetime.datetime.utcnow()).total_seconds() > 86400:
+				if self.nfailspec > 3 and (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
 					mail.send("Spectrograph pressure gauge failed?",
 						  "Dear Benevolent Humans,\n\n"+
 						  "The spectrograph pressure gauge has failed to return a value 3\n"+
 						  "consecutive times. Please investigate.\n\n"
 						  "Love,\nMINERVA",level="serious")
-					self.lastemailed = dateetime.datetime.utcnow()
+					self.lastemailed = datetime.datetime.utcnow()
 			elif not compressoron:
 				self.logger.error('The air compressor is off.')
-				if (self.lastemailed - datetime.datetime.utcnow()).total_seconds() > 86400:
+				if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
 					mail.send("Air compressor failed?",
 						  "Dear Benevolent Humans,\n\n"+
 						  "The air compressor is off. It is required to control the vacuum valves " + 
 						  "and stabilize the optical bench. Please investigate immediately.\n\n"+
 						  "Love,\nMINERVA",level="serious")
-					self.lastemailed = dateetime.datetime.utcnow()
-			elif specpres > 3.0:
+					self.lastemailed = datetime.datetime.utcnow()
+			elif specpres > 0.003:
 				self.logger.error("the spectrograph pressure is out of range")
-				if pumppres != 'UNKNOWN' and pumppres < 3.0 and pumpon and (not ventvalveopen) and pumpvalveopen:
+				self.logger.info("The pump pressure is " + str(pumppres) + " mbar")
+                                self.logger.info("The spectrograph pressure is " + str(specpres) + " mbar")
+				self.logger.info("The compressor is " + compressortxt)
+				self.logger.info("The vacuum pump is " + pumptxt)
+				self.logger.info("The vent valve is " + ventvalvetxt)
+				self.logger.info("The pump valve is " + pumpvalvetxt)
+				if pumppres != 'UNKNOWN' and pumppres < 0.003 and pumpon and (not ventvalveopen) and pumpvalveopen:
 					# 1) a power outage closed the pump valve and the leak rate 
 					# caused it to slowly come back up slowly (bad, but not terrible)
 					# diagnosis:
@@ -1224,15 +1248,15 @@ class server:
 					# action:
 					# email only asking user to open the pump valve after confirmation of situation (serious)
 					# too risky to automate
-					if (self.lastemailed - datetime.datetime.utcnow()).total_seconds() > 86400:
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
 						mail.send("Spectrograph pressure out of range!",
 							  "Dear Benevolent Humans,\n\n"+
-							  "The spectrograph pressure (" + str(specpres) + " ubar) is out of range. " +
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range. " +
 							  "While this could be a catastrophic and unplanned venting that could " + 
 							  "damage the spectrograph and should be investigated immediately, this " +
 							  "is usually caused by a power outage that closed the pump valve.\n\n."
-							  "The pump pressure is " + str(pumppres) + " ubar\n"+
-							  "The spectrograph pressure is " + str(specpres) + "ubar\n"+
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
 							  "The compressor is " + compressortxt + '\n'+
 							  "The vacuum pump is " + pumptxt + '\n'+
 							  "The vent valve is " + ventvalvetxt + '\n'+
@@ -1246,7 +1270,7 @@ class server:
 							  "The spectrograph pressure is currently unstable and our RV precision will suffer until this is addressed.\n\n"
 							  "Love,\nMINERVA",level="serious")
 						self.lastemailed = datetime.datetime.utcnow()
-				elif pumppres != 'UNKOWN' and pumppres > 3.0 and pumpvalveopen:
+				elif (pumppres != 'UNKOWN') and (pumppres > 3) and pumpvalveopen:
 					# 2) the pump failed and it's venting through the pump (very bad)
 					#    spec pressure > 3
 					#    pump pressure > 3
@@ -1257,24 +1281,25 @@ class server:
 					# Close pump valve immediately
 					# Turn off pump?
 					# Email asking user to investigate (critical)
-					self.benchpdu.pumpvalve.off()
-					if (self.lastemailed - datetime.datetime.utcnow()).total_seconds() > 86400:
+					try: self.benchpdu.pumpvalve.off()
+                                        except: pass
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
 						mail.send("Spectrograph vacuum failure!!!",
 							  "Dear Benevolent Humans,\n\n"+
-							  "The spectrograph pressure (" + str(specpres) + " ubar) is out of range " +
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range " +
 							  "and the pump valve is open. This probably means THE PUMP HAS FAILED " + 
 							  "CATASTROPHICALLY AND DAMAGE TO THE SPECTOGRAPH COULD OCCUR! " + 
 							  "I have closed the pump valve, but this should be investigated in " + 
 							  "person and remotely as soon as possible.\n\n"
-							  "The pump pressure is " + str(pumppres) + " ubar\n"+
-							  "The spectrograph pressure is " + str(specpres) + "ubar\n"+
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
 							  "The compressor is " + compressortxt + '\n'+
 							  "The vacuum pump is " + pumptxt + '\n'+
 							  "The vent valve is " + ventvalvetxt + '\n'+
 							  "The pump valve is " + pumpvalvetxt + '\n\n'+
 							  "Love,\nMINERVA",level="critical")
 						self.lastemailed = datetime.datetime.utcnow()
-				elif pumppres != 'UNKNOWN' and pumppres > 3.0 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
+				elif pumppres != 'UNKNOWN' and pumppres > 0.003 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
 					# 3) we intentionally vented the spectrograph (probably fine as this is intentional)
 					#    spec pressure > 3
 					#    pump pressure > 3
@@ -1283,15 +1308,15 @@ class server:
 					#    pump valve closed
 					# action:
 					# Email just in case venting was not intentional (serious)
-					if (self.lastemailed - datetime.datetime.utcnow()).total_seconds() > 86400:
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
 						mail.send("Spectrograph intentionally venting?",
 							  "Dear Benevolent Humans,\n\n"+
-							  "The spectrograph pressure (" + str(specpres) + " ubar) is out of range, " +
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range, " +
 							  "but the vent valve is open, the pump is off, and the pump valve is closed, "+
 							  "which means the spectrograph is likely being vented intentionally. "+
 							  "If that is not the case, immediate investigation is required.\n\n"
-							  "The pump pressure is " + str(pumppres) + " ubar\n"+
-							  "The spectrograph pressure is " + str(specpres) + "ubar\n"+
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
 							  "The compressor is " + compressortxt + '\n'+
 							  "The vacuum pump is " + pumptxt + '\n'+
 							  "The vent valve is " + ventvalvetxt + '\n'+
@@ -1307,17 +1332,16 @@ class server:
 					# close vent valve
 					# turn off pump?
 					# email asking user to investigate (critical)
-					self.benchpdu.pumpvalve.off()
-					self.benchpdu.ventvalve.off()
-					if (self.lastemailed - datetime.datetime.utcnow()).total_seconds() > 86400:				
+					#self.benchpdu.pumpvalve.off()
+					#self.benchpdu.ventvalve.off()
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:				
 						mail.send("Spectrograph pressure in unknown state!!!",
 							  "Dear Benevolent Humans,\n\n"+
-							  "The spectrograph pressure (" + str(specpres) + " ubar) is out of range, " +
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range, " +
 							  "and I'm not sure what's going on. It could be a catastrophic problem. "+
-							  "I have closed the vent and pump valves, but you need to investigate "+
-							  "immediately. SERIOUS DAMAGE IS POSSIBLE.\n\n"
-							  "The pump pressure is " + str(pumppres) + " ubar\n"+
-							  "The spectrograph pressure is " + str(specpres) + "ubar\n"+
+							  "You need to investigate immediately. SERIOUS DAMAGE IS POSSIBLE.\n\n"
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
 							  "The compressor is " + compressortxt + '\n'+
 							  "The vacuum pump is " + pumptxt + '\n'+
 							  "The vent valve is " + ventvalvetxt + '\n'+
