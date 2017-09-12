@@ -11,7 +11,7 @@ import should_be_open
 hopkins = ephem.Observer()
 hopkins.lon='-110:52:44.6'
 hopkins.lat='31:40:49.4'
-hopkins.elevation=2345.
+hopkins.elevation= 2345.
 
 dome=Dispatch("ascom.astrohavenpw.dome")
 dome.Connected=True

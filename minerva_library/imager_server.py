@@ -224,8 +224,14 @@ class server:
 				return 'success'				
                         else:
                                 time.sleep(0.2) # wait for the image to start
-        			while (not self.cam.ImageReady) and (self.cam.CameraStatus <> 2):
+                		print self.cam.ImageReady, self.cam.CameraStatus
+                                t0 = datetime.datetime.utcnow()
+                                timeElapsed = 0.0
+                                timeout = 30
+        			while ((not self.cam.ImageReady) or (self.cam.CameraStatus <> 2)) and (timeElapsed < timeout):
                 			time.sleep(0.1)
+                			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()
+                		print self.cam.ImageReady, self.cam.CameraStatus
                                 self.logger.info('saving image to:' + file_name)
         			self.file_name = self.data_path + '\\' + file_name
                                 try:
