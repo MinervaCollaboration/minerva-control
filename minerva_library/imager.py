@@ -374,10 +374,7 @@ class imager:
 		cmd += " " + str(exptime)
 
 		if not guider:
-			if filterInd != None:
-				cmd += ' ' + str(exptype) + ' ' + str(filterInd)
-			else:
-				cmd += ' ' + str(exptype) #+ ' ' + str(filterInd)
+			cmd += ' ' + str(exptype) + ' ' + str(filterInd)
 
 		self.logger.info("sending command:" + cmd)
 		if (self.send(cmd,30)).split()[0] == 'success': return True

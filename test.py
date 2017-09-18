@@ -48,7 +48,8 @@ if __name__ == '__main__':
 #	minerva.endNight(num=3,email=False,kiwispec=False)
 
 #	newauto.autofocus(minerva,1)
-	
+	minerva.scheduler.choose_target(remaining_time=22700,logger=minerva.logger,timeof=datetime.datetime.utcnow())
+
 	ipdb.set_trace()
 #	ipdb.set_trace()
 

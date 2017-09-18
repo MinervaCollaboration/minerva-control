@@ -16,7 +16,7 @@ def killmain(red=False,south=False):
         p = psutil.Process(pid)
         if p.name() == "python" and pid != os.getpid():
             if len(p.cmdline()) > 1:
-                if (p.cmdline())[1] == 'main_mw_TV.py' or (p.cmdline())[1] == 'main.py' or (p.cmdline())[1] == 'daytimespec.py' :
+                if (p.cmdline())[1] == 'mainNew.py' or (p.cmdline())[1] == 'main.py' or (p.cmdline())[1] == 'daytimespec.py' :
                     if len(p.cmdline()) == 3:
                         if (p.cmdline())[2] == '--red' and red:
                             # kill main.py --red
@@ -83,10 +83,10 @@ def brightStars(filename='bsc.csv',path='/home/minerva/minerva-control/dependenc
     return brightstars
 
 # gets the telescope object (by reference) corresponding to a particular telescope number
-def getTelescope(minerva, telnum):
+def getTelescope(minerva, telid):
 
     for telescope in minerva.telescopes:
-        if telescope.num == str(telnum):
+        if telescope.num == str(telid) or telescope.id == str(telid):
             return telescope
     return False
 
@@ -101,6 +101,11 @@ def getCamera(minerva, telnum):
 # gets the dome object (by reference) corresponding to a particular telescope number
 def getDome(minerva, telnum):
     
+    # this is a hack and should be done better
+    if telnum == 5: 
+        dome = minerva.domes[0]
+        return dome
+
     if float(telnum) < 1:
         return False
     elif float(telnum) <= 2:
@@ -161,10 +166,25 @@ def setup_logger(base_dir, night, logger_name):
 
 # Truncates target['starttime'] and target['endtime'] to ensure 
 # the object is observable (Sun below sunalt and target above horizon)
-def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0):
+def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0,timeof=None):
 
-    sunset = site.sunset(horizon=sunalt)
-    sunrise = site.sunrise(horizon=sunalt)
+    if timeof == None: timeof = datetime.datetime.utcnow()
+
+    sunset = site.sunset(horizon=sunalt, start=timeof)
+    sunrise = site.sunrise(horizon=sunalt, start=timeof)
+
+    if sunrise < timeof:
+        sunrise = site.sunrise(horizon=sunalt, start=timeof + datetime.timedelta(days=1))
+        sunset = site.sunset(horizon=sunalt, start=timeof + datetime.timedelta(days=1))
+
+    if sunset > sunrise: sunset = site.sunset(horizon=sunalt, start=timeof - datetime.timedelta(days=1))
+
+    # if the chosen start/end time is outside of night time, correct it
+    if target['starttime'] < sunset or target['starttime'] > sunrise:
+        target['starttime'] = sunset
+
+    if target['endtime'] < sunset or target['endtime'] > sunrise:
+        target['endtime'] = sunrise
 
     starttime = max(sunset,target['starttime'])
     endtime = min(sunrise,target['endtime'])
@@ -175,9 +195,8 @@ def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0):
     body._ra = ephem.hours(str(target['ra']))
     body._dec = ephem.degrees(str(target['dec']))
 
-
     #S UTC vs local time not right for epoch, but not significant
-    body._epoch = datetime.datetime.utcnow()
+    body._epoch = timeof#datetime.datetime.utcnow()
     body.compute()
 
     # calculate the object's rise time

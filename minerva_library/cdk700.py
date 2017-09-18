@@ -1312,6 +1312,7 @@ class CDK700:
 		else:
 			self.logger.error('Slew failed to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 			self.recover(tracking=tracking, derotate=derotate)
+			self.m3port_switch(m3port,force=True)
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			return self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
 
@@ -1452,8 +1453,11 @@ class CDK700:
 	#S w cna probablyt set tis to be only for t2, but just a quick edit, sorry
 	#TODO work on real timout
 	def home(self, timeout=600):#420.0):
+		
+		# make sure it's not homing in another thread first (JDE 2017-06-09)
+		telescopeStatus = self.getStatus()
+		if not telescopeStatus.mount.is_finding_home == 'True': self.mountHome()
 
-		self.mountHome()
 		time.sleep(5.0)
 		telescopeStatus = self.getStatus()
 		t0 = datetime.datetime.utcnow()

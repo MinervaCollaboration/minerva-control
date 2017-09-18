@@ -1236,7 +1236,27 @@ class server:
 				self.logger.info("The vacuum pump is " + pumptxt)
 				self.logger.info("The vent valve is " + ventvalvetxt)
 				self.logger.info("The pump valve is " + pumpvalvetxt)
-				if pumppres != 'UNKNOWN' and pumppres < 0.003 and pumpon and (not ventvalveopen) and pumpvalveopen:
+
+				if pumppres != 'UNKNOWN' and pumppres < specpres and pumpon and (not ventvalveopen) and pumpvalveopen:
+					# 0) pumping down after venting
+					# diagnosis:
+					#    spec pressure > 0.003
+					#    pump pressure < spec pressure 
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
+						mail.send("Spectrograph pressure out of range!",
+							  "Dear Benevolent Humans,\n\n"+
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range. " +
+							  "I believe I am just pumping down after being vented and no action is required. "+
+							  "If that is not the case, this should be investigated immediately.\n\n."
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
+							  "The compressor is " + compressortxt + '\n'+
+							  "The vacuum pump is " + pumptxt + '\n'+
+							  "The vent valve is " + ventvalvetxt + '\n'+
+							  "The pump valve is " + pumpvalvetxt + '\n\n'+
+							  "Love,\nMINERVA",level="serious")
+						self.lastemailed = datetime.datetime.utcnow()
+				elif pumppres != 'UNKNOWN' and pumppres < 0.003 and pumpon and (not ventvalveopen) and pumpvalveopen:
 					# 1) a power outage closed the pump valve and the leak rate 
 					# caused it to slowly come back up slowly (bad, but not terrible)
 					# diagnosis:

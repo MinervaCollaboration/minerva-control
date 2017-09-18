@@ -57,7 +57,7 @@ def plotweather(minerva,night=None):
                             value = float(line.split('=')[-1].strip())
                             weatherstats[key]['values'].append((time,value))
                         except: pass
-                if re.search('DEBUG: A.: Enclosure ',line):
+                if re.search('DEBUG: aqawan.: Enclosure ',line):
                     try: time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S")
                     except: time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S.%f")
                     domex.append(time)

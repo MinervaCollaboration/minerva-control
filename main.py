@@ -7,7 +7,7 @@ sys.dont_write_bytecode = True
 from minerva_library import control
 from minerva_library import rv_control
 import datetime
-import argparse
+import argparse, ipdb
 
 if __name__ == '__main__':
 
@@ -23,8 +23,14 @@ if __name__ == '__main__':
 
 	#### don't want this if it starts in the middle of the night***********###
 	if datetime.datetime.utcnow().hour < 2 or datetime.datetime.utcnow().hour > 20:
-		if os.path.exists('minerva_library/aqawan1.request.txt'): os.remove('minerva_library/aqawan1.request.txt')
-		if os.path.exists('minerva_library/aqawan2.request.txt'): os.remove('minerva_library/aqawan2.request.txt')
+		if opt.red:
+			if os.path.exists('minerva_library/astrohaven1.request.txt'): 
+				os.remove('minerva_library/astrohaven1.request.txt')
+		else:
+			if os.path.exists('minerva_library/aqawan1.request.txt'): 
+				os.remove('minerva_library/aqawan1.request.txt')
+			if os.path.exists('minerva_library/aqawan2.request.txt'): 
+				os.remove('minerva_library/aqawan2.request.txt')
 
 	minerva = control.control('control.ini',base_directory,red=opt.red,south=opt.south)
 

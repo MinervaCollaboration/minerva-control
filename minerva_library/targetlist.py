@@ -36,7 +36,7 @@ def downloadList(bstar=False):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             writer.writerows(sheet.get_all_values())
-
+    
 
 def rdlist(bstar=False, update=True):
 
@@ -73,7 +73,10 @@ def mkdict(name=None, bstar=False, includeInactive=False):
     for i in range(len(targetlist['name'])):
         target = OrderedDict()
         target['name'] = targetlist['name'][i]
-        target['ra'] = float(targetlist['ra'][i])
+        try:
+            target['ra'] = float(targetlist['ra'][i])
+        except:
+            ipdb.set_trace()
         target['dec'] = float(targetlist['dec'][i])
         target['starttime'] = datetime.datetime(2015,01,01,00,00,00)
         target['endtime'] = datetime.datetime(2115,01,01,00,00,00)
@@ -81,6 +84,9 @@ def mkdict(name=None, bstar=False, includeInactive=False):
         target['filter'] = ["rp"]
         target['num'] = [1]
         target['exptime'] = [float(targetlist['exptime'][i])]
+        target['priority'] = float(targetlist['priority'][i])
+        try: target['seplimit'] = float(targetlist['seplimit'][i])
+        except: target['seplimit'] = 3600.0*3.0 # 3 hours
         target['fauexptime'] = float(targetlist['fauexptime'][i])
         target['defocus'] = 0.0
         target['selfguide'] = True
@@ -94,6 +100,12 @@ def mkdict(name=None, bstar=False, includeInactive=False):
         target['i2'] = True
         target['vmag'] = float(targetlist['vmag'][i])
         target['comment'] = targetlist['comment'][i]
+        target['observed'] = 0
+        target['bstar'] = bstar
+        try: target['maxobs'] = float(targetlist['maxobs'])
+        except: target['maxobs'] = 2
+
+#        target['last_observed'] = 0
         
         if name <> None:
             if targetlist['name'][i] == name:

@@ -40,8 +40,12 @@ def domeControl(minerva,dome,day=False):
         else:
             minerva.logger.debug('Weather is good; opening dome')
 
-            kwargs={'day' : day, 'num' : number}
-            openthread = threading.Thread(target=minerva.dome_open,kwargs=kwargs)
+            reverse = (dome.id == 'aqawan1')
+
+            if day and dome.id != 'astrohaven1':
+                openthread = threading.Thread(target=dome.open_shutter,args=(1,))
+            else:
+                openthread = threading.Thread(target=dome.open_both,args=(reverse,))
             openthread.name = dome.id + '_OPEN'
             openthread.start()
             
@@ -65,7 +69,7 @@ def domeControl(minerva,dome,day=False):
             response = dome.send('CLEAR_FAULTS')
             if 'Estop' in response:
                 if not dome.estopmailsent:
-                    mail.send("Aqawan " + str(number) + " Estop has been pressed!",dome.estopmail,level='serious')
+                    mail.send("Aqawan " + str(dome.id) + " Estop has been pressed!",dome.estopmail,level='serious')
                     dome.estopmailsent = True
                 else:
                     dome.estopmailsent = False

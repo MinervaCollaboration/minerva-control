@@ -636,7 +636,8 @@ class control:
 		if 'ra' in target.keys():
 			ha = lst_hours - target['ra']
 		elif telnum <> None:
-			telescopeStatus = self.telescopes[telnum-1].getStatus()
+			telescope = utils.getTelescope(self,telnum)
+			telescopeStatus = telescope.getStatus()
 			ra = utils.ten(telescopeStatus.mount.ra_2000)
 			ha = lst_hours - ra
 		else:
@@ -1380,7 +1381,9 @@ class control:
 		imaging_thread.name = "Kiwispec"
 		imaging_thread.start()
                         
-		f = self.getHdr(target,[1,2,3,4],[1,2])
+		f = self.getHdr(target,[1,2,3,4],None)
+		for dome in self.domes:
+			f = self.addAqawanKeys(dome, f)
 
 		header = json.dumps(f)
 		
@@ -1416,8 +1419,8 @@ class control:
 		if telescope_num > len(self.telescopes) or telescope_num < 0:
 			self.logger.error("invalid telescope number: " + str(telescope_num))
 			return 'error'
-		if telescope_num > 2: dome = 2
-		else: dome = 1
+
+		dome = utils.getDome(self,telescope_num)
 
 		#S assign the camera
 		imager = utils.getCamera(self,telescope_num)
@@ -1665,43 +1668,40 @@ class control:
 		
 		return f
 
-	def addAqawanKeys(self,dome_list,f):
+	def addAqawanKeys(self,dome,f):
 		
-		if type(dome_list) is int:
-			dome_list = [dome_list]
-
-		for dome in dome_list:
-
-			if len(dome_list) == 1:
-				domestr = ""
-			else: domestr = self.domes[dome-1].num
-
-			if dome <> 1 and dome <> 2:
+		try:
+			if dome.id <> 'aqawan1' and dome.id <> 'aqawan2':
 				self.logger.error("Invalid dome selected (" + str(dome) + ")")
 				return f
+		except:
+			return f
+			
+		domeStatus = dome.status()
 
-			domeStatus = self.domes[dome-1].status()
+		domestr = str(dome.num)
 
-			# Enclosure Specific
-			f['AQSOFTV' + domestr] = (domeStatus['SWVersion'],"Aqawan software version number")
-			f['AQSHUT1' + domestr] = (domeStatus['Shutter1'],"Aqawan shutter 1 state")
-			f['AQSHUT2' + domestr] = (domeStatus['Shutter2'],"Aqawan shutter 2 state")
-			f['INHUMID' + domestr] = (float(domeStatus['EnclHumidity']),"Humidity inside enclosure")
-			f['DOOR1'   + domestr] = (domeStatus['EntryDoor1'],"Door 1 into aqawan state")
-			f['DOOR2'   + domestr] = (domeStatus['EntryDoor2'],"Door 2 into aqawan state")
-			f['PANELDR' + domestr] = (domeStatus['PanelDoor'],"Aqawan control panel door state")
-			f['HRTBEAT' + domestr] = (int(domeStatus['Heartbeat']),"Heartbeat timer")
-			f['AQPACUP' + domestr] = (domeStatus['SystemUpTime'],"PAC uptime (seconds)")
-			f['AQFAULT' + domestr] = (domeStatus['Fault'],"Aqawan fault present?")
-			f['AQERROR' + domestr] = (domeStatus['Error'],"Aqawan error present?")
-			f['PANLTMP' + domestr] = (float(domeStatus['PanelExhaustTemp']),"Aqawan control panel exhaust temp (C)")
-			f['AQTEMP'  + domestr] = (float(domeStatus['EnclTemp']),"Enclosure temperature (C)")
-			f['AQEXTMP' + domestr] = (float(domeStatus['EnclExhaustTemp']),"Enclosure exhaust temperature (C)")
-			f['AQINTMP' + domestr] = (float(domeStatus['EnclIntakeTemp']),"Enclosure intake temperature (C)")
-			f['AQLITON' + domestr] = (domeStatus['LightsOn'],"Aqawan lights on?")
-
-			# is the monitor powered on?
-			f['MONITOR' + domestr] = (self.pdus[(dome-1)*2].monitor.status(),"Monitor on?")
+		# Enclosure Specific
+		f['AQSOFTV' + domestr] = (domeStatus['SWVersion'],"Aqawan software version number")
+		f['AQSHUT1' + domestr] = (domeStatus['Shutter1'],"Aqawan shutter 1 state")
+		f['AQSHUT2' + domestr] = (domeStatus['Shutter2'],"Aqawan shutter 2 state")
+		f['INHUMID' + domestr] = (float(domeStatus['EnclHumidity']),"Humidity inside enclosure")
+		f['DOOR1'   + domestr] = (domeStatus['EntryDoor1'],"Door 1 into aqawan state")
+		f['DOOR2'   + domestr] = (domeStatus['EntryDoor2'],"Door 2 into aqawan state")
+		f['PANELDR' + domestr] = (domeStatus['PanelDoor'],"Aqawan control panel door state")
+		f['HRTBEAT' + domestr] = (int(domeStatus['Heartbeat']),"Heartbeat timer")
+		f['AQPACUP' + domestr] = (domeStatus['SystemUpTime'],"PAC uptime (seconds)")
+		f['AQFAULT' + domestr] = (domeStatus['Fault'],"Aqawan fault present?")
+		f['AQERROR' + domestr] = (domeStatus['Error'],"Aqawan error present?")
+		f['PANLTMP' + domestr] = (float(domeStatus['PanelExhaustTemp']),"Aqawan control panel exhaust temp (C)")
+		f['AQTEMP'  + domestr] = (float(domeStatus['EnclTemp']),"Enclosure temperature (C)")
+		f['AQEXTMP' + domestr] = (float(domeStatus['EnclExhaustTemp']),"Enclosure exhaust temperature (C)")
+		f['AQINTMP' + domestr] = (float(domeStatus['EnclIntakeTemp']),"Enclosure intake temperature (C)")
+		f['AQLITON' + domestr] = (domeStatus['LightsOn'],"Aqawan lights on?")
+		
+		# is the monitor powered on?
+		# monitor moved inside on 2/2017
+#		f['MONITOR' + domestr] = (self.pdus[(dome-1)*2].monitor.status(),"Monitor on?")
 
 		return f
 
@@ -1853,7 +1853,7 @@ class control:
 		return f
 
 			
-	def getHdr(self,target,tele_list,dome_list,fau=False):
+	def getHdr(self,target,tele_list,dome,fau=False):
 
 		#get header info into json format and pass it to imager's write_header method
 		f = collections.OrderedDict()
@@ -1892,13 +1892,19 @@ class control:
 		f = self.addTelescopeKeys(target, tele_list, f)
 
 		# enclosure Specific
-		f = self.addAqawanKeys(dome_list, f)
+		if dome != None:
+			if 'astrohaven' in dome.id:
+				f = self.addAstrohavenKeys(f)
+			else:
+				f = self.addAqawanKeys(dome, f)
 
 		# add the header keys from the weather station
 		f = self.addWeatherKeys(f)
 
 		return f
 
+	def addAstrohavenKeys(self, f):
+		return f
 
 	def addImagerKeys(self, tele_list, f, fau=False):
 
@@ -1972,11 +1978,8 @@ class control:
 		#check camera number is valid
 		if telescope_num > 5 or telescope_num < 0:
 			return 'error'
-		if telescope_num > 2:
-			dome = 2
-		elif telescope_num > 0:
-			dome = 1
-
+		dome = utils.getDome(self,telescope_num)
+		
 		#S assign the camera.
 		camera = utils.getCamera(self,telescope_num)
 		camera.logger.info("starting imaging thread")
@@ -2362,11 +2365,11 @@ class control:
 		telescope.acquireTarget(target,pa=pa)
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
-				newfocus = telescope.focus[telescope.port['FAU']] + target['defocus']*1000.0
+				newfocus = float(telescope.focus[telescope.port['FAU']] )+ float(target['defocus'])*1000.0
 			else:
-				newfocus = telescope.focus[telescope.port['IMAGER']] + target['defocus']*1000.0
+				newfocus = float(telescope.focus[telescope.port['IMAGER']] )+ float(target['defocus'])*1000.0
 		else:
-			newfocus = telescope.focus[telescope.port['IMAGER']] + target['defocus']*1000.0
+			newfocus = float(telescope.focus[telescope.port['IMAGER']] )+ float(target['defocus'])*1000.0
 		status = telescope.getStatus()
 		m3port = telescope.port['IMAGER']
 		if newfocus <> status.focuser.position:
@@ -2548,11 +2551,17 @@ class control:
 
 	def endNight(self, num=0, email=True, night=None, kiwispec=True):
 
-		if os.path.exists(self.base_directory + '/minerva_library/aqawan1.request.txt'): 
-			os.remove(self.base_directory + '/minerva_library/aqawan1.request.txt')
-		if os.path.exists(self.base_directory + '/minerva_library/aqawan2.request.txt'): 
-			os.remove(self.base_directory + '/minerva_library/aqawan2.request.txt')
-		
+		if self.red:
+			if os.path.exists(self.base_directory + '/minerva_library/astrohaven1.request.txt'): 
+				os.remove(self.base_directory + '/minerva_library/astrohaven1.request.txt')
+		elif self.south:
+			pass
+		else:	
+			if os.path.exists(self.base_directory + '/minerva_library/aqawan1.request.txt'): 
+				os.remove(self.base_directory + '/minerva_library/aqawan1.request.txt')
+			if os.path.exists(self.base_directory + '/minerva_library/aqawan2.request.txt'): 
+				os.remove(self.base_directory + '/minerva_library/aqawan2.request.txt')
+					
 		#S This implementation should allow you to specify a night you want to 'clean-up',
 		#S or just run end night on the current night. I'm not sure how it will act
 		#S if you endnight on an already 'ended' night though.
@@ -2589,12 +2598,8 @@ class control:
 		else: self.backup(num,night=night)
 
 		# copy schedule to data directory
-		if kiwispec: 
-			schedulename = self.base_directory + "/schedule/" + night + ".kiwispec.txt"
-			scheduleDest = dataPath + night + '.kiwispec.txt'
-		else: 
-			schedulename = self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt"
-			scheduleDest = dataPath + night + '.T' + str(num) + '.txt'
+		schedulename = self.base_directory + "/schedule/" + night + ".T" + str(num) + ".txt"
+		scheduleDest = dataPath + night + '.T' + str(num) + '.txt'
 		self.logger.info("Copying schedule file from " + schedulename + " to " + dataPath)
 		try: shutil.copyfile(schedulename, scheduleDest)
 		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + scheduleDest)
@@ -2651,7 +2656,7 @@ class control:
 
 		# these messages contain variables; trim them down so they can be consolidated
 		toospecific = [('The camera was unable to reach its setpoint','in the elapsed time'),
-			       ('fa iled to find fiber in image','using default'),
+			       ('failed to find fiber in image','using default'),
 			       ('The process "MaxIm_DL.exe" with PID','could not be terminated'),
 			       ("Stars are too elliptical, can't use",''),
 			       ('The process "python.exe" with PID','could not be terminated'),
@@ -2810,7 +2815,9 @@ class control:
 		
 		#set up night's directory
 		self.prepNight(telescope_num)
-		self.scheduleIsValid(telescope_num)
+		if not self.scheduleIsValid(telescope_num):
+			mail.send("No schedule file for telescope " + str(telescope_num),'',level='serious',directory=self.directory)
+			return False
 
 		telescope = utils.getTelescope(self,telescope_num)
 		camera = utils.getCamera(self,telescope_num)
@@ -2851,9 +2858,8 @@ class control:
 			#S Re-initialize, and turn tracking on. 
 			self.doBias(CalibInfo['nbias'],telescope_num)
 			self.doDark(CalibInfo['ndark'], CalibInfo['darkexptime'],telescope_num)
-
-		if telescope_num > 2: dome = self.domes[1]
-		else: dome = self.domes[0]
+			
+		dome = utils.getDome(self,telescope_num)
 
 		# Take Evening Sky flats
 		#S Initialize again, but with tracking on.
@@ -2939,9 +2945,8 @@ class control:
 				time.sleep(sleeptime)
 			t0 = datetime.datetime.utcnow()
 			timeout = 600.0
-
-			if telescope_num > 2: dome = self.domes[1]
-			else: dome = self.domes[0]
+			
+			dome = utils.getDome(self,telescope_num)
 
 			# wait for the dome to close (the heartbeat thread will update its status)
 			while dome.isOpen() and (datetime.datetime.utcnow()-t0).total_seconds() < timeout:
@@ -3013,11 +3018,17 @@ class control:
                         sys.exit()
 
 	def observingScript_all(self):
-		with open(self.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
-			fh.write(str(datetime.datetime.utcnow()))
+		if self.red:
+			with open(self.base_directory + '/minerva_library/astrohaven1.request.txt','w') as fh:
+				fh.write(str(datetime.datetime.utcnow()))
+		elif self.south:
+			pass
+		else:
+			with open(self.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
+				fh.write(str(datetime.datetime.utcnow()))
 
-		with open(self.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
-			fh.write(str(datetime.datetime.utcnow()))
+			with open(self.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
+				fh.write(str(datetime.datetime.utcnow()))
 
 		# python bug work around -- strptime not thread safe. Must call this once before starting threads
 		junk = datetime.datetime.strptime('2000-01-01 00:00:00','%Y-%m-%d %H:%M:%S')
