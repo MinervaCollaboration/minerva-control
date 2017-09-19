@@ -14,13 +14,11 @@ def get_current_weather(path="/Users/Julien/Downloads/onelinefile"):
         weather['totalRain'] = 0.0
         weather['wxt510Rain'] = 0.0
 
-    weather['barometer'] = 1000
     weather['windGustSpeed'] = file[7]
     weather['outsideHumidity'] = file[8]
     weather['outsideDewPt'] = file[9]
     weather['outsideTemp'] = file[6]
     weather['windSpeed'] = file[7]
-    weather['windDirectionDegrees'] = 0.
     weather['date'] = datetime.datetime.utcnow()
     weather['cloudDate'] = datetime.datetime.utcnow()
     weather['MearthCloud'] = file[4]

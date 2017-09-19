@@ -4,7 +4,7 @@ import datetime
 import logging
 import ephem
 import time
-import math 
+import math
 import os
 import sys
 import matplotlib.pyplot as plt
@@ -17,6 +17,7 @@ import mail
 import threading
 import copy
 import utils
+from weather_thach import get_current_weather
 
 class site:
 
@@ -27,22 +28,22 @@ class site:
 		self.load_config()
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.lock = threading.Lock()
-		
+
 	def load_config(self):
-	
+
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.latitude = config['Setup']['LATITUDE']
-			self.longitude = config['Setup']['LONGITUDE']        
+			self.longitude = config['Setup']['LONGITUDE']
 			self.elevation = float(config['Setup']['ELEVATION'])
 			self.logger_name = config['Setup']['LOGNAME']
 			# touch a file in the current directory to enable cloud override
-			self.cloudOverride = os.path.isfile(self.base_directory + '/minerva_library/cloudOverride.txt') 
+			self.cloudOverride = os.path.isfile(self.base_directory + '/minerva_library/cloudOverride.txt')
 			self.sunOverride = os.path.isfile(self.base_directory + '/minerva_library/sunOverride.txt')
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
-		
+
 		self.observing = True
 		self.weather = -1
 		self.rainChangeDate = datetime.datetime.utcnow() - datetime.timedelta(hours=2.0)
@@ -77,19 +78,19 @@ class site:
 			'minerva' : (0.74102145,0.058437186)
 #			'minerva' : (1.34948860,0.058437186)
 			}
-		openCloudLimit = -28
-		closeCloudLimit = -26
+		openCloudLimit = -30
+		closeCloudLimit = -28
 
 
 		self.openLimits = {
 			'totalRain'           : [0.0,1000.0],
-			'wxt510Rain'          : [0.0,50.0], 
-			'barometer'           : [0,2000], 
-			'windGustSpeed'       : [0.0,35.0], 
-			'outsideHumidity'     : [0.0,75.0], 
+			'wxt510Rain'          : [0.0,50.0],
+			'barometer'           : [0,2000],
+			'windGustSpeed'       : [0.0,35.0],
+			'outsideHumidity'     : [0.0,75.0],
 			'outsideDewPt'        : [-100.0,100.0],
-			'outsideTemp'         : [-20.0,50.0], 
-			'windSpeed'           : [0.0,30.0], 
+			'outsideTemp'         : [-20.0,50.0],
+			'windSpeed'           : [0.0,30.0],
 			'windDirectionDegrees': [0.0,360.0],
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude'         : [-90,6],
@@ -102,13 +103,13 @@ class site:
 
 		self.closeLimits = {
 			'totalRain'           : [0.0,1000.0],
-			'wxt510Rain'          : [0.0,50.0], 
-			'barometer'           : [0,2000], 
-			'windGustSpeed'       : [0.0,40.0], 
-			'outsideHumidity'     : [0.0,80.0], 
+			'wxt510Rain'          : [0.0,50.0],
+			'barometer'           : [0,2000],
+			'windGustSpeed'       : [0.0,40.0],
+			'outsideHumidity'     : [0.0,80.0],
 			'outsideDewPt'        : [-100.0,100.0],
-			'outsideTemp'         : [-30.0,60.0], 
-			'windSpeed'           : [0.0,35.0], 
+			'outsideTemp'         : [-30.0,60.0],
+			'windSpeed'           : [0.0,35.0],
 			'windDirectionDegrees': [0.0,360.0],
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude'         : [-90,6],
@@ -137,25 +138,25 @@ class site:
 			except:
 				self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
 				return
-			
+
 			data = response.read().split('\n')
 			if data[0] == '':
 				return
-			
+
 			# convert the date into a datetime object
 			weather = {
 				'date':datetime.datetime.strptime(data[0],'%Y, %m, %d, %H, %M, %S, %f')}
-			
+
 			# populate the weather dictionary from the webpage
 			for parameter in data[1:-1]:
 				weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
 
-			#S Acquire readings from the three cloud monitors at the address below. Order at 
+			#S Acquire readings from the three cloud monitors at the address below. Order at
 			#S website is Date, Mearth, HAT, Aurora, MINERVA.
 			# this has a reading every 5 minutes since September 2014
 			url = 'http://linmax.sao.arizona.edu/temps/sky_temps_now'
 			#S Try everything, but if anyhting fails we really want to stay closed.
-			try: 
+			try:
 				#S Read the last line from the url above, and split it at the spaces.
 				cloudstr = os.popen('curl -s ' + url).read().split(' ')
 
@@ -175,7 +176,7 @@ class site:
 				else:
 					self.logger.error("Error reading the cloud page; line is: " + " ".join(cloudstr))
 
-			except: 
+			except:
 				# error reading the cloud monitor, don't update the values
 				self.logger.error('Error reading the page for cloud temps at '+url)
 				pageError = True
@@ -198,16 +199,21 @@ class site:
                         weather['barometer'] = 1000.0
                         weather['windGustSpeed'] = 0.0
                         weather['windDirectionDegrees'] = 0.0
-			
+
+		elif self.logger_name == 'site_Thach':
+			weather = get_current_weather()
+			weather['barometer'] = 1000 #TODO: check if have
+			weather['windDirectionDegrees'] = 0.
+
 		# add in the Sun Altitude
 		weather['sunAltitude'] = self.sunalt()
-		
+
 		# make sure all required keys are present
-		requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed', 
-                                'outsideHumidity', 'outsideDewPt', 'outsideTemp', 
+		requiredKeys = ['totalRain', 'wxt510Rain', 'barometer', 'windGustSpeed',
+                                'outsideHumidity', 'outsideDewPt', 'outsideTemp',
 				'windSpeed', 'windDirectionDegrees', 'date', 'sunAltitude',
 				'cloudDate', 'MearthCloud', 'HATCloud', 'AuroraCloud', 'MINERVACloud']
-		
+
 		for key in requiredKeys:
 			if not key in weather.keys():
 				# if not, return an error
@@ -228,7 +234,7 @@ class site:
 			self.logger.debug(key + '=' + str(weather[key]))
 
 	def oktoopen(self, domeopen=False, ignoreSun=False):
-		
+
 		retval = True
 		decisionFile = self.base_directory + '/manualDecision.txt'
 
@@ -249,12 +255,12 @@ class site:
 				if not self.mailSent:
 					mail.send("Possible snow/ice on enclosures; manual inspection required",
 						  "Dear benevolent humans,\n\n"+
-						  "Recent conditions have been wet and cold (" + str(self.coldestTemp) + " C), which means ice and/or snow is likely. "+ 
-						  "I have disabled operations until someone can check the camera (http://minervacam.sao.arizona.edu) "+ 
+						  "Recent conditions have been wet and cold (" + str(self.coldestTemp) + " C), which means ice and/or snow is likely. "+
+						  "I have disabled operations until someone can check the camera (http://minervacam.sao.arizona.edu) "+
 						  "to ensure there is no snow or ice on the roof and the snow is not more than 2 inches deep "+
-						  "(which will stall the roof. There are presets on the camera for 'A1 Snow line' and 'A2 Snow line'. The you must "+ 
+						  "(which will stall the roof. There are presets on the camera for 'A1 Snow line' and 'A2 Snow line'. The you must "+
 						  "be able to see the red line below the black line for it to be safe to open. If the snow on the ground "+
-						  "is too deep, please email the site staff to ask them to shovel.\n\n"+ 
+						  "is too deep, please email the site staff to ask them to shovel.\n\n"+
 						  "If everything looks good, either delete the '/home/minerva/minerva-control/manualDecision.txt' file "+
 						  "(if current conditions will not trip this warning again) or edit the date in that file to UTC now (" +
 						  str(datetime.datetime.utcnow()) + "). Note that this warning will be tripped again 24 hours after the "+
@@ -275,7 +281,7 @@ class site:
 		else:
 			self.logger.debug("Enclosure closed; using the open limits")
 			weatherLimits = copy.deepcopy(self.openLimits)
-			
+
 		# change it during execution
 		if os.path.exists(self.base_directory + '/minerva_library/sunOverride.txt') or ignoreSun: self.sunOverride = True
 		else: self.sunOverride = False
@@ -284,8 +290,8 @@ class site:
 
 		if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]
 		else: weatherLimits['sunAltitude'] = [-90,6]
-			
-		if self.cloudOverride: 
+
+		if self.cloudOverride:
 			weatherLimits['MearthCloud'] = [-999,999]
 			weatherLimits['HATCloud'] = [-999,999]
 			weatherLimits['AuroraCloud'] = [-999,999]
@@ -301,7 +307,7 @@ class site:
 				weatherLimits['HATCloud'] = self.openLimits['HATCloud']
 				weatherLimits['AuroraCloud'] = self.openLimits['AuroraCloud']
 				weatherLimits['MINERVACloud'] = self.openLimits['MINERVACloud']
-			
+
 
 
 		if weatherLimits['sunAltitude'][1] == 90:
@@ -311,7 +317,7 @@ class site:
 		if self.openLimits['sunAltitude'][1] == 90:
 			self.logger.info("open limits have been modified; this shouldn't happen!")
 
-		# MearthCloud reports 998.0 when it's raining and is much more reliable than wxt510Rain 
+		# MearthCloud reports 998.0 when it's raining and is much more reliable than wxt510Rain
 		if self.weather['MearthCloud'] == 998.0:
 			self.lastRain += 0.001
 			self.rainChangeDate = datetime.datetime.utcnow()
@@ -338,14 +344,14 @@ class site:
 						return False
 				else:
 					self.logger.info('There has been precipitation in the last 24 hours and it has been freezing, but it has been manually approved to open until ' + str(date))
-					
+
 			else:
 				with open(decisionFile,"w") as fh:
 					fh.write(str(datetime.datetime.utcnow() - datetime.timedelta(days=1)))
 					self.logger.info('Not OK to open: there has been precipitation in the last 24 hours and it has been freezing. Manual inspection for snow/ice required')
 					return False
 
-		#S External temperature check, want to use Mearth, then HAT if Mearth not available, and then 
+		#S External temperature check, want to use Mearth, then HAT if Mearth not available, and then
 		#S Aurora, and finally MINERVA. Currently, we are assuming a value of 999 means disconnected
 		#S for any of the four sensors.
 		if self.weather['MearthCloud'] <> 999:
@@ -383,18 +389,16 @@ class site:
 		return retval
 
 
-	def sunrise(self, horizon=0, start=None):
-		if start == None: start = self.startNightTime
+	def sunrise(self, horizon=0):
 		self.obs.horizon = str(horizon)
-		sunrise = self.obs.next_rising(ephem.Sun(), start=start, use_center=True).datetime()
+		sunrise = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return sunrise
-	
-	def sunset(self, horizon=0, start=None):
-		if start == None: start = self.startNightTime
+
+	def sunset(self, horizon=0):
 		self.obs.horizon = str(horizon)
-		sunset = self.obs.next_setting(ephem.Sun(), start=start, use_center=True).datetime()
+		sunset = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return sunset
-		
+
 	def NautTwilBegin(self, horizon=-8):
 		self.obs.horizon = str(horizon)
 		NautTwilBegin = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
@@ -404,7 +408,7 @@ class site:
 		self.obs.horizon = str(horizon)
 		NautTwilEnd = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
 		return NautTwilEnd
-		
+
 	def sunalt(self):
 
 		self.obs.date = datetime.datetime.utcnow()
@@ -424,26 +428,26 @@ class site:
 		moon.compute(datetime.datetime.utcnow())
 		moonpos = (moon.ra,moon.dec)
 		return moonpos
-	
+
 	def moonphase(self):
 		moon = ephem.Moon()
 		moon.compute(datetime.datetime.utcnow())
 		moonphase = moon.phase/100.0
 		return moonphase
-	
+
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	test_site = site('site_mtHopkins.ini',base_directory)
 	ipdb.set_trace()
-	
+
 	start = 'n20160101'
 	end = 'n20191231'
 	start_dt = datetime.datetime.strptime(start,'n%Y%m%d')
 	end_dt = datetime.datetime.strptime(end,'n%Y%m%d')
 	dates = [start_dt + datetime.timedelta(days=x) for x in range(0, (end_dt-start_dt).days+1)]
-	
-	
+
+
         nbias=11
 	ndark=11
 	nflat=11
@@ -457,7 +461,7 @@ if __name__ == '__main__':
 	cal_time = (b_time+d_time+sf_time)/3600.
 
 	nauttwils = []
-	
+
 	for today in dates:
 		test_site.obs.date = today
 		test_site.startNightTime = datetime.datetime(today.year, today.month, today.day, 17) - datetime.timedelta(days=1)
@@ -469,11 +473,8 @@ if __name__ == '__main__':
 	plt.plot([0,len(nauttwils)],[cal_time,cal_time],'r')
 	plt.plot([0,len(nauttwils)],[0,0],'k')
 	plt.show()
-		
-		
+
+
 	ipdb.set_trace()
 	print test_site.night
 	print test_site.oktoopen()
-	
-	
-	
