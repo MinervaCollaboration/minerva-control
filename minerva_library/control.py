@@ -380,18 +380,21 @@ class control:
 			for t in range(len(self.cameras)):
 				threads[t].join()
 			
-	def imager_setDatapath(self,night,num=0):
-	
-		if num >= 1 and num <= len(self.cameras):
-			self.cameras[num-1].set_dataPath()
-		else:
+	def imager_setDatapath(self,night,telid=None):
+
+		if telid == None:
+			# prepare all the cameras
 			threads = [None]*len(self.cameras)
 			for t in range(len(self.cameras)):
 				threads[t] = threading.Thread(target = self.cameras[t].set_dataPath)
-				threads[t].name = 'T' + str(self.cameras[t].telnum)
+				threads[t].name = str(self.cameras[t].telnum)
 				threads[t].start()
 			for t in range(len(self.cameras)):
 				threads[t].join()
+		else:
+			camera = utils.getCamera(self,telid)
+			camera.set_dataPath()
+			
 				
 	def imager_compressData(self,num=0,night=None):
 		#S need the night argument to specify endNight operations on a past night
@@ -712,6 +715,7 @@ class control:
 		telescope = utils.getTelescope(self,tel_num)
 		camera = utils.getCamera(self,tel_num)
 		dome = utils.getDome(self,tel_num)
+		m3port = telescope.port['FAU']
 
 		camera.fau.acquired = False
 
@@ -820,8 +824,9 @@ class control:
 						xcenter = camera.fau.xcenter
 						ycenter = camera.fau.ycenter
 						platescale = camera.fau.platescale
-						telescopeStatus = telescope.getStatus()                                  
-						rotpos = float(telescopeStatus.rotator.position)
+						telescopeStatus = telescope.getStatus()
+						rotatorStatus = telescope.getRotatorStatus(m3port)
+						rotpos = float(rotatorStatus.position)
 						parang = self.parangle(useCurrent=True) 
 						rotoff = float(self.rotatoroffset[m3port])
 						skypa = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
@@ -855,10 +860,10 @@ class control:
 				# PA = parallactic angle - mechanical rotator position + field rotation offset
 				offset = float(telescope.rotatoroffset[telescope.port['FAU']])
 				if artificial:
-					PA = float(telescope.getStatus().rotator.position) - offset
+					PA = float(telescope.getRotatorStatus(m3port).position) - offset
 				else:
 					parangle = telescope.parangle(useCurrent=True)
-					PA = parangle - float(telescope.getStatus().rotator.position) + offset
+					PA = parangle - float(telescope.getRotatorStatus(m3port).position) + offset
 				self.logger.info('T' + str(tel_num) + ': PA = '+str(PA))
 
 
@@ -1747,14 +1752,17 @@ class control:
 			moonsep = ephem.separation((telra*math.pi/180.0,teldec*math.pi/180.0),(moonra*math.pi/180.0,moondec*math.pi/180.0))*180.0/math.pi
 
 			m3port = telescopeStatus.m3.port
+			focuserStatus = telescope.getFocuserStatus(m3port)
 			try:
 				if m3port == '0': defocus = "UNKNOWN"
-				else: defocus = (float(telescopeStatus.focuser.position) - float(telescope.focus[m3port]))/1000.0
+				else: defocus = (float(focuserStatus.position) - float(telescope.focus[m3port]))/1000.0
 			except:
 				defocus = "UNKNOWN"
 				self.logger.exception("What is going on?")
 
-			rotpos = float(telescopeStatus.rotator.position)
+
+			rotatorStatus = telescope.getRotatorStatus(m3port)
+			rotpos = float(rotatorStatus.position)
 			parang = telescope.parangle(useCurrent=True)
 			try: rotoff = float(telescope.rotatoroffset[m3port])
 			except: rotoff = "UNKNOWN"
@@ -1834,7 +1842,7 @@ class control:
 			f['FLUXMID' + telstr] = ("UNKNOWN","Flux-weighted mid exposure time (JD_UTC)")
 
 			f['PMODEL'  + telstr] = (telescope.model[m3port],"Pointing Model File")
-			f['FOCPOS'  + telstr] = (float(telescopeStatus.focuser.position),"Focus Position (microns)")
+			f['FOCPOS'  + telstr] = (float(focuserStatus.position),"Focus Position (microns)")
 			f['DEFOCUS' + telstr] = (defocus,"Intentional defocus (mm)")
 			f['ROTPOS'  + telstr] = (rotpos,"Mechanical rotator position (degrees)")
 			f['ROTOFF'  + telstr] = (rotoff,"Mechanical rotator offset (degrees)")
@@ -1936,10 +1944,11 @@ class control:
 				xcenter = camera.xcenter
 				ycenter = camera.ycenter
 
-			telescopeStatus = telescope.getStatus()
-			m3port = int(telescopeStatus.m3.port)
-		
-			try: rotpos = float(telescopeStatus.rotator.position)
+			if fau: m3port = telescope.port['FAU']
+			else: m3port = telescope.port['IMAGER']
+			rotatorStatus = telescope.getRotatorStatus(m3port)
+
+			try: rotpos = float(rotatorStatus.position)
 			except: rotpos = "UNKNOWN"
 
 			try: parang = float(telescope.parangle(useCurrent=True))
@@ -2228,35 +2237,27 @@ class control:
 					i += 1
 
 
-	def scheduleIsValid(self, num, night=None, email=True):
+	def scheduleIsValid(self, scheduleFile, email=True):
 
-		if night == None:
-			night = self.site.night
-
-		targetFile = night + '.T' + str(num) + '.txt'
-		telescope_name = 'T' + str(num) +': '
-
-
-		if not os.path.exists(self.base_directory + '/schedule/' + targetFile):
-			self.logger.error(telescope_name + 'No schedule file: ' + targetFile)
-			
+		if not os.path.exists(self.base_directory + '/schedule/' + scheduleFile):
+			self.logger.error('No schedule file: ' + scheduleFile)
 			return False
 
 		emailbody = ''
-		with open(self.base_directory + '/schedule/' + targetFile, 'r') as targetfile:
+		with open(self.base_directory + '/schedule/' + scheduleFile, 'r') as targetfile:
 			linenum = 1
 			line = targetfile.readline()
 			try: CalibInfo = json.loads(line)
 			except: CalibInfo = -1
 			# check for malformed JSON code
 			if CalibInfo == -1:
-				self.logger.error(telescope_name + 'Line ' + str(linenum) + ': malformed JSON: ' + line)
+				self.logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
 				emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
 			else:
 				requiredKeys = ['nbias','ndark','nflat','darkexptime','flatFilters','WaitForMorning']
 				for key in requiredKeys:
 					if key not in CalibInfo.keys():
-						self.logger.error(telescope_name + 'Line 1: Required key (' + key + ') not present: ' + line)
+						self.logger.error('Line 1: Required key (' + key + ') not present: ' + line)
 						emailbody = emailbody + 'Line 1: Required key (' + key + ') not present: ' + line + '\n'
 
 			linenum = 2
@@ -2265,28 +2266,28 @@ class control:
 			except: CalibEndInfo = -1
 			# check for malformed JSON code
 			if CalibEndInfo == -1:
-				self.logger.error(telescope_name + 'Line ' + str(linenum) + ': malformed JSON: ' + line)
+				self.logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
 				emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
 			else:
 				requiredKeys = ['nbiasEnd','ndarkEnd','nflatEnd']
 				for key in requiredKeys:
 					if key not in CalibEndInfo.keys():
-						self.logger.error(telescope_name + 'Line 2: Required key (' + key + ') not present: ' + line)
+						self.logger.error('Line 2: Required key (' + key + ') not present: ' + line)
 						emailbody = emailbody + 'Line 2: Required key (' + key + ') not present: ' + line + '\n'
 						
 			linenum = 3
 			for line in targetfile:
-				target = self.parseTarget(line)
+				target = utils.parseTarget(line)
 				
 				# check for malformed JSON code
 				if target == -1:
-					self.logger.error(telescope_name + 'Line ' + str(linenum) + ': malformed JSON: ' + line)
+					self.logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
 					emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
 				else:
 					# check to make sure all required keys are present
 					key = 'name'
 					if key not in target.keys():
-						self.logger.error(telescope_name + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
+						self.logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
 						emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
 					else:
 						if target['name'] == 'autofocus':
@@ -2296,7 +2297,7 @@ class control:
 							
 						for key in requiredKeys:
 							if key not in target.keys():
-								self.logger.error(telescope_name + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
+								self.logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
 								emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
 									
 						if target['name'] <> 'autofocus':
@@ -2305,13 +2306,13 @@ class control:
 								nexptime = len(target['exptime'])
 								nfilter = len(target['filter'])
 								if nnum <> nexptime or nnum <> nfilter:
-									self.logger.error(telescope_name + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
+									self.logger.error('Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
 									emailbody = emailbody + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree\n'                            
 							except:
 								pass            
 				linenum = linenum + 1
 				if emailbody <> '':
-					if email: mail.send("Errors in target file: " + targetFile,emailbody,level='serious',directory=self.directory)
+					if email: mail.send("Errors in target file: " + scheduleFile,emailbody,level='serious',directory=self.directory)
 					return False
 		return True
 
@@ -2372,7 +2373,8 @@ class control:
 			newfocus = float(telescope.focus[telescope.port['IMAGER']] )+ float(target['defocus'])*1000.0
 		status = telescope.getStatus()
 		m3port = telescope.port['IMAGER']
-		if newfocus <> status.focuser.position:
+		focuserStatus = telescope.getFocuserStatus(m3port)
+		if newfocus <> focuserStatus.position:
 			self.logger.info(telescope_name + "Defocusing Telescope by " + str(target['defocus']) + ' mm, to ' + str(newfocus))
 			if not telescope.focuserMoveAndWait(newfocus,port=m3port):
 				self.logger.info("Focuser failed to move; beginning recovery")
@@ -2464,7 +2466,7 @@ class control:
 	
 
 	#prepare logger and set imager data path
-	def prepNight(self,num=0,email=True):
+	def prepNight(self,telescope,email=True):
 
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
@@ -2474,11 +2476,10 @@ class control:
 
 		# delete various files that shouldn't carry over from night to night
 		# sunoverride, request, telescope_?.error, disableGuiding*.txt
-		for tel in ["1","2","3","4"]:
-			try: os.remove("disableGuiding.T" + tel + ".txt")
-			except: pass
-			try: os.remove("telescope_" + tel + ".error")
-			except: pass
+		try: os.remove("disableGuiding." + telescope.id + ".txt")
+		except: pass
+		try: os.remove("telescope." + telescope.id + ".error")
+		except: pass
 
 		# check that kiwispec is configured correctly
 		# check overscan set to 2090
@@ -2495,14 +2496,7 @@ class control:
 
 		#set correct path for the night
 		self.logger.info("Setting up directories for " + night)
-		self.imager_setDatapath(night,num)
-
-		# turn off both monitors
-#                self.logger.info('Turning off monitors')
-#                try: self.pdus[0].monitor.off()
-#                except: self.logger.exception("Turning off monitor in aqawan 1 failed")
-#                try: self.pdus[2].monitor.off()
-#                except: self.logger.exception("Turning off monitor in aqawan 2 failed")
+		self.imager_setDatapath(night,telescope.id)
 
 		# turn off shutter heaters
 		if not self.red and not self.south:
@@ -2520,7 +2514,7 @@ class control:
 				self.logger.info('Turning off lights in aqawan ' + str(aqawan.num))
 				aqawan.lights_off()
 
-		if email: mail.send('T' + str(num) + ' Starting observing','Love,\nMINERVA',directory=self.directory)
+		if email: mail.send(telescope.id + ' Starting observing','Love,\nMINERVA',directory=self.directory)
 		
 	def backup(self, num, night=None):
 		
@@ -2893,7 +2887,7 @@ class control:
 			next(targetfile) # skip the calibration headers
 			next(targetfile) # skip the calibration headers
 			for line in targetfile:
-				target = self.parseTarget(line)
+				target = utils.parseTarget(line)
 				if target <> -1:
 
 					# truncate the start and end times so it's observable

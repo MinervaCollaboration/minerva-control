@@ -79,6 +79,7 @@ class imager:
 			self.filters = config['FILTERS']
 			self.pointingModel = config['Setup']['POINTINGMODEL']
 			self.telescope_name = config['Setup']['TELESCOPE']
+			self.telid = config['Setup']['TELESCOPE']
 			self.telnum = self.telescope_name[1]
 			self.exptypes = {'Dark' : 0,'Bias' : 0,'SkyFlat' : 1,}
 			self.fau_config = config['Setup']['FAU_CONFIG']

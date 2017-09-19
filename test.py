@@ -43,12 +43,12 @@ if __name__ == '__main__':
 		"rv": 0.0, 
 		"i2": False,
 		}
-#	ipdb.set_trace()
+	ipdb.set_trace()
 #	minerva.telescopes[0].makePointingModel(minerva,npoints=50,exptime=2.0)
 #	minerva.endNight(num=3,email=False,kiwispec=False)
 
 #	newauto.autofocus(minerva,1)
-	minerva.scheduler.choose_target(remaining_time=22700,logger=minerva.logger,timeof=datetime.datetime.utcnow())
+#	minerva.scheduler.choose_target(remaining_time=22700,logger=minerva.logger,timeof=datetime.datetime.utcnow())
 
 	ipdb.set_trace()
 #	ipdb.set_trace()

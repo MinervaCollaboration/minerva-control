@@ -442,7 +442,8 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
     # values that may correlate with focus
     try: alt = str(float(status.mount.alt_radian)*180.0/math.pi)
     except: alt = '-1'
-    try: rotang = str(float(status.rotator.position))
+    rotatorStatus = telescope.getRotatorStatus(m3port)
+    try: rotang = str(float(rotatorStatus.position))
     except: rotang = '720'
     try:    tm1 = str(status.temperature.primary)
     except: tm1 = 'UNKNOWN'

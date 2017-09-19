@@ -407,16 +407,19 @@ def find_fiber(imagename, camera, tolerance=5.,control=None):
             #S if a control class is handed to find_fiber
             elif control!=None:
                 #S get the zero-indexed telescope number
-                telnum = int(camera.telnum) - 1
+                telescope = utils.getTelescope(control,camera.telescope)
+
                 #S get the status of the telescope the camera is on
-                status = control.telescopes[telnum].getStatus()
+                status = telescope.getStatus()
+                focuserStatus = telescope.getFocuserStatus(telescope.port['FAU'])
+                rotatorStatus = telescope.getRotatorStatus(telescope.port['FAU'])
                 try: alt = '%.3f'%(np.degrees(float(status.mount.alt_radian)))
                 except: alt = 'UNKNOWN'
                 try: azm = '%.3f'%np.degrees(float(status.mount.azm_radian)) 
                 except: azm = 'UNKNOWN'
-                try: focpos = str(status.focuser.position)
+                try: focpos = str(focuserStatus.position)
                 except: focpos = 'UNKNOWN'
-                try: rotpos = str(status.rotator.position)
+                try: rotpos = str(rotatorStatus.position)
                 except: rotpos = 'UNKNOWN'
                 try:    tm1 = str(status.temperature.primary)
                 except: tm1 = 'UNKNOWN'

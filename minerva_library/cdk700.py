@@ -91,7 +91,7 @@ class CDK700:
 			else:
 				# if no recent best focus exists, initialize to 25000. (old: current value)
 				status = self.getStatus()
-				self.focus[port] = self.default_focus[port]  #status.focuser.position
+				self.focus[port] = self.default_focus[port]  #focuserStatus.position
 				
 			
 	#additional higher level routines
@@ -228,6 +228,7 @@ class CDK700:
 			self.nfailed = 0
 			self.port = config['PORT']
 			self.modeldir = config['Setup']['MODELDIR']
+			self.datadir = config['Setup']['DATADIR']
 			self.model = config['MODEL']
 			self.rotatoroffset = config['ROTATOROFFSET']
 			self.default_focus = config['DEFAULT_FOCUS']
@@ -334,6 +335,16 @@ class CDK700:
 		self.logger.debug('Alt/Az RMS error: ' + status.mount.alt_rms_error_arcsec + ',' + status.mount.azm_rms_error_arcsec)
 		return status
 
+	def getFocuserStatus(self,m3port):
+		telescopeStatus = self.getStatus()
+		if str(m3port) == '1': return telescopeStatus.focuser1
+		return telescopeStatus.focuser2
+
+	def getRotatorStatus(self,m3port):
+		telescopeStatus = self.getStatus()
+		if str(m3port) == '1': return telescopeStatus.rotator1
+		return telescopeStatus.rotator2
+
 	def write_status(self):
 		pass
 		
@@ -355,57 +366,55 @@ class CDK700:
 			time.sleep(1)
 			
 	### FOCUSER ###
-	def focuserConnect(self, port=1):
+	def focuserConnect(self, m3port):
 		"""
 		Connect to the focuser on the specified Nasmyth port (1 or 2).
 		"""
 
-		return self.pwiRequestAndParse(device="focuser"+str(port), cmd="connect")
+		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="connect")
 
-	def focuserDisconnect(self, port=1):
+	def focuserDisconnect(self, m3port):
 		"""
 		Disconnect from the focuser on the specified Nasmyth port (1 or 2).
 		"""
 
-		return self.pwiRequestAndParse(device="focuser"+str(port), cmd="disconnect")
+		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="disconnect")
 
-	def focuserMove(self, position, port=1):
+	def focuserMove(self, position, m3port):
 		"""
 		Move the focuser to the specified position in microns
 		"""
 
 		# make sure it's a legal move first
-		if self.num == '1' and str(port) == '2' and position < 455: return False
 		if position < 0 or position > 33000: return False
 
-		return self.pwiRequestAndParse(device="focuser"+str(port), cmd="move", position=position)
+		# port 2 on T1 is less forgiving and cannot go below 455 um...
+		if self.id == 'T1' and str(m3port) == '2' and position < 455: return False
 
-	def focuserMoveAndWait(self,position,port=1,timeout=90.0):
+		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="move", position=position)
+
+	def focuserMoveAndWait(self,position,port=1,timeout=300.0):
 		if not self.focuserMove(position,port=port):
 			self.logger.warning('Focuser on port ' + str(port) + ' could not move to requested position (' + str(position) + ')')
 			return False
 
 		# wait for the focuser to start moving
 		time.sleep(3.0) 
-		status = self.getStatus()
-		if port == '1': focuser = status.focuser1
-		else: focuser = status.focuser2
+		focuserStatus = getFocuserStatus(port)
 
 		t0 = datetime.datetime.utcnow()
 		elapsedTime = 0.0
 		
 		# wait for the focuser to finish moving
 		# or the timeout (90 seconds is about how long it takes to go from one extreme to the other)
-		while focuser.moving == 'True' and elapsedTime < timeout:
-			self.logger.info('Focuser on port ' + str(port) + ' moving (' + str(focuser.position) + ')')
+		while focuserStatus.moving == 'True' and elapsedTime < timeout:
+			self.logger.info('Focuser on port ' + str(port) + ' moving (' + str(focuserStatus.position) + ')')
 			time.sleep(0.3)
-			status = self.getStatus()
-			if port == '1': focuser = status.focuser1
-			else: focuser = status.focuser2
+			focuserStatus = getFocuserStatus(port)
 			elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
 
-		if abs(float(focuser.position) - float(position)) > 10:
-			self.logger.warning('Focuser on port ' + str(port) + ' (' + focuser.position + ') not at requested position (' + str(position) + ') after ' + str(elapsedTime) + ' seconds')
+		if abs(float(focuserStatus.position) - float(position)) > 10:
+			self.logger.warning('Focuser on port ' + str(port) + ' (' + focuserStatus.position + ') not at requested position (' + str(position) + ') after ' + str(elapsedTime) + ' seconds')
 			return False
 
 		self.logger.info('Focuser completed move in ' + str(elapsedTime) + ' seconds')
@@ -432,6 +441,49 @@ class CDK700:
 		"""
 		return self.pwiRequestAndParse(device="focuser", cmd="startautofocus")
 
+	def focuserHome(self, port=1):
+		return self.pwiRequestAndParse(device="focuser" + str(port), cmd="findhome")
+
+	def focuserHomeAndWait(self, port=1, timeout=300.0):
+
+		# make sure it's not homing in another thread first
+		focuserStatus = self.getFocuserStatus(port)
+		if not focuserStatus.finding_home == 'True': self.focuserHome(port=port)
+
+		time.sleep(5.0)
+		focuserStatus = self.getFocuserStatus(port)
+
+		t0 = datetime.datetime.utcnow()
+		elapsedTime = 0
+		while focuserStatus.finding_home == 'True' and elapsedTime < timeout:
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			self.logger.info('Homing focuser ' + str(port) + ' (elapsed time = ' + str(elapsedTime) + ')')
+			time.sleep(5.0)
+			focuserStatus = self.getFocuserStatus(port)
+			
+		if elapsedTime > timeout:
+			self.logger.error('Homing focuser ' + str(port) + ' failed')
+			return False
+
+		self.logger.info('Homing focuser ' + str(port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
+
+		t0 = datetime.datetime.utcnow()
+		elapsedTime = 0
+		
+		while focuserStatus.moving == 'True' and elapsedTime < 20.0:
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			self.logger.info('Moving focuser ' + str(port) + ' to nominal position (elapsed time = ' + str(elapsedTime) + ')')
+			time.sleep(1.0)
+			focuserStatus = self.getFocuserStatus(port)
+			
+		if focuserStatus.moving == 'True':
+			self.logger.error('Homing focuser ' + str(port) + ' failed')
+			return False
+
+		self.logger.info('Homing focuser ' + str(port) + ' complete')
+		return True
+
+
 	### ROTATOR ###
 	def rotatorMove(self, position, port=1):
 		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="move", position=position)
@@ -447,7 +499,58 @@ class CDK700:
 
 	def rotatorStopDerotating(self, port=1):
 		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestop")
-	
+
+	def rotatorHome(self, port=1):
+		return self.pwiRequestAndParse(device="rotator" + str(port), cmd="findhome")	
+
+	def rotatorHomeAndWait(self, port=1, timeout=400.0):
+
+		# make sure it's not homing in another thread first
+		rotatorStatus = self.getRotatorStatus(port)
+		if not rotatorStatus.finding_home == 'True': self.rotatorHome(port=port)
+
+		time.sleep(5.0)
+		rotatorStatus = self.getRotatorStatus(port)
+
+		t0 = datetime.datetime.utcnow()
+		elapsedTime = 0
+		while rotatorStatus.finding_home == 'True' and elapsedTime < timeout:
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			self.logger.info('Homing rotator ' + str(port) + ' (elapsed time = ' + str(elapsedTime) + ')')
+			time.sleep(5.0)
+			rotatorStatus = self.getRotatorStatus(port)
+
+		if elapsedTime > timeout:
+			self.logger.error('Homing rotator ' + str(port) + ' failed')
+			return False
+
+		self.logger.info('Homing rotator ' + str(port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
+
+		t0 = datetime.datetime.utcnow()
+		elapsedTime = 0
+		
+		while rotatorStatus.moving == 'True' and elapsedTime < 20.0:
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			self.logger.info('Moving rotator ' + str(port) + ' to nominal position (elapsed time = ' + str(elapsedTime) + ')')
+			time.sleep(1.0)
+			rotatorStatus = self.getRotatorStatus(port)
+			
+		if rotatorStatus.moving == 'True':
+			self.logger.error('Homing rotator ' + str(port) + ' failed')
+			return False
+
+		self.logger.info('Homing rotator ' + str(port) + ' complete')
+		return True
+
+
+			
+		if elapsedTime > timeout:
+			return False
+
+		return True
+
+
+
 	#S i think we should make targets classes for functions like this, not in telescope.
 	#S i did that in scheduler sim, but could be a bit of an overhaul here....
 	def hourangle(self,target=None, useCurrent=False):
@@ -705,14 +808,14 @@ class CDK700:
 		'''
 
 		# unrecoverable error
-		filename = "telescope_" + self.num + '.error'
+		filename = "telescope" + self.id + '.error'
 		body = "Dear benevolent humans,\n\n" + \
 		    "I have failed to recover automatially. Please recover me, then delete " + filename + " to restart operations.\n\n" + \
 		    "Love,\n" + \
 		    "MINERVA"			
 		while not self.initialize(tracking=tracking, derotate=derotate):
 			self.logger.error('Telescope has failed to automatically recover; intervention required')
-			mail.send('T' + self.num + " has failed",body,level='serious')
+			mail.send(self.id + " has failed",body,level='serious')
 			fh = open(filename,'w')
 			fh.close()
 			while os.path.isfile(filename):
@@ -733,8 +836,8 @@ class CDK700:
 		# can't set defaults using self...
 		if minalt == -999: minalt = self.horizon
 
-		camera = utils.getCamera(minerva,self.num)
-		datapath = '/Data/t' + self.num + '/' + self.night + '/'
+		camera = utils.getCamera(minerva,self.id)
+		datapath = self.datadir + self.night + '/'
 
 		if fau:
 			xcenter = camera.fau.xcenter
@@ -893,7 +996,8 @@ class CDK700:
 			# determine J2000 coordinates of the center pixel	
 			# we need to know and apply the current sky angle
 			telescopeStatus = self.getStatus()
-			rotpos = float(telescopeStatus.rotator.position)
+			rotatorStatus = self.getRotatorStatus(m3port)
+			rotpos = float(rotatorStatus.position)
 			parang = self.parangle(useCurrent=True)
 			rotoff = float(self.rotatoroffset[m3port])
 			skypa = (float(parang) + float(rotoff) - float(rotpos))*math.pi/180.0
@@ -1011,8 +1115,8 @@ class CDK700:
 		x2, y2 = utils.findBrightest(datapath + filename)
 		if x2 == None or y2 == None: return False
 
-		telescopeStatus = self.getStatus()
-		rotpos = float(telescopeStatus.rotator.position)
+		rotatorStatus = self.getRotatorStatus(m3port)
+		rotpos = float(rotatorStatus.position)
 		parang = self.parangle(useCurrent=True)
 
 		# calculate rotator angle
@@ -1061,6 +1165,7 @@ class CDK700:
 		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
 		else:
 			self.logger.info('No M3 port specified or bad, using current port (' + telescopeStatus.m3.port + ')')
+			m3port = telescopeStatus.m3.port
 
 
 		self.logger.info('Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving + str(telescopeStatus.mount.moving == 'True') + str(elapsedTime < timeout) + str(tracking))
@@ -1104,18 +1209,16 @@ class CDK700:
 			self.logger.error('Failed to slew within timeout (' + str(timeout) + ')')
 			return False
 
-		self.logger.info('Waiting for Focuser to finish slew; goto_complete = ' + telescopeStatus.focuser.goto_complete)
-		timeout = 120.0
-		while telescopeStatus.focuser.goto_complete == 'False' and elapsedTime < timeout:
+		# wait for Focuser
+		focuserStatus = self.getFocuserStatus(m3port)
+		self.logger.info('Waiting for Focuser to finish slew; goto_complete = ' + focuserStatus.goto_complete)
+		timeout = 300.0
+		while focuserStatus.goto_complete == 'False' and elapsedTime < timeout:
 			time.sleep(0.5)
-			self.logger.debug('Focuser moving (' + str(telescopeStatus.focuser.position) + ')')
+			self.logger.debug('Focuser moving (' + str(focuserStatus.position) + ')')
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-			telescopeStatus = self.getStatus()
-			if telescopeStatus.focuser.goto_complete == 'True':
-				time.sleep(1)
-				telescopeStatus = self.getStatus()
-				if telescopeStatus.focuser.goto_complete == 'False':
-					self.logger.error('Focuser moving after is said it was done')
+			focuserStatus = self.getFocuserStatus(m3port)
+
 		if elapsedTime > timeout:
 			self.logger.error('Failed to get to focus position within timeout (' + str(timeout) + ')')
 			return False
@@ -1150,28 +1253,24 @@ class CDK700:
 
 
                 #S Make sure the derotating is on.
+		rotatorStatus = self.getRotatorStatus(m3port)
 		if derotate:
-			self.rotatorStartDerotating()
+			self.rotatorStartDerotating(port=m3port)
 			timeout = 360.0
-			self.logger.info('Waiting for rotator to finish slew; goto_complete = ' + telescopeStatus.rotator.goto_complete)
-			while telescopeStatus.rotator.goto_complete == 'False' and elapsedTime < timeout:
+			self.logger.info('Waiting for rotator to finish slew; goto_complete = ' + rotatorStatus.goto_complete)
+			while rotatorStatus.goto_complete == 'False' and elapsedTime < timeout:
 				time.sleep(0.5)
-				self.logger.debug('rotator moving (' + str(telescopeStatus.rotator.position) + ' degrees)')
+				self.logger.debug('rotator moving (' + str(rotatorStatus.position) + ' degrees)')
 				elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-				telescopeStatus = self.getStatus()
-				if telescopeStatus.rotator.goto_complete == 'True':
-					time.sleep(1)
-					telescopeStatus = self.getStatus()
-					if telescopeStatus.rotator.goto_complete == 'False':
-						self.logger.error('Rotator moving after it said it was done')
+				rotatorStatus = self.getRotatorStatus(m3port)
 
 			# Make sure derotating is on.
-			if telescopeStatus.rotator.altaz_derotate == 'False':
-				self.rotatorStartDerotating()
+			if rotatorStatus.altaz_derotate == 'False':
+				self.rotatorStartDerotating(port=m3port)
 				self.logger.error('Derotating was off, turned on')
 		else:
-			if telescopeStatus.rotator.altaz_derotate == 'True':
-				self.rotatorStopDerotating()
+			if rotatorStatus.rotator.altaz_derotate == 'True':
+				self.rotatorStopDerotating(port=m3port)
 				self.logger.error('Derotating was on, turned off')
 
 
@@ -1450,7 +1549,7 @@ class CDK700:
 		time.sleep(30) # wait for the panel to initialize
 
 	#S increased default timeout to ten minutes due to pokey t2
-	#S w cna probablyt set tis to be only for t2, but just a quick edit, sorry
+	#S we can probably set this to be only for t2, but just a quick edit
 	#TODO work on real timout
 	def home(self, timeout=600):#420.0):
 		
@@ -1478,8 +1577,10 @@ class CDK700:
 		# JDE 2016-04-20: self.home is and should remain a low-level function. Any recovery should be handled at a higher level (self.recover)
 
 		if telescopeStatus.mount.encoders_have_been_set == 'False':
+			self.logger.error('Error homing telescope (elapsed time = ' + str(elapsedTime) + ')')
 			return False
 		else:
+			self.logger.info('Done homing telescope (elapsed time = ' + str(elapsedTime) + ')')
 			return True
 
 	def startPWI(self,email=True):

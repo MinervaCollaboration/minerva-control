@@ -8,7 +8,7 @@ import datetime, time
 import ipdb
 import logging
 import unicodecsv
-
+import json
 
 # this kills main.py if running (use before runninging to ensure a clean start)
 def killmain(red=False,south=False):
@@ -82,6 +82,102 @@ def brightStars(filename='bsc.csv',path='/home/minerva/minerva-control/dependenc
 
     return brightstars
 
+def parseTarget(line):
+    try:
+        target = json.loads(line)
+    except ValueError:
+        self.logger.error('Not a valid JSON line: ' + line)
+        return -1
+
+    # convert strings to datetime objects
+    target['starttime'] = datetime.datetime.strptime(target['starttime'],'%Y-%m-%d %H:%M:%S')
+    target['endtime'] = datetime.datetime.strptime(target['endtime'],'%Y-%m-%d %H:%M:%S')
+    return target
+
+def scheduleIsValid(scheduleFile, email=True, logger=None):
+    if not os.path.exists(scheduleFile):
+        if logger != None: logger.error('No schedule file: ' + scheduleFile)
+        return False
+
+    emailbody = ''
+    with open(scheduleFile, 'r') as targetfile:
+        linenum = 1
+        line = targetfile.readline()
+        try: CalibInfo = json.loads(line)
+        except: CalibInfo = -1
+
+        # check for malformed JSON code
+        if CalibInfo == -1:
+            if logger != None: logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+            emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
+        else:
+            requiredKeys = ['nbias','ndark','nflat','darkexptime','flatFilters','WaitForMorning']
+            for key in requiredKeys:
+                if key not in CalibInfo.keys():
+                    if logger != None: logger.error('Line 1: Required key (' + key + ') not present: ' + line)
+                    emailbody = emailbody + 'Line 1: Required key (' + key + ') not present: ' + line + '\n'
+
+        linenum = 2
+        line = targetfile.readline()
+        try: CalibEndInfo = json.loads(line)
+        except: CalibEndInfo = -1
+
+        # check for malformed JSON code
+        if CalibEndInfo == -1:
+            if logger != None: logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+            emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
+        else:
+            requiredKeys = ['nbiasEnd','ndarkEnd','nflatEnd']
+            for key in requiredKeys:
+                if key not in CalibEndInfo.keys():
+                    if logger != None: logger.error('Line 2: Required key (' + key + ') not present: ' + line)
+                    emailbody = emailbody + 'Line 2: Required key (' + key + ') not present: ' + line + '\n'
+
+        linenum = 3
+        for line in targetfile:
+            target = parseTarget(line)
+            
+            # check for malformed JSON code
+            if target == -1:
+                if logger != None: logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
+                emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
+            else:
+                # check to make sure all required keys are present  
+                key = 'name'
+                if key not in target.keys():
+                    if logger != None: logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
+                    emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
+                else:
+                    if target['name'] == 'autofocus':
+                        requiredKeys = ['starttime','endtime']
+                    else:
+                        requiredKeys = ['starttime','endtime','ra','dec','filter','num','exptime','defocus','selfguide','guide','cycleFilter']
+
+                    for key in requiredKeys:
+                        if key not in target.keys():
+                            if logger != None: logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
+                            emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
+                            
+                            if target['name'] <> 'autofocus':
+                                try:
+                                    nnum = len(target['num'])
+                                    nexptime = len(target['exptime'])
+                                    nfilter = len(target['filter'])
+                                    if nnum <> nexptime or nnum <> nfilter:
+                                        if logger != None: logger.error('Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
+                                        emailbody = emailbody + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree\n'                   \
+
+                                except:
+                                    pass
+            linenum = linenum + 1
+            if emailbody <> '':
+                if email: mail.send("Errors in target file: " + scheduleFile,emailbody,level='serious',directory=self.directory)
+                return False
+    return True
+
+
+
+
 # gets the telescope object (by reference) corresponding to a particular telescope number
 def getTelescope(minerva, telid):
 
@@ -91,10 +187,10 @@ def getTelescope(minerva, telid):
     return False
 
 # gets the camera object (by reference) corresponding to a particular telescope number
-def getCamera(minerva, telnum):
+def getCamera(minerva, telid):
 
     for camera in minerva.cameras:
-        if camera.telnum == str(telnum):
+        if camera.telnum == str(telid) or camera.telid == str(telid):
             return camera
     return False
 
