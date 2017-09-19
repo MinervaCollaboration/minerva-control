@@ -78,9 +78,8 @@ class imager:
 			self.platescale = float(config['Setup']['PLATESCALE'])
 			self.filters = config['FILTERS']
 			self.pointingModel = config['Setup']['POINTINGMODEL']
-			self.telescope_name = config['Setup']['TELESCOPE']
 			self.telid = config['Setup']['TELESCOPE']
-			self.telnum = self.telescope_name[1]
+			self.telnum = self.telid[1]
 			self.exptypes = {'Dark' : 0,'Bias' : 0,'SkyFlat' : 1,}
 			self.fau_config = config['Setup']['FAU_CONFIG']
 
@@ -98,19 +97,17 @@ class imager:
 		
 	#return a socket object connected to the camera server
 	def connect_server(self):
-		telescope_name = 'T' + self.telnum + ': '
-
 		try:
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			s.settimeout(3)
 			s.connect((self.ip, self.port))
 		except socket.error as e:
 			if e.errno == errno.ECONNREFUSED:
-				self.logger.error(telescope_name + 'connection failed (socket.error)')
-			else: self.logger.exception(telescope_name + 'connection failed')
+				self.logger.error('Connection failed (socket.error)')
+			else: self.logger.exception('Connection failed')
 			return False
 		except:
-			self.logger.exception(telescope_name + 'connection failed')
+			self.logger.exception('Connection failed')
 			return False
 
 		self.nserver_failed = 0
@@ -121,24 +118,23 @@ class imager:
 		self.logger.debug("Beginning serial communications with the imager server")
 		if True:
 
-			telescope_name = 'T' + self.telnum + ': '
 			try:
 				s = self.connect_server()
 			except:
-				self.logger.error(telescope_name + "connection lost")
+				self.logger.error("Connection lost")
 				if self.recover_server(): return self.send(msg,timeout) 
 				return 'fail'
 			try: 
 				s.settimeout(3)
 			except:
-				self.logger.error(telescope_name + "failed to set timeout")
+				self.logger.error("Failed to set timeout")
 				if self.recover_server(): return self.send(msg,timeout) 
 				return 'fail'
 			
 			try:
 				s.sendall(msg)
 			except:
-				self.logger.error(telescope_name + "failed to send message (" + msg + ")")
+				self.logger.error("Failed to send message (" + msg + ")")
 				if self.recover_server(): return self.send(msg,timeout) 
 				return 'fail'
 
@@ -146,7 +142,7 @@ class imager:
 				s.settimeout(timeout)
 				data = s.recv(1024)
 			except:
-				self.logger.error(telescope_name + "connection timed out")
+				self.logger.error("Connection timed out")
 				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
 
@@ -155,23 +151,22 @@ class imager:
 				data = repr(data).strip("'")
 				data_ret = data.split()[0]
 			except:
-				self.logger.error(telescope_name + "error processing server response")
+				self.logger.error("Error processing server response")
 				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
 
 			if data_ret == 'fail': 
-				self.logger.error(telescope_name + "command failed("+command+')')
+				self.logger.error("Command failed("+command+')')
 				return 'fail'
 
 			return data
 		
 	def cool(self):
-		telescope_name = 'T' + self.telnum + ': '
 
 		settleTime = 1200
                 oscillationTime = 120.0
 		
-                self.logger.info(telescope_name + 'Turning cooler on')
+                self.logger.info('Turning cooler on')
 		self.set_temperature()
 
                 start = datetime.datetime.utcnow()
@@ -180,7 +175,7 @@ class imager:
 			self.recover()
 			currentTemp = self.get_temperature()
                 if currentTemp == -999.0:
-                        self.logger.warning(telescope_name + 'The camera failed to connect properly; beginning recovery')
+                        self.logger.warning('The camera failed to connect properly; beginning recovery')
                         if self.recover(): return self.cool()
 			return False
 
@@ -193,7 +188,7 @@ class imager:
 #		return True
 
                 while elapsedTime < settleTime and ((abs(self.setTemp - currentTemp) > self.maxdiff) or elapsedTimeAtTemp < oscillationTime):
-                        self.logger.info(telescope_name + 'Current temperature (' + str(currentTemp) +
+                        self.logger.info('Current temperature (' + str(currentTemp) +
                                          ') not at setpoint (' + str(self.setTemp) +
                                          '); waiting for CCD Temperature to stabilize (Elapsed time: '
                                          + str(elapsedTime) + ' seconds)')
@@ -214,7 +209,7 @@ class imager:
                         elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
                 # Failed to reach setpoint 
                 if (abs(self.setTemp - currentTemp)) > self.maxdiff:
-                        self.logger.error(telescope_name + 'The camera was unable to reach its setpoint (' +
+                        self.logger.error('The camera was unable to reach its setpoint (' +
                                           str(self.setTemp) + ') in the elapsed time (' +
                                           str(elapsedTime) + ' seconds)')
                         return False
@@ -223,26 +218,24 @@ class imager:
 
 	# ask server to connect to camera
 	def connect_camera(self):
-		telescope_name = 'T' + self.telnum + ': '
 
 		if (self.send('connect_camera none',30)).split()[0] == 'success':
 			if self.check_filters()==False:
-				self.logger.error(telescope_name + 'mismatch filter')
+				self.logger.error('mismatch filter')
 				return False
-			self.logger.info(telescope_name + 'successfully connected to camera')
+			self.logger.info('successfully connected to camera')
 			return True
 		else:
-			self.logger.error(telescope_name + 'failed to connected to camera')
+			self.logger.error('failed to connected to camera')
 			return False
 
 	def disconnect_camera(self):
 		
-		telescope_name = 'T' + self.telnum + ': '
 		if self.send('disconnect_camera none',15) == 'success':
-			self.logger.info(telescope_name + 'successfully disconnected camera')
+			self.logger.info('successfully disconnected camera')
 			return True
 		else:
-			self.logger.error(telescope_name + 'failed to disconnect camera')
+			self.logger.error('failed to disconnect camera')
 			return False
 			
 	#get camera status and write into a json file with name == (self.logger_name + 'json')
@@ -340,21 +333,20 @@ class imager:
 		else: return False
 
 	def get_temperature(self):
-		telescope_name = 'T' + self.telnum + ': '
 
 		result = self.send('get_temperature none',5)
 		try:
 			if 'success' in result:
 				temp = result.split()
 				if len(temp) != 2:
-					self.logger.error(telescope_name + 'parameter error')
+					self.logger.error('parameter error')
 					return 'fail'
 				return float(temp[1])
 			else: 
-				self.logger.error(telescope_name + ' failed at getting temperature')
+				self.logger.error('failed to get temperature')
 				return 'fail'
 		except: 
-			self.logger.exception(telescope_name + 'Unknown error getting temperature')
+			self.logger.exception('Unknown error getting temperature')
 			return 'fail'
 
 	def moveAO(self,north,east):
@@ -410,22 +402,21 @@ class imager:
 
 	# returns file name of the image saved, return 'error' if error occurs
 	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False):		
-		telescope_name = 'T' + self.telnum + ': '
 #		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
 		ndx = self.get_index()
 		if ndx == -1:
-			self.logger.error(telescope_name + "Error getting the filename index")
+			self.logger.error("Error getting the filename index")
 			if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=fau)
 			self.file_name = ''
 			return 'error'
 
 		if fau:	
-			self.file_name = self.night + "." + self.telescope_name + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
+			self.file_name = self.night + "." + self.telid + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
 			exptype = 1
 		else: 
-			if filterInd == None: self.file_name = self.night + "." + self.telescope_name + "." + objname + "." + str(ndx).zfill(4) + ".fits"
-			else: self.file_name = self.night + "." + self.telescope_name + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
+			if filterInd == None: self.file_name = self.night + "." + self.telid + "." + objname + "." + str(ndx).zfill(4) + ".fits"
+			else: self.file_name = self.night + "." + self.telid + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
 			# chose exposure type
 			if objname in self.exptypes.keys():
 				exptype = self.exptypes[objname] 
@@ -433,11 +424,11 @@ class imager:
 
 			# chose appropriate filter
 			if filterInd != None and filterInd not in self.filters:
-				self.logger.error(telescope_name + "Requested filter (" + filterInd + ") not present")
+				self.logger.error("Requested filter (" + filterInd + ") not present")
 				self.file_name = ''
 				return 'error'
 
-		self.logger.info(telescope_name + 'start taking image: ' + self.file_name)
+		self.logger.info('Start taking image: ' + self.file_name)
 		if filterInd != None: filt = filt = self.filters[filterInd]
 		else: filt = None
 		
@@ -445,15 +436,15 @@ class imager:
 			self.write_status()
 			time.sleep(exptime)
 			if self.save_image(self.file_name, fau=fau):
-				self.logger.info(telescope_name + 'finish taking image: ' + self.file_name)
+				self.logger.info('Finish taking image: ' + self.file_name)
 				self.nfailed = 0 
 				return self.file_name
 			else: 
-				self.logger.error(telescope_name + 'failed to save image: ' + self.file_name)
+				self.logger.error('Failed to save image: ' + self.file_name)
 				self.file_name = ''
 				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=fau)
 
-		self.logger.error(telescope_name + 'taking image failed, image not saved: ' + self.file_name)
+		self.logger.error('Taking image failed, image not saved: ' + self.file_name)
 		self.file_name = ''
 		return 'error'		
 
@@ -475,17 +466,16 @@ class imager:
 
 	# this requires winexe on linux and a registry key on each Windows (7?) machine (apply keys.reg in dependencies folder):
 	def recover_server(self):
-                telescope_name = 'T' + self.telnum + ': '
 
 		self.nserver_failed += 1
 
 		# if it's failed more than 3 times, something is seriously wrong -- give up
 		if self.nserver_failed > 3:
-			if not self.mailsent: mail.send(telescope_name + 'Server failed','',level='serious')
+			if not self.mailsent: mail.send('Server failed','',level='serious')
 			self.mailsent = True
 			sys.exit()
 		
-		self.logger.warning(telescope_name + 'Server failed, beginning recovery') 
+		self.logger.warning('Server failed, beginning recovery') 
 
 		# if these don't work, we're in trouble		
 		if not self.kill_server(): return False
@@ -493,23 +483,23 @@ class imager:
 
 		# restart the server
 		time.sleep(10)
-                self.logger.warning(telescope_name + 'Restarting server') 		
+                self.logger.warning('Restarting server') 		
                 if not self.start_server(): 
-			self.logger.error(telescope_name + "failed to start server")
+			self.logger.error("Failed to start server")
 			return False
 		return True
 
 		# if it's failed more than once, try power cycling the camera before restarting
 		if self.nserver_failed > 1:
-			self.logger.warning(telescope_name + 'Server failed more than once; power cycling the camera')
+			self.logger.warning('Server failed more than once; power cycling the camera')
 			self.powercycle()
 			time.sleep(20)
 
 		# restart the server
 		time.sleep(10)
-                self.logger.warning(telescope_name + 'Restarting server') 		
+                self.logger.warning('Restarting server') 		
                 if not self.start_server(): 
-			self.logger.error(telescope_name + "failed to start server")
+			self.logger.error("Failed to start server")
 			return False
 
 		return True
@@ -519,17 +509,20 @@ class imager:
         def kill_server(self):
                 return self.kill_remote_task('python.exe')
         def quit_maxim(self):
-		return (self.send('quit_maxim none',30)).split()[0] == 'success'		
+		return (self.send('quit_maxim none',30)).split()[0] == 'success'
         def kill_maxim(self):
                 return self.kill_remote_task('MaxIm_DL.exe')
+
+	'''
         def kill_PWI(self):
 		# disconnect telescope gracefully first (PWI gets angry otherwise)!
 		config_file = 'telescope_' + self.telnum + '.ini'
 		telescope = cdk700.CDK700(config_file,self.base_directory)
 		try: telescope.shutdown()
-		except: pass
-		
+		except: pass	
                 return self.kill_remote_task('PWI.exe')
+	'''
+
         def start_server(self):
                 ret_val = self.send_to_computer('schtasks /Run /TN "telcom server"')
 		time.sleep(30)
@@ -550,19 +543,19 @@ class imager:
 		err = ''
 		cmdstr = "cat </dev/null | winexe -U HOME/" + username + "%" + password + " //" + self.ip + " '" + cmd + "'"
 		os.system(cmdstr)
-		self.logger.info('T' + self.telnum + ': cmd=' + cmd + ', out=' + out + ', err=' + err)
+		self.logger.info('cmd=' + cmd + ', out=' + out + ', err=' + err)
 		self.logger.info(cmdstr)
 
                 if 'NT_STATUS_HOST_UNREACHABLE' in out:
-                        self.logger.error('T' + self.telnum + ': the host is not reachable')
-                        mail.send("T" + self.telnum + 'is unreachable',
+                        self.logger.error('host not reachable')
+                        mail.send(self.telid + ' is unreachable',
                                   "Dear Benevolent Humans,\n\n"+
-                                  "I cannot reach T" + self.telnum + ". Can you please check the power and internet connection?\n\n" +
+                                  "I cannot reach " + self.telid + ". Can you please check the power and internet connection?\n\n" +
                                   "Love,\nMINERVA",level="serious")			
                         return False
                 elif 'NT_STATUS_LOGON_FAILURE' in out:
-                        self.logger.error('T' + self.telnum + ': invalid credentials')
-                        mail.send("Invalid credentials for T" + self.telnum,
+                        self.logger.error('Invalid credentials')
+                        mail.send("Invalid credentials for " + self.telid,
                                   "Dear Benevolent Humans,\n\n"+
                                   "The credentials in " + self.base_directory +
                                   '/credentials/authentication.txt (username=' + username +
@@ -570,7 +563,7 @@ class imager:
                                   'Love,\nMINERVA',level="serious")
                         return False
                 elif 'ERROR: The process' in err:
-                        self.logger.info('T' + self.telnum + ': task already dead')
+                        self.logger.info('Task already dead')
                         return True
                 return True	
 
@@ -579,59 +572,59 @@ class imager:
 	# power cycling the camera, and rebooting the machine don't work, it 
 	# will email for help
 	def recover(self):
-		self.logger.warning('T' + self.telnum + ': Camera failed, beginning recovery') 
+		self.logger.warning('Camera failed, beginning recovery') 
                 
 		# disconnect and reconnect camera
                 self.disconnect_camera()
 		time.sleep(5.0)
                 if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by reconnecting') 
+                        self.logger.info('Camera recovered by reconnecting') 
                         return True
 
 		# quit and restart maxim
-                self.logger.warning('T' + self.telnum + ': Camera failed to connect; quitting maxim') 
+                self.logger.warning('Camera failed to connect; quitting maxim') 
 		self.quit_maxim()
                 if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by quitting maxim') 
+                        self.logger.info('Camera recovered by quitting maxim') 
                         return True
 
 		# force quit and restart maxim
-                self.logger.warning('T' + self.telnum + ': Camera failed to connect; killing maxim') 
+                self.logger.warning('Camera failed to connect; killing maxim') 
 		self.quit_maxim()
 		self.kill_maxim()
                 if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by killing maxim') 
+                        self.logger.info('Camera recovered by killing maxim') 
                         return True
 
 		self.logger.info('*** camera power cycle disabled due to black box messiness ***')
 #		# power cycle camera
-#                self.logger.warning('T' + self.telnum + ': Camera failed to recover after restarting maxim; power cycling the camera') 
+#                self.logger.warning('Camera failed to recover after restarting maxim; power cycling the camera') 
 #                self.quit_maxim()
 #		self.kill_maxim()
 #                self.powercycle()
 #                if self.connect_camera():
-#                        self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it') 
+#                        self.logger.info('Camera recovered by power cycling it') 
 #                        return True
 
 		'''
 		# power cycle camera and wait longer?
-                self.logger.warning('T'+self.telnum+': Camera failed to recover after power cycling the camera; trying a longer down time') 
+                self.logger.warning('Camera failed to recover after power cycling the camera; trying a longer down time') 
 		self.quit_maxim()
                 self.powercycle(downtime=300)
                 if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it with a longer downtime') 
+                        self.logger.info('Camera recovered by power cycling it with a longer downtime') 
                         return True
 
 		# power cycle camera and wait 20 minutes!
-                self.logger.warning('T' + self.telnum + ': Camera failed to recover after power cycling the camera; trying a 20 minute down time') 
+                self.logger.warning('Camera failed to recover after power cycling the camera; trying a 20 minute down time') 
 		self.quit_maxim()
                 self.powercycle(downtime=1200)
                 if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by power cycling it with a longer downtime') 
+                        self.logger.info('Camera recovered by power cycling it with a longer downtime') 
                         return True
 
 		# reboot the machine???
-                self.logger.warning('T' + self.telnum + 'Camera failed to recover after power cycling the camera; rebooting the machine') 
+                self.logger.warning('Camera failed to recover after power cycling the camera; rebooting the machine') 
 		self.quit_maxim()
                 self.pdu.inst.off()
                 self.send_to_computer("shutdown -s")
@@ -646,14 +639,14 @@ class imager:
                 time.sleep(30) # wait for the camera to initialize
 
                 if self.connect_camera():
-                        self.logger.info('T' + self.telnum + ': Camera recovered by rebooting the machine') 
+                        self.logger.info('Camera recovered by rebooting the machine') 
                         return True
 		'''
 
 		# I'm out of ideas; ask humans for help
-		filename = self.base_directory + '/minerva_library/imager_' + self.telnum + '.error'
+		filename = self.base_directory + '/minerva_library/imager.' + self.telid + '.error'
 		while not self.connect_camera():
-			mail.send("Camera on T" + self.telnum + " failed to connect",
+			mail.send("Camera on " + self.telid + " failed to connect",
 				  "You must connect the camera and delete the file " + 
 				  filename + " to restart operations.",level="serious")
 			fh = open(filename,'w')

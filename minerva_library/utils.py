@@ -198,7 +198,7 @@ def getCamera(minerva, telid):
 def getDome(minerva, telnum):
     
     # this is a hack and should be done better
-    if telnum == 5: 
+    if telnum == 5 or telnum == 'mred': 
         dome = minerva.domes[0]
         return dome
 
