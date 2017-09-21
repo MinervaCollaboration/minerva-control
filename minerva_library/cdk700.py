@@ -601,8 +601,6 @@ class CDK700:
 		else:
 			offset = float(self.rotatoroffset[self.port['IMAGER']])
 
-
-
 		rotator_pos = parangle + offset - float(desiredPA)
 		
 		# make sure the angle is positive
@@ -612,7 +610,7 @@ class CDK700:
 		self.logger.info('Calculated a mech position of ' + str(rotator_pos) + ' for PA of ' + str(desiredPA))
 		return rotator_pos
 
-		#
+
 	### MOUNT ###
 	def mountConnect(self):
 		status = self.pwiRequestAndParse(device="mount", cmd="connect")

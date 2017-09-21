@@ -1373,7 +1373,7 @@ class control:
 		kwargs['exptime'] = target['exptime'][0]
 		kwargs['objname'] = target['name']
 
-#		self.spectrograph.take_image(target['exptime'][0],target['name'])
+		tstart = datetime.datetime.utcnow()
 		imaging_thread = threading.Thread(target = self.spectrograph.take_image, kwargs=kwargs)
 		imaging_thread.name = "Kiwispec"
 		imaging_thread.start()
@@ -1400,6 +1400,13 @@ class control:
 			fix_fits_thread.name = 'Kiwispec'
 			fix_fits_thread.start()
 			
+			# tell the scheduler if we successfully observed a B star
+			if target['bstar']: self.scheduler.bstarobserved=True
+
+			target['observed'] = target['observed'] + 1
+			
+			self.scheduler.record_observation(target,telescopes=tele_list,timeof=tstart)
+
 			return self.spectrograph.file_name
                 #ipdb.set_trace()
 
@@ -1721,7 +1728,7 @@ class control:
 			if len(tele_list) == 1:	telstr = ""
 			else: telstr = str(telid)
 
-			telescope = utils.getTelescope(self.telid)
+			telescope = utils.getTelescope(self,telid)
 			camera = utils.getCamera(self,telid)
 	
 			telescopeStatus = telescope.getStatus()
@@ -1751,7 +1758,7 @@ class control:
 			except: rotoff = "UNKNOWN"
 			try: skypa = float(parang) + float(rotoff) - float(rotpos)
 			except: skypa = "UNKNOWN"
-			hourang = self.hourangle(target,telnum=telid)
+			hourang = self.hourangle(target,telid=telid)
 			moonsep = ephem.separation((float(telra)*math.pi/180.0,float(teldec)*math.pi/180.0),moonpos)*180.0/math.pi
 
 			# target ra, J2000 degrees

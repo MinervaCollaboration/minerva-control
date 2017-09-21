@@ -43,6 +43,11 @@ if __name__ == '__main__':
 		"rv": 0.0, 
 		"i2": False,
 		}
+	target = minerva.scheduler.choose_target(timeof=datetime.datetime(2017,9,20,5))
+	minerva.takeSpectrum(target,tele_list=[1,2,3,4])
+
+
+
 	ipdb.set_trace()
 #	minerva.telescopes[0].makePointingModel(minerva,npoints=50,exptime=2.0)
 #	minerva.endNight(num=3,email=False,kiwispec=False)

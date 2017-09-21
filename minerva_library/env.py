@@ -389,14 +389,16 @@ class site:
 		return retval
 
 
-	def sunrise(self, horizon=0):
+	def sunrise(self, horizon=0, start=None):
+		if start == None: start = self.startNightTime
 		self.obs.horizon = str(horizon)
-		sunrise = self.obs.next_rising(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
+		sunrise = self.obs.next_rising(ephem.Sun(), start=start, use_center=True).datetime()
 		return sunrise
 
-	def sunset(self, horizon=0):
+	def sunset(self, horizon=0, start=None):
+		if start == None: start = self.startNightTime
 		self.obs.horizon = str(horizon)
-		sunset = self.obs.next_setting(ephem.Sun(), start=self.startNightTime, use_center=True).datetime()
+		sunset = self.obs.next_setting(ephem.Sun(), start=start, use_center=True).datetime()
 		return sunset
 
 	def NautTwilBegin(self, horizon=-8):
