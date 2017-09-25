@@ -1241,13 +1241,15 @@ class server:
 					# 0) pumping down after venting
 					# diagnosis:
 					#    spec pressure > 0.003
-					#    pump pressure < spec pressure 
+					#    pump pressure < spec pressure
+					# action:
+					# email in case of misdiagnosis
 					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
 						mail.send("Spectrograph pressure out of range!",
 							  "Dear Benevolent Humans,\n\n"+
 							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range. " +
 							  "I believe I am just pumping down after being vented and no action is required. "+
-							  "If that is not the case, this should be investigated immediately.\n\n."
+							  "If that is not the case, this should be investigated immediately.\n\n"
 							  "The pump pressure is " + str(pumppres) + " mbar\n"+
 							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
 							  "The compressor is " + compressortxt + '\n'+
