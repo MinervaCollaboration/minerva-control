@@ -4,6 +4,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 import threading
 import utils
+import mail
 
 class PT100:
 
@@ -26,6 +27,9 @@ class PT100:
             self.port = int(config['PORT'])
             self.logger_name = config['LOGGER_NAME']
             self.description = config['DESCRIPTION']
+            self.mintemp = [float(i) for i in config['MINTEMP']]
+            self.maxtemp = [float(i) for i in config['MAXTEMP']]
+            self.lastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
             # reset the night at 10 am local                                                                                                 
             today = datetime.datetime.utcnow()
@@ -130,14 +134,31 @@ class PT100:
 
                     # log the temperature
                     night = 'n' + datetime.datetime.strftime(datetime.datetime.utcnow(),"%Y%m%d")
-                    logdir = self.base_directory + '/log/' + night + '/' 
+                    logdir = self.base_directory + 'log/' + night + '/' 
                     if not os.path.isdir(logdir):
                         os.mkdir(logdir)
                     filename = '%stemp.%s.%s.log'%(logdir,self.controller,str(ndx[raw[0]] + 1))
-                    self.logger.info("Ohm=" + str(ohm) + ',temp=' + str(temp) + ',filename=' + filename + ',description='+self.description[ndx[raw[0]]])
+                    self.logger.info("Ohm=" + str(ohm) + ',temp=' + str(temp) + ',filename=' + filename + ',description='+
+                                     self.description[ndx[raw[0]]]+',range='+str(self.mintemp[ndx[raw[0]]]) + "," + str(self.maxtemp[ndx[raw[0]]]))
                     with open(filename,'a') as f:    
                         f.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(temp)+ ',' + self.description[ndx[raw[0]]] + '\n')
 
+                    # watchdog: email if temperatures are out of range
+                    if temp != None and (temp < self.mintemp[ndx[raw[0]]] or temp > self.maxtemp[ndx[raw[0]]]):
+                        if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400.0:
+                            mail.send(self.description[ndx[raw[0]]] + ' temperature out of range!',
+                                      "Dear Benevolent Humans,\n\n"+
+                                      "The " + self.description[ndx[raw[0]]] + " temperature (" + 
+                                      str(temp) + " C) is out of range (" + str(self.mintemp[ndx[raw[0]]]) + "," + str(self.maxtemp[ndx[raw[0]]]) + "). " +
+                                      "Please check the 'Thermal Enclosure' computer and the HVAC (192.168.1.51) to make sure everything "+
+                                      "is functioning normally. You may need to restart the software. "+
+                                      "Also, make sure the user logged into thermal enclosure computer is 'temp'. "+
+                                      "The stability of the spectrograph is suspect until this is addressed.\n\n"
+                                      "Love,\nMINERVA",level="serious")
+                            self.lastemailed = datetime.datetime.utcnow()
+                            
+                        self.logger.error("The spectrograph " + self.description[ndx[raw[0]]] + " temperature (" + 
+                                          str(temp) + " C) is out of range (" + str(self.mintemp[ndx[raw[0]]]) + "," + str(self.maxtemp[ndx[raw[0]]]) + ")")
                 # keep it alive
                 self.sock.send("34".decode('hex'))
                 time.sleep(2.0)
@@ -146,7 +167,7 @@ class PT100:
     
             thisnight = datetime.datetime.strftime(datetime.datetime.utcnow(),'n%Y%m%d')
             if thisnight != lastnight:
-                path = self.base_directory + '/' + thisnight + '/' + self.logger_name
+                path = self.base_directory + 'log/' + thisnight + '/' + self.logger_name
                 utils.update_logger_path(self.logger,path)
                 lastnight = thisnight
             
