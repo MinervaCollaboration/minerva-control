@@ -457,15 +457,36 @@ class server:
         # LED for backlighting fiber
         ###
         def backlight_on(self):
+		self.backlightonrequest = datetime.datetime.utcnow()
                 self.backlight_move_motor(-45)
                 time.sleep(0.1)
                 self.backlight_com.send('n8')
+
+		# failsafe so backlight doesn't stay on
+		# backlight creates heat that disrupts the thermal stability of the spectrograph!!
+		backlight_failsafe_thread = threading.Thread(target = self.backlight_failsafe)
+		backlight_failsafe_thread.name = 'Kiwispec'
+		backlight_failsafe_thread.start()
+
                 return 'success'
 
         def backlight_off(self):
                 self.backlight_com.send('f8')
                 self.backlight_move_motor(-90)
                 return 'success'
+
+	# a failsafe so the backlight doesn't stay on
+	# called by backlight_on in a separate thread
+	def backlight_off_failsafe(self, timeout=60):
+		t0 = datetime.datetime.utcnow()
+		timeElapsed = 0
+		while timeElapsed < timeout:
+			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()
+			if (self.backlightonrequest - datetime.datetime.utcnow()).total_seconds() > timeout:
+				self.logger.error("encountered failsafe; turning off the backlight")
+				self.backlight_off()
+				return
+			time.sleep(1)
 
         ###
         # Dynamixel motor
