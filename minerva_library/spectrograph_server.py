@@ -58,6 +58,7 @@ class server:
 
                 self.nspecfail = 0
                 self.lastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+		self.backlightonrequest = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
                 #S Set up closing procedures
                 win32api.SetConsoleCtrlHandler(self.safe_close,True)
@@ -477,12 +478,12 @@ class server:
 
 	# a failsafe so the backlight doesn't stay on
 	# called by backlight_on in a separate thread
-	def backlight_off_failsafe(self, timeout=60):
+	def backlight_failsafe(self, timeout=60):
 		t0 = datetime.datetime.utcnow()
 		timeElapsed = 0
 		while timeElapsed < timeout:
 			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()
-			if (self.backlightonrequest - datetime.datetime.utcnow()).total_seconds() > timeout:
+			if (datetime.datetime.utcnow() - self.backlightonrequest).total_seconds() > timeout:
 				self.logger.error("encountered failsafe; turning off the backlight")
 				self.backlight_off()
 				return
@@ -1407,6 +1408,7 @@ class server:
                 except: pass
                 while self.expmeter_com.ser.isOpen():
                         time.sleep(0.1)
+                self.backlight_off() # don't leave the backlight on!
 		
 		#S Something fucky going on here, won't let me close browsers.
 		#TODO
@@ -1419,6 +1421,9 @@ if __name__ == '__main__':
 
 	base_directory = 'C:\\minerva-control'
 	test_server = server('spectrograph_server.ini',base_directory)
+
+        # make sure it didn't die with the backlight on
+        test_server.backlight_off()
 
 #        ipdb.set_trace()
 #        test_server.kill_si_image()
