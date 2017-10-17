@@ -39,10 +39,10 @@ class scheduler:
         self.load_config()
         # make the observer which will be used in calculations and what not
         self.obs = ephem.Observer()
-        self.obs.lat = ephem.degrees(str(self.latitude)) # N
-        self.obs.lon = ephem.degrees(str(self.longitude)) # E
+        self.obs.lat = ephem.degrees(str(self.site.latitude)) # N
+        self.obs.lon = ephem.degrees(str(self.site.longitude)) # E
         self.obs.horizon = ephem.degrees(str(self.sun_horizon))
-        self.obs.elevation = self.elevation # meters    
+        self.obs.elevation = self.site.elevation # meters    
         # an ephem sun and moon object for tracking the sun
         self.sun = ephem.Sun()
         self.sun.compute(self.obs)
@@ -64,10 +64,7 @@ class scheduler:
         try:
 #            ipdb.set_trace()
             config = ConfigObj(self.base_directory+'/config/'+self.config_file)
-            self.latitude = config['Setup']['LATITUDE']
-            self.longitude = config['Setup']['LONGITUDE']
-            self.elevation = float(config['Setup']['ELEVATION'])
-            self.sitename = config['Setup']['SITENAME']
+            self.site = env.site(config['Setup']['SITEINI'],self.base_directory)
             self.sun_horizon = float(config['Setup']['HORIZON'])
             self.target_min_horizon = float(config['Setup']['MINALT'])
             self.target_max_horizon = float(config['Setup']['MAXALT'])

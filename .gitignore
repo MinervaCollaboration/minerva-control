@@ -1,9 +1,9 @@
-./log/
+./log/*
 ./credentials/
 ./status/
 ./schedule/
 ./sam_testing/*
-./minerva_library/sam_testing/autofocus
+./minerva_library/sam_testing/*
 *#
 *.pyc
 *.txt
@@ -15,5 +15,9 @@
 *.pyc
 *.pyc
 *.pyc
+*.stat
+*.error
+targets.csv
+bstar.csv
 *~
 *pywinauto*

@@ -471,7 +471,7 @@ class imager:
 
 		# if it's failed more than 3 times, something is seriously wrong -- give up
 		if self.nserver_failed > 3:
-			if not self.mailsent: mail.send('Server failed','',level='serious')
+			if not self.mailsent: mail.send(self.telid + ' server failed','',level='serious')
 			self.mailsent = True
 			sys.exit()
 		

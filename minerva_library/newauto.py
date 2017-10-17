@@ -251,16 +251,14 @@ def autofocus_step(control,telescope,newfocus,af_target):
     status = telescope.getStatus()
     m3port = status.m3.port
 
-    if not telescope.focuserMoveAndWait(newfocus,port=m3port):
+    if not telescope.focuserMoveAndWait(newfocus,m3port):
         telescope.recoverFocuser(newfocus,m3port)
         telescope.acquireTarget(af_target)
 
     if af_target['spectroscopy']:
-        imagename = control.takeFauImage(af_target,telescope_num=\
-                                             int(telescope.num))
+        imagename = control.takeFauImage(af_target,telescope.id)
     else:
-        imagename = control.takeImage(af_target,telescope_num=\
-                                          int(telescope.num))
+        imagename = control.takeImage(af_target,telescope.id)
     
     # default (bad) values
     # will be overwritten by good values or serve as flags later
@@ -519,7 +517,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         fname.write(str(telescope.focus[m3port]))
 
     # move to the best focus
-    if not telescope.focuserMoveAndWait(telescope.focus[m3port],port=m3port):
+    if not telescope.focuserMoveAndWait(telescope.focus[m3port],m3port):
         telescope.recoverFocuser(telescope.focus[m3port],m3port)
         telescope.acquireTarget(af_target)
 

@@ -152,20 +152,16 @@ def doSpectra(minerva, target, tele_list, test=False):
                 time.sleep(60)
 
     # acquire the target for each telescope
-    if type(tele_list) is int:
-        if (tele_list < 1) or (tele_list > len(minerva.telescopes)):
-            tele_list = [x+1 for x in range(len(minerva.telescopes))]
-        else:
-            tele_list = [tele_list]
-    threads = [None] * len(tele_list)
-    for t in range(len(tele_list)):
-        if minerva.telcom_enabled[tele_list[t]-1]:
-            m3port = minerva.telescopes[tele_list[t]-1].port['FAU']
-#            m3port = minerva.telescopes[tele_list[t]-1].port['IMAGER'] # why was this the imager JDE 2016-12-18??
-            kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
-            threads[t] = threading.Thread(target = minerva.telescopes[tele_list[t]-1].acquireTarget,args=(target,),kwargs=kwargs)
-            threads[t].name = "T" + str(minerva.telescopes[tele_list[t]-1].num)
-            threads[t].start()
+    threads = []
+    for telid in tele_list:
+        telescope = utils.getTelescope(minerva,telid)
+        m3port = telescope.port['FAU']
+#        m3port = telescope.port['IMAGER'] # why was this the imager JDE 2016-12-18??
+        kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
+        thread = threading.Thread(target = telescope.acquireTarget,args=(target,),kwargs=kwargs)
+        thread.name = telescope.id
+        thread.start()
+        threads.append(thread)
 
     # wait for all telescopes to get to the target
     # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
@@ -179,36 +175,34 @@ def doSpectra(minerva, target, tele_list, test=False):
     # check if the thread timed out
     for t in range(len(tele_list)):
         if threads[t].isAlive():
-            minerva.logger.error("T" + str(tele_list[t]) + " thread timed out waiting for slew")
-            mail.send("T" + str(tele_list[t]) + " thread timed out waiting for slew",
+            minerva.logger.error(tele_list[t] + " thread timed out waiting for slew")
+            mail.send(tele_list[t] + " thread timed out waiting for slew",
                       "Dear Benevolent Humans,\n\n"+
-                      "T" + str(tele_list[t]) + " thread timed out waiting for slew. "+
+                      tele_list[t] + " thread timed out waiting for slew. "+
                       "This shouldn't happen. Please fix me and note what was done."+
                       "Love,\nMINERVA",level='serious')
             # should kill the errant thread, otherwise all hell breaks loose
-            
 
     # take the backlit images
     minerva.logger.info("Locating Fiber")
     backlight(minerva)
 
     # find the fiber position from the backlit images
-    for t in range(len(tele_list)):
+    for telid in tele_list:
 
-        tel_num = tele_list[t]
-        telescope = utils.getTelescope(minerva,tel_num)
-        camera = utils.getCamera(minerva,tel_num)
+        telescope = utils.getTelescope(minerva,telid)
+        camera = utils.getCamera(minerva,telid)
         
         if 'backlight' not in camera.file_name:
-            minerva.logger.error("T" + str(tel_num) + ": backlight image not taken; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+            minerva.logger.error(telid + ": backlight image not taken; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
         else:
-            xfiber, yfiber = find_fiber('/Data/t' + str(tel_num) + '/' + minerva.night + '/' + camera.file_name, camera)
+            xfiber, yfiber = find_fiber(telescope.datadir + minerva.night + '/' + camera.file_name, camera)
             if xfiber <> None:
-                minerva.logger.info("T" + str(tel_num) + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + camera.file_name)
+                minerva.logger.info(telid + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + camera.file_name)
                 camera.fau.xfiber = xfiber
                 camera.fau.yfiber = yfiber
             else:
-                minerva.logger.error("T" + str(tel_num) + ": failed to find fiber in image " + camera.file_name + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+                minerva.logger.error(telid + ": failed to find fiber in image " + camera.file_name + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
 
         camera.fau.guiding=True
 
@@ -218,10 +212,10 @@ def doSpectra(minerva, target, tele_list, test=False):
     # acquire the target, run autofocus, then start guiding
     minerva.logger.info("Beginning fine acquisition, autofocus, and guiding")
     threads = []
-    for t in range(len(tele_list)):
-        telescope = minerva.telescopes[tele_list[t]-1]
-        thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,int(telescope.num),))
-        thread.name = "T" + str(telescope.num)
+    for telid in tele_list:
+        telescope = utils.getTelescope(minerva,telid)
+        thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,telid,))
+        thread.name = telid
         thread.start()
         threads.append(thread)
         
@@ -234,9 +228,10 @@ def doSpectra(minerva, target, tele_list, test=False):
     while not acquired and elapsedTime < timeout:
         acquired = True
         for i in range(len(tele_list)):
-            minerva.logger.info("T" + str(tele_list[i]) + ": acquired = " + str(minerva.cameras[tele_list[i]-1].fau.acquired))
-            if not minerva.cameras[tele_list[i]-1].fau.acquired:
-                minerva.logger.info("T" + str(tele_list[i]) + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
+            camera = utils.getCamera(minerva,tele_list[i])
+            minerva.logger.info(tele_list[i] + ": acquired = " + str(camera.fau.acquired))
+            if not camera.fau.acquired:
+                minerva.logger.info(tele_list[i] + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
                 acquired = False
         time.sleep(1.0)
         elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
@@ -273,9 +268,9 @@ def doSpectra(minerva, target, tele_list, test=False):
 
     return
 
-def acquireFocusGuide(minerva, target, telnum):
-    telescope = utils.getTelescope(minerva,telnum)
-    camera = utils.getCamera(minerva,telnum)
+def acquireFocusGuide(minerva, target, telid):
+    telescope = utils.getTelescope(minerva,telid)
+    camera = utils.getCamera(minerva,telid)
     camera.fau.guiding=True
 
     try:
@@ -285,17 +280,17 @@ def acquireFocusGuide(minerva, target, telnum):
         
         # put the target on the fiber
         minerva.logger.info("beginning fine acquisition")
-        try: minerva.fauguide(target,telnum,acquireonly=True, skiponfail=True)
+        try: minerva.fauguide(target,telid,acquireonly=True, skiponfail=True)
         except: minerva.logger.exception("acquisition failed")
 
         # autofocus
         minerva.logger.info("beginning autofocus")
-        try: newauto.autofocus(minerva, telnum)
+        try: newauto.autofocus(minerva, telid)
         except: minerva.logger.exception("autofocus failed")
 
         # guide
         minerva.logger.info("beginning guiding")
-        try: minerva.fauguide(target,telnum, skiponfail=True)
+        try: minerva.fauguide(target,telid, skiponfail=True)
         except: minerva.logger.exception("guiding failed")
     except:
         minerva.logger.exception("pointing and guiding failed")
@@ -304,13 +299,13 @@ def acquireFocusGuide(minerva, target, telnum):
 def stopFAU(minerva,tele_list):
     # set camera.fau.guiding == False to stop guiders
     minerva.logger.info("Stopping the guiding loop for all telescopes")
-    for i in range(len(tele_list)):
-        camera = utils.getCamera(minerva,tele_list[i])
+    for telid in tele_list:
+        camera = utils.getCamera(minerva,telid)
         camera.fau.guiding = False
 
-def peakupflux(minerva, target, telnum):
+def peakupflux(minerva, target, telid):
 
-#    minerva.fauguide(target,[telnum], xfiber=camera.fau.xfiber, yfiber=camera.fau.yfiber)
+#    minerva.fauguide(target,[telid], xfiber=camera.fau.xfiber, yfiber=camera.fau.yfiber)
 #    aveflux = 
 
     pass
@@ -360,13 +355,12 @@ def backlight(minerva, tele_list=0, exptime=0.03, name='backlight'):
     fau_threads = []
     for i in range(len(tele_list)):
         telescope = utils.getTelescope(minerva, tele_list[i])
-        kwargs = {'telescope_num':int(telescope.num)}
         target = {
             'name':name,
             'fauexptime':exptime,
             }
-        thread = threading.Thread(target=minerva.takeFauImage,args=[target,],kwargs=kwargs)
-        thread.name = 'T' + str(telescope.num)
+        thread = threading.Thread(target=minerva.takeFauImage,args=[target,telescope.id],)
+        thread.name = telescope.id
         fau_threads.append(thread)
 
     # start all the FAU images
@@ -468,19 +462,22 @@ def fiber_stability(minerva):
 
     timeout = 360.0
 
+    '''
     # evaluate stability as a function of alt/az/rotation
-    """
     for rotang in range(0,360,10):
 
         threads = []
         for telescope in minerva.telescopes:
-            thread = threading.Thread(target=telescope.rotatorMove,args=[rotang,])
-            thread.name = "T" + str(telescope.num)
+            m3port = telescope.port['FAU']
+        
+            thread = threading.Thread(target=telescope.rotatorMove,args=[rotang,m3port])
+            thread.name = telescope.id
             threads.append(thread)
         for thread in threads:
             thread.start()
-    """
-        # now slew in alt/az
+    '''
+   
+    # now slew in alt/az
     for az in range(0,270,90):
         for alt in range(21,84,15):
             

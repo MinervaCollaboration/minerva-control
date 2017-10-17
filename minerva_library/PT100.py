@@ -15,6 +15,7 @@ class PT100:
 	self.base_directory = base
 	self.load_config()
 	self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
+        self.lastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
     def load_config(self):
 	
@@ -29,7 +30,6 @@ class PT100:
             self.description = config['DESCRIPTION']
             self.mintemp = [float(i) for i in config['MINTEMP']]
             self.maxtemp = [float(i) for i in config['MAXTEMP']]
-            self.lastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
             # reset the night at 10 am local                                                                                                 
             today = datetime.datetime.utcnow()

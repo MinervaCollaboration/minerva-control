@@ -82,11 +82,14 @@ def brightStars(filename='bsc.csv',path='/home/minerva/minerva-control/dependenc
 
     return brightstars
 
-def parseTarget(line):
+def parseTarget(line, logger=None):
     try:
         target = json.loads(line)
     except ValueError:
-        self.logger.error('Not a valid JSON line: ' + line)
+        if logger == None:
+            print 'Not a valid JSON line: ' + line
+        else:
+            logger.error('Not a valid JSON line: ' + line)
         return -1
 
     # convert strings to datetime objects
@@ -198,11 +201,15 @@ def getCamera(minerva, telid):
 def getDome(minerva, telnum):
     
     # this is a hack and should be done better
-    if telnum == 5 or telnum == 'mred': 
+    if telnum == 5 or telnum == 'MRED': 
         dome = minerva.domes[0]
         return dome
 
-    if float(telnum) < 1:
+    if telnum == 'T1' or telnum == 'T2':
+        domenum = 1
+    elif telnum == 'T3' or telnum == 'T4':
+        domenum = 2
+    elif float(telnum) < 1:
         return False
     elif float(telnum) <= 2:
         domenum = 1

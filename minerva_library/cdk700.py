@@ -21,6 +21,7 @@ import utils
 import random
 import pyfits
 from astropy import wcs
+import env
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -158,7 +159,7 @@ class CDK700:
 		if telescopeStatus.mount.connected <> 'True': 
 			self.logger.info('Connecting to mount')
 			if not self.mountConnect(): return False
-			time.sleep(0.25)
+			time.sleep(2.00)
 			telescopeStatus = self.getStatus()
 
 		# enable motors if not enabled
@@ -169,9 +170,16 @@ class CDK700:
 			telescopeStatus = self.getStatus()
 
 		# connect to the focuser if not connected
-		if telescopeStatus.focuser.connected <> 'True' or telescopeStatus.rotator.connected <> 'True':
+		if telescopeStatus.focuser1.connected <> 'True' or telescopeStatus.rotator1.connected <> 'True':
 			self.logger.info('Connecting to focuser')
-			if not self.focuserConnect(): return False
+			if not self.focuserConnect('1'): return False
+			time.sleep(0.25)
+			telescopeStatus = self.getStatus()
+
+		# connect to the focuser if not connected
+		if telescopeStatus.focuser2.connected <> 'True' or telescopeStatus.rotator2.connected <> 'True':
+			self.logger.info('Connecting to focuser')
+			if not self.focuserConnect('2'): return False
 			time.sleep(0.25)
 			telescopeStatus = self.getStatus()
 
@@ -185,7 +193,8 @@ class CDK700:
 
 		# reload the pointing model
 		self.logger.info('re-loading pointing model for the current port')
-		self.m3port_switch(telescopeStatus.m3.port,force=True)
+		m3port = telescopeStatus.m3.port
+		self.m3port_switch(m3port,force=True)
 		telescopeStatus = self.getStatus()
 
 		# turning on/off mount tracking, rotator tracking if not already on/off
@@ -201,11 +210,11 @@ class CDK700:
 		if derotate:
 			if telescopeStatus.rotator.altaz_derotate <> 'True': 
 				self.logger.info('Turning rotator tracking on')
-				self.rotatorStartDerotating()
+				self.rotatorStartDerotating(m3port)
 		else:
 			if telescopeStatus.rotator.altaz_derotate <> 'False': 
 				self.logger.info('Turning rotator tracking off')
-				self.rotatorStopDerotating()
+				self.rotatorStopDerotating(m3port)
 
 		return self.isInitialized(tracking=tracking,derotate=derotate)
 		
@@ -221,9 +230,7 @@ class CDK700:
 			self.logger_name = config['Setup']['LOGNAME']
 			self.id = config['Setup']['ID']
 			self.pdu_config = config['Setup']['PDU']
-			self.latitude = float(config['Setup']['LATITUDE'])
-			self.longitude = float(config['Setup']['LONGITUDE'])
-			self.elevation = float(config['Setup']['ELEVATION'])
+			self.site = env.site(config['Setup']['SITEINI'],self.base_directory)
 			self.horizon = float(config['Setup']['HORIZON'])
 			self.nfailed = 0
 			self.port = config['PORT']
@@ -393,14 +400,14 @@ class CDK700:
 
 		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="move", position=position)
 
-	def focuserMoveAndWait(self,position,port=1,timeout=300.0):
-		if not self.focuserMove(position,port=port):
-			self.logger.warning('Focuser on port ' + str(port) + ' could not move to requested position (' + str(position) + ')')
+	def focuserMoveAndWait(self,position,m3port,timeout=300.0):
+		if not self.focuserMove(position,m3port):
+			self.logger.warning('Focuser on port ' + str(m3port) + ' could not move to requested position (' + str(position) + ')')
 			return False
 
 		# wait for the focuser to start moving
 		time.sleep(3.0) 
-		focuserStatus = getFocuserStatus(port)
+		focuserStatus = self.getFocuserStatus(m3port)
 
 		t0 = datetime.datetime.utcnow()
 		elapsedTime = 0.0
@@ -408,32 +415,32 @@ class CDK700:
 		# wait for the focuser to finish moving
 		# or the timeout (90 seconds is about how long it takes to go from one extreme to the other)
 		while focuserStatus.moving == 'True' and elapsedTime < timeout:
-			self.logger.info('Focuser on port ' + str(port) + ' moving (' + str(focuserStatus.position) + ')')
+			self.logger.info('Focuser on port ' + str(m3port) + ' moving (' + str(focuserStatus.position) + ')')
 			time.sleep(0.3)
-			focuserStatus = getFocuserStatus(port)
+			focuserStatus = self.getFocuserStatus(m3port)
 			elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
 
 		if abs(float(focuserStatus.position) - float(position)) > 10:
-			self.logger.warning('Focuser on port ' + str(port) + ' (' + focuserStatus.position + ') not at requested position (' + str(position) + ') after ' + str(elapsedTime) + ' seconds')
+			self.logger.warning('Focuser on port ' + str(m3port) + ' (' + focuserStatus.position + ') not at requested position (' + str(position) + ') after ' + str(elapsedTime) + ' seconds')
 			return False
 
 		self.logger.info('Focuser completed move in ' + str(elapsedTime) + ' seconds')
 		return True
 
 
-	def focuserIncrement(self, offset, port=1):
+	def focuserIncrement(self, offset, m3port):
 		"""
 		Offset the focuser by the specified amount, in microns
 		"""
 
-		return self.pwiRequestAndParse(device="focuser"+str(port), cmd="move", increment=offset)
+		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="move", increment=offset)
 
-	def focuserStop(self, port=1):
+	def focuserStop(self, m3port):
 		"""
 		Halt any motion on the focuser
 		"""
 
-		return self.pwiRequestAndParse(device="focuser"+str(port), cmd="stop")
+		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="stop")
 
 	def startAutoFocus(self):
 		"""
@@ -441,105 +448,105 @@ class CDK700:
 		"""
 		return self.pwiRequestAndParse(device="focuser", cmd="startautofocus")
 
-	def focuserHome(self, port=1):
-		return self.pwiRequestAndParse(device="focuser" + str(port), cmd="findhome")
+	def focuserHome(self, m3port):
+		return self.pwiRequestAndParse(device="focuser" + str(m3port), cmd="findhome")
 
-	def focuserHomeAndWait(self, port=1, timeout=300.0):
+	def focuserHomeAndWait(self, m3port, timeout=300.0):
 
 		# make sure it's not homing in another thread first
-		focuserStatus = self.getFocuserStatus(port)
-		if not focuserStatus.finding_home == 'True': self.focuserHome(port=port)
+		focuserStatus = self.getFocuserStatus(m3port)
+		if not focuserStatus.finding_home == 'True': self.focuserHome(m3port)
 
 		time.sleep(5.0)
-		focuserStatus = self.getFocuserStatus(port)
+		focuserStatus = self.getFocuserStatus(m3port)
 
 		t0 = datetime.datetime.utcnow()
 		elapsedTime = 0
 		while focuserStatus.finding_home == 'True' and elapsedTime < timeout:
 			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-			self.logger.info('Homing focuser ' + str(port) + ' (elapsed time = ' + str(elapsedTime) + ')')
+			self.logger.info('Homing focuser ' + str(m3port) + ' (elapsed time = ' + str(elapsedTime) + ')')
 			time.sleep(5.0)
-			focuserStatus = self.getFocuserStatus(port)
+			focuserStatus = self.getFocuserStatus(m3port)
 			
 		if elapsedTime > timeout:
-			self.logger.error('Homing focuser ' + str(port) + ' failed')
+			self.logger.error('Homing focuser ' + str(m3port) + ' failed')
 			return False
 
-		self.logger.info('Homing focuser ' + str(port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
+		self.logger.info('Homing focuser ' + str(m3port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
 
 		t0 = datetime.datetime.utcnow()
 		elapsedTime = 0
 		
 		while focuserStatus.moving == 'True' and elapsedTime < 20.0:
 			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-			self.logger.info('Moving focuser ' + str(port) + ' to nominal position (elapsed time = ' + str(elapsedTime) + ')')
+			self.logger.info('Moving focuser ' + str(m3port) + ' to nominal position (elapsed time = ' + str(elapsedTime) + ')')
 			time.sleep(1.0)
-			focuserStatus = self.getFocuserStatus(port)
+			focuserStatus = self.getFocuserStatus(m3port)
 			
 		if focuserStatus.moving == 'True':
-			self.logger.error('Homing focuser ' + str(port) + ' failed')
+			self.logger.error('Homing focuser ' + str(m3port) + ' failed')
 			return False
 
-		self.logger.info('Homing focuser ' + str(port) + ' complete')
+		self.logger.info('Homing focuser ' + str(m3port) + ' complete')
 		return True
 
 
 	### ROTATOR ###
-	def rotatorMove(self, position, port=1):
-		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="move", position=position)
+	def rotatorMove(self, position, m3port):
+		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="move", position=position)
 
-	def rotatorIncrement(self, offset, port=1):
-		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="move", increment=offset)
+	def rotatorIncrement(self, offset, m3port):
+		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="move", increment=offset)
 
-	def rotatorStop(self, port=1):
-		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="stop")
+	def rotatorStop(self, m3port):
+		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="stop")
 
-	def rotatorStartDerotating(self, port=1):
-		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestart")
+	def rotatorStartDerotating(self, m3port):
+		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="derotatestart")
 
-	def rotatorStopDerotating(self, port=1):
-		return self.pwiRequestAndParse(device="rotator"+str(port), cmd="derotatestop")
+	def rotatorStopDerotating(self, m3port):
+		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="derotatestop")
 
-	def rotatorHome(self, port=1):
-		return self.pwiRequestAndParse(device="rotator" + str(port), cmd="findhome")	
+	def rotatorHome(self, m3port):
+		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="findhome")	
 
-	def rotatorHomeAndWait(self, port=1, timeout=400.0):
+	def rotatorHomeAndWait(self, m3port, timeout=400.0):
 
 		# make sure it's not homing in another thread first
-		rotatorStatus = self.getRotatorStatus(port)
-		if not rotatorStatus.finding_home == 'True': self.rotatorHome(port=port)
+		rotatorStatus = self.getRotatorStatus(m3port)
+		if not rotatorStatus.finding_home == 'True': self.rotatorHome(m3port)
 
 		time.sleep(5.0)
-		rotatorStatus = self.getRotatorStatus(port)
+		rotatorStatus = self.getRotatorStatus(m3port)
 
 		t0 = datetime.datetime.utcnow()
 		elapsedTime = 0
 		while rotatorStatus.finding_home == 'True' and elapsedTime < timeout:
 			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-			self.logger.info('Homing rotator ' + str(port) + ' (elapsed time = ' + str(elapsedTime) + ')')
+			self.logger.info('Homing rotator ' + str(m3port) + ' (elapsed time = ' + str(elapsedTime) + ')')
 			time.sleep(5.0)
-			rotatorStatus = self.getRotatorStatus(port)
+			rotatorStatus = self.getRotatorStatus(m3port)
 
 		if elapsedTime > timeout:
-			self.logger.error('Homing rotator ' + str(port) + ' failed')
+			self.logger.error('Homing rotator ' + str(m3port) + ' failed')
 			return False
 
-		self.logger.info('Homing rotator ' + str(port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
+		self.logger.info('Homing rotator ' + str(m3port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
 
 		t0 = datetime.datetime.utcnow()
 		elapsedTime = 0
 		
 		while rotatorStatus.moving == 'True' and elapsedTime < 20.0:
 			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-			self.logger.info('Moving rotator ' + str(port) + ' to nominal position (elapsed time = ' + str(elapsedTime) + ')')
+			self.logger.info('Moving rotator ' + str(m3port) + ' to nominal position (elapsed time = ' + str(elapsedTime) + ')')
 			time.sleep(1.0)
-			rotatorStatus = self.getRotatorStatus(port)
+			rotatorStatus = self.getRotatorStatus(m3port)
 			
 		if rotatorStatus.moving == 'True':
-			self.logger.error('Homing rotator ' + str(port) + ' failed')
+			self.logger.error('Homing rotator ' + str(m3port) + ' failed')
 			return False
 
-		self.logger.info('Homing rotator ' + str(port) + ' complete')
+		self.logger.info('Homing rotator ' + str(m3port) + ' complete')
 		return True
 
 
@@ -582,7 +589,7 @@ class CDK700:
 			dec = target['dec']
                 #stolen from parangle.pro written by Tim Robinshaw
                 return -180.0/math.pi*math.atan2(-math.sin(ha*math.pi/12.0),
-                                                  math.cos(dec*math.pi/180.0)*math.tan(self.latitude*math.pi/180.0)-
+                                                  math.cos(dec*math.pi/180.0)*math.tan(float(self.site.latitude)*math.pi/180.0)-
                                                   math.sin(dec*math.pi/180.0)*math.cos(ha*math.pi/12.0))
 
 	def solveRotatorPosition(self, target):
@@ -735,8 +742,8 @@ class CDK700:
 		return self.pwiRequestAndParse(device="mount",cmd="sync",ra2000=ra,dec2000=dec)
 
 	### M3 ###
-	def m3SelectPort(self, port):
-		return self.pwiRequestAndParse(device="m3", cmd="select", port=port)
+	def m3SelectPort(self, m3port):
+		return self.pwiRequestAndParse(device="m3", cmd="select", port=m3port)
 
 	def m3Stop(self):
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
@@ -758,7 +765,10 @@ class CDK700:
 
 
 		if self.nfailed >= 2:
+
+			self.initialize(tracking=tracking,derotate=derotate)
 			telescopeStatus = self.getStatus()
+			
 			if telescopeStatus.mount.encoders_have_been_set <> 'True':
 				self.logger.info('Homing telescope')
 				if not self.home(): return False
@@ -933,7 +943,7 @@ class CDK700:
 			continue
 		        #'''
 
-			imageName = minerva.takeFauImage(target,telescope_num=int(self.num))
+			imageName = minerva.takeFauImage(target,self.id)
 			x,y = utils.findBrightest(datapath + imageName)
 			if x==None or y==None: continue
 
@@ -987,7 +997,7 @@ class CDK700:
 			imageName = camera.take_image(exptime=exptime, objname='Pointing', fau=fau, filterInd=filterName)
 
 			# find the brightest star
-			datapath = '/Data/t' + self.num + '/' + self.night + '/'
+			datapath = self.datadir + self.night + '/'
 			x,y = utils.findBrightest(datapath + imageName)
 			if x==None or y==None: continue
 
@@ -1088,7 +1098,7 @@ class CDK700:
 		filename = camera.take_image(exptime=exptime,objname="rotatorCal",fau=fau)
 
 		# locate star
-		datapath = '/Data/t' + self.num + '/' + self.night + '/'
+		datapath = self.datadir + self.night + '/'
 		x1, y1 = utils.findBrightest(datapath + filename)
 		if x1 == None or y1 == None: return False
 
@@ -1109,7 +1119,7 @@ class CDK700:
 		filename = camera.take_image(exptime=exptime,objname="rotatorCal",fau=fau)
 
 		# locate star
-		datapath = '/Data/t' + self.num + '/' + self.night + '/'
+		datapath = self.datadir + self.night + '/'
 		x2, y2 = utils.findBrightest(datapath + filename)
 		if x2 == None or y2 == None: return False
 
@@ -1252,8 +1262,9 @@ class CDK700:
 
                 #S Make sure the derotating is on.
 		rotatorStatus = self.getRotatorStatus(m3port)
+		telescopeStatus = self.getStatus()
 		if derotate:
-			self.rotatorStartDerotating(port=m3port)
+			self.rotatorStartDerotating(m3port)
 			timeout = 360.0
 			self.logger.info('Waiting for rotator to finish slew; goto_complete = ' + rotatorStatus.goto_complete)
 			while rotatorStatus.goto_complete == 'False' and elapsedTime < timeout:
@@ -1263,12 +1274,12 @@ class CDK700:
 				rotatorStatus = self.getRotatorStatus(m3port)
 
 			# Make sure derotating is on.
-			if rotatorStatus.altaz_derotate == 'False':
-				self.rotatorStartDerotating(port=m3port)
+			if telescopeStatus.rotator.altaz_derotate == 'False':
+				self.rotatorStartDerotating(m3port)
 				self.logger.error('Derotating was off, turned on')
 		else:
-			if rotatorStatus.rotator.altaz_derotate == 'True':
-				self.rotatorStopDerotating(port=m3port)
+			if telescopeStatus.rotator.altaz_derotate == 'True':
+				self.rotatorStopDerotating(m3port)
 				self.logger.error('Derotating was on, turned off')
 
 
@@ -1305,7 +1316,7 @@ class CDK700:
                 #S We are expecting RA to come in as decimal hours, so need to convert to degrees then radians
                 #S dec comes in as degrees.
                 rarad = np.radians(ra*15.0)
-                decrad = np.radians(dec)
+		decrad = np.radians(dec)
                 #S basically see what values we can make corrections for.
                         
                 #S Unit vector pointing to star's epoch location
@@ -1391,16 +1402,20 @@ class CDK700:
 				#S Initialize the telescope
 				self.initialize(tracking=True,derotate=True)
 				rotator_angle = self.solveRotatorPosition(target)
-				self.rotatorMove(rotator_angle,port=m3port)
+				self.rotatorMove(rotator_angle,m3port)
 
 		else:
 			if m3port == None: m3port = self.port['IMAGER']
 			self.initialize(tracking=True,derotate=True)
 			rotator_angle = self.solveRotatorPosition(target)
-			self.rotatorMove(rotator_angle,port=m3port)
+			self.rotatorMove(rotator_angle,m3port)
 
 		self.m3port_switch(m3port)
 		self.logger.info('Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
+		if self.isMoving():
+			self.logger.error("Telescope moving when another move requested, aborting acquireTarget")
+			return False
+			
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
 		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected, tracking=tracking, derotate=derotate):
@@ -1413,6 +1428,17 @@ class CDK700:
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			return self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
 
+	def isMoving(self, timeout=15.0):
+		telescopeStatus = self.getStatus()
+		timeElapsed = 0.0
+		t0 = datetime.datetime.utcnow()
+		while telescopeStatus.mount.moving == 'True' or timeElapsed < timeout:
+			time.sleep(1.0)
+			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()			
+			telescopeStatus = self.getStatus()
+			
+		return telescopeStatus.mount.moving == 'True'
+
 	def radectoaltaz(self,ra,dec,date=None):
 
 		# if set as a default, it evaluates once when the function is initialized
@@ -1420,9 +1446,9 @@ class CDK700:
 		if date == None: date = datetime.datetime.utcnow()
 
 		obs = ephem.Observer()
-		obs.lat = str(self.latitude)
-		obs.long = str(self.longitude)
-		obs.elevation = self.elevation
+		obs.lat = str(self.site.latitude)
+		obs.long = str(self.site.longitude)
+		obs.elevation = self.site.elevation
 		obs.date = str(date)
 		star = ephem.FixedBody()
 		star._ra = ephem.hours(str(ra))
@@ -1484,7 +1510,11 @@ class CDK700:
 
 	def park(self):
 		# park the scope (no danger of pointing at the sun if opened during the day)
-		self.initialize(tracking=True, derotate=False)
+		if not self.initialize(tracking=True, derotate=False):
+			self.recover()
+			self.park()
+			return
+
 		parkAlt = 45.0
 		parkAz = 0.0 
 
@@ -1493,7 +1523,9 @@ class CDK700:
 
 #		self.initialize(tracking=False, derotate=False)
 #		self.logger.info('Turning rotator tracking off')
-#		self.rotatorStopDerotating()
+#		telescopeStatus = self.getStatus()
+#		m3port = telescopeStatus.m3.port
+#		self.rotatorStopDerotating(m3port)
 		
 		if not self.inPosition(alt=parkAlt,az=parkAz, pointingTolerance=3600.0,derotate=False):
 			if self.recover(tracking=False, derotate=False): self.park()
@@ -1508,14 +1540,14 @@ class CDK700:
 
 		self.logger.info('Beginning focuser recovery')
 
-		self.focuserStop()
-		self.rotatorStopDerotating()
-		self.focuserDisconnect()
+		self.focuserStop(m3port)
+		self.rotatorStopDerotating(m3port)
+		self.focuserDisconnect(m3port)
 		self.restartPWI(email=False)
 		time.sleep(5)
 
 		self.initialize()
-		self.focuserConnect()
+		self.focuserConnect(m3port)
 
 		status = self.getStatus()
 		if self.focuserMoveAndWait(self.focus[m3port],m3port):
@@ -1533,9 +1565,9 @@ class CDK700:
 
 		return
 					
-	def shutdown(self):
-		self.rotatorStopDerotating()
-		self.focuserDisconnect()
+	def shutdown(self,m3port):
+		self.rotatorStopDerotating(m3port)
+		self.focuserDisconnect(m3port)
 		self.mountTrackingOff()
 		self.mountDisconnect()
 		self.mountDisableMotors()

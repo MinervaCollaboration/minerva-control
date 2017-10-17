@@ -7,6 +7,7 @@ sys.dont_write_bytecode = True
 from minerva_library import control  
 from minerva_library import rv_control
 from minerva_library import utils
+from minerva_library import mail
 import datetime
 
 #-------------------
@@ -57,7 +58,6 @@ def startSkyFlats(minerva, telescope, dome, CalibInfo):
     #S Initialize again, but with tracking on.
     if not telescope.initialize(tracking=True, derotate=True):
         telescope.recover(tracking=True, derotate=True) 
-
     
     flatFilters = CalibInfo['flatFilters'] 
     minerva.doSkyFlat(flatFilters, False, CalibInfo['nflat'],telescope.id)
@@ -272,9 +272,10 @@ def omniObserve(minerva, states):
                         phot_target[title] = phot_target_teles[title]
 
                 counter+=1 # index for the telescopes
-                threads.append( threading.Thread( target = minerva.doScience, args = (phot_target, tele) ))
-                threads[-1].name = 'Phot_Obs_'+str(tele)
-                threads[-1].start()
+                thread = threading.Thread( target = minerva.doScience, args = (phot_target, tele) )
+                thread.name = 'Phot_Obs_' + tele
+                thread.start()
+                threads.append(thread)
 
             for tel in phot_teles_id: rv_teles_id.pop( rv_teles_id.index(tel) )
 
@@ -302,9 +303,10 @@ def omniObserve(minerva, states):
     
                 # CALL RV observation
                 # The remaining telescopes will always collect RVs on the same target
-                threads.append( threading.Thread( target = rv_control.doSpectra, args = (minerva,RV_target,rv_teles_id) ))
-                threads[-1].name = 'RV_Obs'
-                threads[-1].start()
+                thread = threading.Thread( target = rv_control.doSpectra, args = (minerva,RV_target,rv_teles_id) ) 
+                thread.name = 'RV_Obs'
+                thread.start()
+                threads.append( thread)
                 minerva.logger.info('RV thread is activated.')
 
                 # tell the scheduler that we observed the target
@@ -346,11 +348,7 @@ def omniObserve(minerva, states):
     return
 
 
-
-
-
-
-if __name__ == '__main__':  # do a bunch of threading stuff
+def observe():
 
     try: utils.killmain()
     except: pass
@@ -368,13 +366,12 @@ if __name__ == '__main__':  # do a bunch of threading stuff
         minerva.prepNight(telescope)
         scheduleFile = minerva.base_directory + '/schedule/' + minerva.site.night + '.' + telescope.id + '.txt'
         utils.scheduleIsValid(scheduleFile, email=True, logger=minerva.logger)
-    
 
         # Setup tech thread
-        threads.append(  threading.Thread( target = SetupTech, args=(minerva, telescope, camera) ) )
-        threads[-1].name = 'SetupTech_'+str(telescope.id)
-        threads[-1].start()
-        
+        thread = threading.Thread( target = SetupTech, args=(minerva, telescope, camera) ) 
+        thread.name = telescope.id
+        thread.start()
+        threads.append(thread)       
         # End FOR loop
 
     # Wait until all threads are done because if this telescope's homing is not complete, 
@@ -385,6 +382,8 @@ if __name__ == '__main__':  # do a bunch of threading stuff
         minerva.logger.info("Waiting for " + threads[p].name + " to finish")
         threads[p].join()
         
+    minerva.logger.info("All threads finished setting up")
+    
 
     threads=[]
 
@@ -396,16 +395,14 @@ if __name__ == '__main__':  # do a bunch of threading stuff
          
         # by default, checkiftime = True. This is just here as a reminder
         kwargs ={'checkiftime': True}
-        threads.append( threading.Thread( target = minerva.specCalib, args=(),kwargs=kwargs ) )
-        threads[-1].name = 'SpecCalib'
-        threads[-1].start()
+        thread = threading.Thread( target = minerva.specCalib, args=(),kwargs=kwargs ) 
+        thread.name = 'Kiwispec'
+        thread.start()
+        threads.append(thread)
 
-
+    # photometric calibrations
     for telescope in minerva.telescopes:
-
-        telescope = utils.getTelescope(minerva,telescope.id)  
         CalibInfo,CalibEndInfo = minerva.loadCalibInfo(telescope.id)
-
         if CalibInfo != None and CalibEndInfo !=None:
 
             # Photometry Calibration thread
@@ -413,10 +410,10 @@ if __name__ == '__main__':  # do a bunch of threading stuff
 
                 # by default, checkiftime = True. This is just here as a reminder
                 kwargs = {'checkiftime':True}
-                threads.append(  threading.Thread( target = PhotCalib, args=(minerva, CalibInfo, telescope.id), kwargs=kwargs ) )
-                threads[-1].name = telescope.id
-                threads[-1].start()                  
-        
+                thread = threading.Thread( target = PhotCalib, args=(minerva, CalibInfo, telescope.id), kwargs=kwargs )
+                thread.name = telescope.id
+                thread.start()                  
+                threads.append(thread)       
 
     for p in np.arange(len(threads)):
         threads[p].join()
@@ -430,7 +427,6 @@ if __name__ == '__main__':  # do a bunch of threading stuff
         # Prepare Domes before taking Sky flats
         dome = utils.getDome(minerva, telescope.id)
 
- 
         sunfile = minerva.base_directory + '/minerva_library/sunOverride.txt'
         if os.path.exists(sunfile): os.remove(sunfile)
 
@@ -443,9 +439,10 @@ if __name__ == '__main__':  # do a bunch of threading stuff
         if CalibInfo != None and CalibEndInfo != None:
             if datetime.datetime.utcnow() < minerva.site.NautTwilEnd():
                 # Skyflats thread
-                threads.append(  threading.Thread( target = startSkyFlats, args=(minerva, telescope, dome, CalibInfo) ) )
-                threads[-1].name = telescope.id
-                threads[-1].start()                  
+                thread = threading.Thread( target = startSkyFlats, args=(minerva, telescope, dome, CalibInfo) )
+                thread.name = telescope.id
+                thread.start()                  
+                threads.append(thread)
      
         # End FOR loop
         
@@ -540,7 +537,21 @@ if __name__ == '__main__':  # do a bunch of threading stuff
     # Wait for the sky flats to finish
     for p in np.arange(len(threads)):
         threads[p].join()
-         
+        
     omniObserve(minerva, chrono_states)
     
     for tele in minerva.telescopes: minerva.endNight(tele,kiwispec=True)
+
+if __name__ == '__main__':  # do a bunch of threading stuff
+
+    try:
+        observe()
+    except Exception as e:
+        self.logger.exception(str(e.message) )
+        body = "Dear benevolent humans,\n\n" + \
+            'I have encountered an unhandled exception which has killed MINERVA observations. The error message is:\n\n' + \
+            str(e.message) + "\n\n" + \
+            "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart mainNew.py.\n\n" + \
+            "Love,\n" + \
+            "MINERVA"
+        mail.send("mainNew.py Crashed",body,level='serious',directory=self.directory)
