@@ -22,13 +22,11 @@ def rv_observing(minerva):
 
     mail.send("MINERVA starting observing","Love,\nMINERVA")
 
-    sunfile = minerva.base_directory + 'minerva_library/sunOverride.txt'
-    if os.path.exists(sunfile): os.remove(sunfile)
-    with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
-        fh.write(str(datetime.datetime.utcnow()))
-
-    with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
-        fh.write(str(datetime.datetime.utcnow()))
+    for dome in minerva.domes:
+        sunfile = minerva.base_directory + 'minerva_library/sunOverride.' + dome.id + '.txt'
+        if os.path.exists(sunfile): os.remove(sunfile)
+        with open(minerva.base_directory + '/minerva_library/' + dome.id + '.request.txt','w') as fh:
+            fh.write(str(datetime.datetime.utcnow()))
 
     minerva.telescope_initialize(tracking=False,derotate=False)
     minerva.telescope_park()
@@ -110,7 +108,7 @@ def rv_observing(minerva):
                         kwargs = {'target':target,'fau':fau}
                         threads = []
                         for telescope in minerva.telescopes:
-                            thread = threading.Thread(target=newauto.autofocus,args=(minerva,int(telescope.num),),kwargs=kwargs)
+                            thread = threading.Thread(target=newauto.autofocus,args=(minerva,telescope.id,),kwargs=kwargs)
                             thread.name = 'T' + str(telescope.num)
                             threads.append(thread)
                         for thread in threads(): thread.start()

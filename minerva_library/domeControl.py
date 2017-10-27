@@ -24,10 +24,10 @@ def domeControl(minerva,dome,day=False):
             lastnight = thisnight
 
         openRequested = os.path.isfile(minerva.base_directory + '/minerva_library/' + dome.id + '.request.txt')
-        day = os.path.isfile(minerva.base_directory + '/minerva_library/sunOverride.txt')
+        day = os.path.isfile(minerva.base_directory + '/minerva_library/sunOverride.' + dome.id + '.txt')
 
-        if not minerva.site.oktoopen(domeopen=dome.isOpen()):
-            if minerva.site.oktoopen(domeopen=dome.isOpen(),ignoreSun=True):
+        if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen()):
+            if minerva.site.oktoopen(dome.id, domeopen=dome.isOpen(),ignoreSun=True):
                 minerva.logger.info('Weather not ok to open; resetting timeout')
                 minerva.site.lastClose = datetime.datetime.utcnow()
             dome.close_both()

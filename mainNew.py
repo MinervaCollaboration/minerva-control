@@ -427,7 +427,7 @@ def observe():
         # Prepare Domes before taking Sky flats
         dome = utils.getDome(minerva, telescope.id)
 
-        sunfile = minerva.base_directory + '/minerva_library/sunOverride.txt'
+        sunfile = minerva.base_directory + '/minerva_library/sunOverride.' + dome.id + '.txt'
         if os.path.exists(sunfile): os.remove(sunfile)
 
         with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
@@ -547,7 +547,7 @@ if __name__ == '__main__':  # do a bunch of threading stuff
     try:
         observe()
     except Exception as e:
-        self.logger.exception(str(e.message) )
+        minerva.logger.exception(str(e.message) )
         body = "Dear benevolent humans,\n\n" + \
             'I have encountered an unhandled exception which has killed MINERVA observations. The error message is:\n\n' + \
             str(e.message) + "\n\n" + \

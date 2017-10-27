@@ -83,7 +83,7 @@ class control:
 		if self.red:
 #			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory)
 			self.domes.append(astrohaven.astrohaven('astrohaven_red.ini',self.base_directory))
-			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory))
+			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory, red=True))
 			self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
 #			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mred.ini',self.base_directory))
@@ -1357,6 +1357,8 @@ class control:
 		imaging_thread.name = "Kiwispec"
 		imaging_thread.start()
                         
+		ipdb.set_trace()
+
 		f = self.getHdr(target,[1,2,3,4],None)
 		for dome in self.domes:
 			f = self.addAqawanKeys(dome, f)
@@ -1375,9 +1377,13 @@ class control:
 			self.spectrograph.logger.info("Standardizing the FITS image")
 			night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 			dataPath = '/Data/kiwispec/' + night + '/'
-			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
-			fix_fits_thread.name = 'Kiwispec'
-			fix_fits_thread.start()
+
+			ipdb.set_trace()
+
+			fix_fits(os.path.join(dataPath,self.spectrograph.file_name))
+#			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
+#			fix_fits_thread.name = 'Kiwispec'
+#			fix_fits_thread.start()
 			
 			# tell the scheduler if we successfully observed a B star
 			try:
@@ -1979,7 +1985,7 @@ class control:
 			if target['name'].lower() not in no_pa_list:
 				# run astrometry asynchronously
 				camera.logger.info("Running astrometry to find PA on " + camera.file_name)
-				dataPath = telescope.datapath + self.site.night + '/'
+				dataPath = telescope.datadir + self.site.night + '/'
 				astrometryThread = threading.Thread(target=self.getPA, args=(dataPath + camera.file_name,), kwargs={})
 				astrometryThread.name = camera.telid
 				astrometryThread.start()
@@ -2365,7 +2371,7 @@ class control:
 							#S new target dict takeImage
 							filename = self.takeImage(temp_target,telid)
 
-							if target['selfguide'] and filename <> 'error': reference = self.guide(telescope.datapath + self.site.night + '/' + filename,reference)
+							if target['selfguide'] and filename <> 'error': reference = self.guide(telescope.datadir + self.site.night + '/' + filename,reference)
 					
 					
 		else:
@@ -2723,8 +2729,7 @@ class control:
 		
 		# email observing report
 		if email: 
-			if num == 0: subject="MINERVA done observing"
-			else: subject = telescope.id + ' done observing'
+			subject = telescope.id + ' done observing'
 			mail.send(subject,body,attachments=[weatherplotname,Pointing_plot_name,fits_plot_name],directory=self.directory)
 
 		print body
@@ -2817,7 +2822,7 @@ class control:
 
 			#S this is here just to make sure we aren't moving
 #			# DON'T CHANGE PORTS (?)
-			telescope.inPosition()
+			telescope.inPosition(m3port=telescope.port['IMAGER'])
 
 #			newauto.autofocus(self,telescope.id)
 

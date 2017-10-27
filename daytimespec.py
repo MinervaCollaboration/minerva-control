@@ -2,15 +2,19 @@ import sys
 import os
 sys.dont_write_bytecode = True
 from minerva_library import control
+from minerva_library import utils
 import ipdb, datetime, time, socket
 import threading
 from minerva_library import mail
 
 if __name__ == '__main__':
 
+
+	utils.killmain()
+
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
-	minerva = control.control('control.ini',base_directory)
+	minerva = control.control('control_day.ini',base_directory)
 
 	# stop at 2:30 pm local (so calibrations can finish before daily reboot at 3:30 pm)
 	endtime = datetime.datetime(datetime.datetime.utcnow().year, datetime.datetime.utcnow().month, datetime.datetime.utcnow().day, 21, 30, 0)
@@ -45,14 +49,12 @@ if __name__ == '__main__':
 	if datetime.datetime.utcnow() < endtime:
 		# create the sunOverride.txt file
 		# force manual creation of this file??
-		with open(minerva.base_directory + '/minerva_library/sunOverride.txt','w') as fh:
-			fh.write(str(datetime.datetime.utcnow()))
+		for dome in minerva.domes:
+			with open(minerva.base_directory + '/minerva_library/sunOverride.' + dome.id + '.txt','w') as fh:
+				fh.write(str(datetime.datetime.utcnow()))
 
-		with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
-			fh.write(str(datetime.datetime.utcnow()))
-		
-		with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
-			fh.write(str(datetime.datetime.utcnow()))
+			with open(minerva.base_directory + '/minerva_library/' + dome.id + '.request.txt','w') as fh:
+				fh.write(str(datetime.datetime.utcnow()))
 		
 	# wait for domes to open
 	t0 = datetime.datetime.utcnow()
@@ -157,7 +159,9 @@ if __name__ == '__main__':
 			status = dome.status()
 
 	# remove the sun override
-	if os.path.exists(minerva.base_directory + '/minverva_library/sunOverride.txt'): os.remove(minerva.base_directory + '/minerva_library/sunOverride.txt')
+	for dome in minerva.domes:
+		sunfile = minerva.base_directory + '/minverva_library/sunOverride.' + dome.id + '.txt'
+		if os.path.exists(sunfile): os.remove(sunfile)
 
 	# change to the spectrograph imaging port for calibrations
 	for telescope in minerva.telescopes:

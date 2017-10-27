@@ -326,7 +326,6 @@ class server:
                         #S addr is he address where the socket is bound to. 
                         conn, addr = s.accept()
                         try:
-                               
                                 conn.settimeout(3)
                                 data = conn.recv(1024)
                         except:

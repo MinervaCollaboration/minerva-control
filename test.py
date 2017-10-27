@@ -49,7 +49,7 @@ if __name__ == '__main__':
 #	minerva.telescopes[0].makePointingModel(minerva,npoints=50,exptime=2.0)
 #	minerva.endNight(num=3,email=False,kiwispec=False)
 
-#	newauto.autofocus(minerva,1)
+#	newauto.autofocus(minerva,'T1')
 #	minerva.scheduler.choose_target(remaining_time=22700,logger=minerva.logger,timeof=datetime.datetime.utcnow())
 
 	ipdb.set_trace()
@@ -65,14 +65,14 @@ if __name__ == '__main__':
 		  }
 	minerva.takeSpectrum(target)
 	ipdb.set_trace()
-	newauto.autofocus(minerva,1,target=target,defocus_step=0.03,num_steps=3,dome_override=True)
+	newauto.autofocus(minerva,'T1',target=target,defocus_step=0.03,num_steps=3,dome_override=True)
 	ipdb.set_trace()
 	minerva.takeSpectrum(target,[1,2,3,4])
 	
 	
 #	minerva.telescopes[0].m3port_switch('2',force=True)
-#	newauto.autofocus(minerva,1,target=target)
-#	newauto.autofocus(minerva,3,target=target)
+#	newauto.autofocus(minerva,'T1',target=target)
+#	newauto.autofocus(minerva,'T3',target=target)
 #	minerva.telescopes[3].calibrateRotator(minerva.cameras[3])
 #	minerva.telescopes[0].makePointingModel(minerva.cameras[0],npoints=1)
 
@@ -255,7 +255,7 @@ if __name__ == '__main__':
 		"i2": False,
 		"comment":"RV standard star"}
 
-	minerva.autofocus(4,fau=True,target=target)
+	newauto.autofocus(minerva,'T4',fau=True,target=target)
 	"""
 	target = {
 		"name" : "HD125455", 
@@ -277,8 +277,8 @@ if __name__ == '__main__':
 		"i2": False,
 		"comment":"RV standard star"}
 	ipdb.set_trace()
-	newauto.autofocus(minerva,3,target=target)
-	rv_control.doSpectra(minerva,target,[1,2,3,4])
+	newauto.autofocus(minerva,'T3',target=target)
+	rv_control.doSpectra(minerva,target,['T1','T2','T3','T4'])
 	ipdb.set_trace()
 
 #	target['name'] = 'ThAr_T1'
@@ -359,7 +359,7 @@ if __name__ == '__main__':
         #S a TODO to make sure it's looked at again.
         #TODO
         #ipdb.set_trace()
-	minerva.telescope_initialize(tele_list = [3,4])
+	minerva.telescope_initialize(tele_list = ['T3','T4'])
 	
         minerva.takeSpectrum(60.0,'test',expmeter=1000000.0)
 

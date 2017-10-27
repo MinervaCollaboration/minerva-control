@@ -65,13 +65,19 @@ def elementTreeToObject(elementTreeNode):
 
 
 class CDK700:
-	def __init__(self, config, base=''):
+	def __init__(self, config, base='', red=False, south=False, directory=None):
 		#S Set config file
 		self.config_file = config
 		#S Set base directory
 		self.base_directory = base
 		#S Get values from config_file
 		self.load_config()
+
+		if directory == None:
+                        if red: self.directory = 'directory_red.txt'
+                        elif south: self.directory = 'directory_south.txt'
+                        else: self.directory = 'directory.txt'
+                else: self.directory=directory
 
 		self.num = self.logger_name[-1]		
 
@@ -159,7 +165,7 @@ class CDK700:
 		if telescopeStatus.mount.connected <> 'True': 
 			self.logger.info('Connecting to mount')
 			if not self.mountConnect(): return False
-			time.sleep(2.00)
+			time.sleep(5.00)
 			telescopeStatus = self.getStatus()
 
 		# enable motors if not enabled
@@ -786,15 +792,16 @@ class CDK700:
 			return True
 		
 		# power cycle and rehome the scope
-		self.logger.info('restarting PWI failed, power cycling the mount')
-		try: self.shutdown()
-		except: pass
-		self.killPWI()
-		self.powercycle()
-		self.startPWI()
-		if self.initialize():
-			self.logger.info('recovered after power cycling the mount')
-			return True
+		if self.id != 'MRED':
+			self.logger.info('restarting PWI failed, power cycling the mount')
+			try: self.shutdown()
+			except: pass
+			self.killPWI()
+			self.powercycle()
+			self.startPWI()
+			if self.initialize():
+				self.logger.info('recovered after power cycling the mount')
+				return True
 
 		'''
 		# reboot the telcom machine
@@ -823,7 +830,7 @@ class CDK700:
 		    "MINERVA"			
 		while not self.initialize(tracking=tracking, derotate=derotate):
 			self.logger.error('Telescope has failed to automatically recover; intervention required')
-			mail.send(self.id + " has failed",body,level='serious')
+			mail.send(self.id + " has failed",body,level='serious', directory=self.directory)
 			fh = open(filename,'w')
 			fh.close()
 			while os.path.isfile(filename):
@@ -1477,12 +1484,12 @@ class CDK700:
 						self.mountSetPointingModel(self.model[m3port])
 					else:
 						self.logger.error('model file (%s) does not exist; using current model'%(modelfile))
-						mail.send('model file (%s) does not exist; using current model'%(modelfile),'',level='serious')
+						mail.send('model file (%s) does not exist; using current model'%(modelfile),'',level='serious', directory=self.directory)
 					
-					telescopeStatus = self.m3SelectPort(port=m3port)
+					telescopeStatus = self.m3SelectPort(m3port)
 					time.sleep(0.5)
 					
-					telescopeStatus = self.m3SelectPort(port=m3port)
+					telescopeStatus = self.m3SelectPort(m3port)
 
 					# TODO: add a timeout here!
 					while telescopeStatus.m3.moving_rotate == 'True':
@@ -1561,7 +1568,7 @@ class CDK700:
 			self.logger.info('Focuser recovered')			
 			return
 		self.logger.error('Focus timed out')
-		mail.send('Focuser failed on ' + str(self.logger_name),"Try powercycling?",level='serious')
+		mail.send('Focuser failed on ' + str(self.logger_name),"Try powercycling?",level='serious', directory=self.directory)
 
 		return
 					
@@ -1649,19 +1656,19 @@ class CDK700:
 
                 if 'NT_STATUS_HOST_UNREACHABLE' in out:
                         self.logger.error('the host is not reachable')
-                        mail.send("T" + self.num + ' is unreachable',
+                        mail.send(self.id + ' is unreachable',
                                   "Dear Benevolent Humans,\n\n"+
-                                  "I cannot reach T" + self.num + ". Can you please check the power and internet connection?\n\n" +
-                                  "Love,\nMINERVA",level="serious")
+                                  "I cannot reach " + self.id + ". Can you please check the power and internet connection?\n\n" +
+                                  "Love,\nMINERVA",level="serious", directory=self.directory)
                         return False
                 elif 'NT_STATUS_LOGON_FAILURE' in out:
                         self.logger.error('invalid credentials')
-                        mail.send("Invalid credentials for T" + self.num,
+                        mail.send("Invalid credentials for " + self.id,
                                   "Dear Benevolent Humans,\n\n"+
                                   "The credentials in " + self.base_directory +
                                   '/credentials/authentication.txt (username=' + username +
                                   ', password=' + password + ') appear to be outdated. Please fix it.\n\n' +
-                                  'Love,\nMINERVA',level="serious")
+                                  'Love,\nMINERVA',level="serious", directory=self.directory)
                         return False
                 elif 'ERROR: The process' in err:
                         self.logger.info('task already dead')
