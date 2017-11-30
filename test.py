@@ -24,6 +24,8 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+	ipdb.set_trace()
+
 	target = {
 		"name": "HD62613", 
 		"ra": 23.25, 
@@ -44,6 +46,8 @@ if __name__ == '__main__':
 		"i2": False,
 		}
 
+#	minerva.telescopes[1].calibrateRotator(minerva.cameras[1])
+	minerva.telescopes[0].makePointingModel(minerva)
 	ipdb.set_trace()
 
 #	minerva.telescopes[0].makePointingModel(minerva,npoints=50,exptime=2.0)

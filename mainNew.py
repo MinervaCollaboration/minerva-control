@@ -365,7 +365,7 @@ def observe():
         #set up night's directory
         minerva.prepNight(telescope)
         scheduleFile = minerva.base_directory + '/schedule/' + minerva.site.night + '.' + telescope.id + '.txt'
-        utils.scheduleIsValid(scheduleFile, email=True, logger=minerva.logger)
+        utils.scheduleIsValid(scheduleFile, email=True, logger=minerva.logger,directory=minerva.directory)
 
         # Setup tech thread
         thread = threading.Thread( target = SetupTech, args=(minerva, telescope, camera) ) 
@@ -395,7 +395,7 @@ def observe():
          
         # by default, checkiftime = True. This is just here as a reminder
         kwargs ={'checkiftime': True}
-        thread = threading.Thread( target = minerva.specCalib, args=(),kwargs=kwargs ) 
+        thread = threading.Thread( target = minerva.specCalib_catch, args=(),kwargs=kwargs ) 
         thread.name = 'Kiwispec'
         thread.start()
         threads.append(thread)
@@ -465,7 +465,6 @@ def observe():
                         target = utils.truncate_observable_window(minerva.site, target)
                              
                         # The target dictionary's start and end times should be in datetime.datetime format now
-                        
                         if target['starttime'] < target['endtime']:
                             p_targets.append( target )
                             # starttime and endtime should only represent when the object is observable

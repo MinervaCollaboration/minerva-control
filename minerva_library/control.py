@@ -101,17 +101,19 @@ class control:
 				except:
 					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 			# initialize the 4 telescopes
-			for i in range(4):
+			#self.logger.error("***T1 is disabled***")
+			telescopes = [1,2,3,4]
+			for i in telescopes:
 				try: 
-					self.cameras.append(imager.imager('imager_t' + str(i+1) + '.ini',self.base_directory))
-					self.telescopes.append(cdk700.CDK700('telescope_' + str(i+1) + '.ini',self.base_directory))
+					self.cameras.append(imager.imager('imager_t' + str(i) + '.ini',self.base_directory))
+					self.telescopes.append(cdk700.CDK700('telescope_' + str(i) + '.ini',self.base_directory))
 				except:
-					self.logger.exception('T' + str(i+1) + ': Failed to initialize the imager')
+					self.logger.exception('T' + str(i) + ': Failed to initialize the imager')
 
 			for i in range(5):
 				self.pdus.append(pdu.pdu('apc_' + str(i+1) + '.ini',self.base_directory))
 			self.pdus.append(pdu.pdu('apc_bench.ini',self.base_directory))
-		
+
 		        #S make the scheduler, which has the target list as an attribute
 			self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory)
 
@@ -421,8 +423,10 @@ class control:
 			return [None, None]
 
         # run astrometry.net on imageName, update solution in header                                             
-	def astrometry(self, imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None):
+	def astrometry(self, imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None, nopositionlimit=False, noquadlimit=False, verbose=False):
+
 		hdr = pyfits.getheader(imageName)
+
 
 		if pixscale == None:
 			pixscale = float(hdr[pixscalekey])
@@ -438,13 +442,15 @@ class control:
 
 		cmd = 'solve-field --scale-units arcsecperpix' + \
 		    ' --scale-low ' + str(0.99*pixscale) + \
-		    ' --scale-high ' + str(1.01*pixscale) + \
-		    ' --ra ' + str(ra) + \
-		    ' --dec ' + str(dec) + \
-		    ' --radius ' + str(radius) +\
-		    ' --quad-size-min 0.4' + \
-		    ' --quad-size-max 0.6' + \
-		    ' --cpulimit 30' + \
+		    ' --scale-high ' + str(1.01*pixscale)
+		if not nopositionlimit:
+			cmd += ' --ra ' + str(ra) + \
+			    ' --dec ' + str(dec) + \
+			    ' --radius ' + str(radius)
+		if not noquadlimit:
+			cmd += ' --quad-size-min 0.4' + \
+			    ' --quad-size-max 0.6'
+		cmd += ' --cpulimit 30' + \
 		    ' --no-verify' + \
 		    ' --crpix-center' + \
 		    ' --no-fits2fits' + \
@@ -453,13 +459,15 @@ class control:
 		    imageName
 #        ' --use-sextractor' + \ #need to install sextractor
 
-		cmd = r'/usr/local/astrometry/bin/' + cmd + ' >/dev/null 2>&1'
+		cmd = r'/usr/local/astrometry/bin/' + cmd 
+		if not verbose: cmd += + ' >/dev/null 2>&1'
+		print cmd
 		os.system(cmd)
 
 	def getPA(self,imageName, email=True):
 		
 		self.logger.info('Finding PA for ' + imageName)
-		self.astrometry(imageName)
+		self.astrometry(imageName, noquadlimit=self.red,verbose=True)
 		
 		baseName = os.path.splitext(imageName)[0]
 		f = pyfits.open(imageName, mode='update')
@@ -912,7 +920,7 @@ class control:
 		maxangle = 5.0 # maximum offset in theta (larger corrections will be ignored)
 
 		# which telescope is this?
-		telid = filename.split('.')[1][1]
+		telid = filename.split('.')[1]
 		telescope = utils.getTelescope(self,telid)
 		telescopeStatus = telescope.getStatus()
 		m3port = telescopeStatus.m3.port
@@ -1357,8 +1365,6 @@ class control:
 		imaging_thread.name = "Kiwispec"
 		imaging_thread.start()
                         
-		ipdb.set_trace()
-
 		f = self.getHdr(target,[1,2,3,4],None)
 		for dome in self.domes:
 			f = self.addAqawanKeys(dome, f)
@@ -1368,6 +1374,7 @@ class control:
 		self.spectrograph.logger.info('Waiting for spectrograph imaging thread')
 		# wait for imaging process to complete
 		imaging_thread.join()
+		time.sleep(1)
 		
 		# write header for image
 		if self.spectrograph.write_header(header):
@@ -1378,12 +1385,10 @@ class control:
 			night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 			dataPath = '/Data/kiwispec/' + night + '/'
 
-			ipdb.set_trace()
-
-			fix_fits(os.path.join(dataPath,self.spectrograph.file_name))
-#			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
-#			fix_fits_thread.name = 'Kiwispec'
-#			fix_fits_thread.start()
+#			fix_fits(os.path.join(dataPath,self.spectrograph.file_name))
+			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
+			fix_fits_thread.name = 'Kiwispec'
+			fix_fits_thread.start()
 			
 			# tell the scheduler if we successfully observed a B star
 			try:
@@ -1416,7 +1421,11 @@ class control:
 		imaging_thread.start()
 		
 		# Prepare header while waiting for imager to finish taking image
-		f = self.getHdr(target, [telid], dome, fau=True)
+		try:
+			f = self.getHdr(target, [telid], dome, fau=True)
+		except:
+			self.logger.exception('error getting header keywords')
+			ipdb.set_trace()
 
 		header = json.dumps(f)
 
@@ -1550,9 +1559,12 @@ class control:
                 f['SPECHMID'] = ('UNKNOWN','Spectrograph Room Humidity (%)')
 
 		# which valves are open; is the pump on?
-		pumpvalve = self.pdus[5].pumpvalve.status()
-		ventvalve = self.pdus[5].ventvalve.status()
-		pump = self.pdus[4].pump.status()
+		try: pumpvalve = self.pdus[5].pumpvalve.status()
+		except: pumpvalve = "UNKNOWN"
+		try: ventvalve = self.pdus[5].ventvalve.status()
+		except: ventvalve = "UNKNOWN"
+		try: pump = self.pdus[4].pump.status()
+		except: pump = "UNKNOWN"
 
 		f['PUMPVALV'] = (pumpvalve,'Pump valve open?')
 		f['VENTVALV'] = (ventvalve,'Vent valve open?')
@@ -1614,18 +1626,41 @@ class control:
                 f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
 		
 		# is the exposure meter and slit flat LED on?
-		f['EXPMETER'] = (self.pdus[4].expmeter.status(),'Exposure meter powered?')
-		f['LEDLAMP'] = (self.pdus[4].ledlamp.status(),'LED lamp powered?')
-		
-		f['XFIBER1'] = (self.cameras[0].fau.xfiber,'X position of fiber on FAU')
-		f['YFIBER1'] = (self.cameras[0].fau.yfiber,'Y position of fiber on FAU')
-		f['XFIBER2'] = (self.cameras[1].fau.xfiber,'X position of fiber on FAU')
-		f['YFIBER2'] = (self.cameras[1].fau.yfiber,'Y position of fiber on FAU')
-		f['XFIBER3'] = (self.cameras[2].fau.xfiber,'X position of fiber on FAU')
-		f['YFIBER3'] = (self.cameras[2].fau.yfiber,'Y position of fiber on FAU')
-		f['XFIBER4'] = (self.cameras[3].fau.xfiber,'X position of fiber on FAU')
-		f['YFIBER4'] = (self.cameras[3].fau.yfiber,'Y position of fiber on FAU')
+		try: f['EXPMETER'] = (self.pdus[4].expmeter.status(),'Exposure meter powered?')
+		except: f['EXPMETER'] = ('UNKNOWN','Exposure meter powered?')
 
+		try: f['LEDLAMP'] = (self.pdus[4].ledlamp.status(),'LED lamp powered?')
+		except: f['LEDLAMP'] = ('UNKNOWN','LED lamp powered?')
+		
+		try:
+			c1 = utils.getCamera(self,'T1')
+			f['XFIBER1'] = (c1.fau.xfiber,'X position of fiber on FAU')
+			f['YFIBER1'] = (c1.fau.yfiber,'Y position of fiber on FAU')
+		except:
+			f['XFIBER1'] = ('UNKNOWN','X position of fiber on FAU')
+			f['YFIBER1'] = ('UNKNOWN','Y position of fiber on FAU')
+		try:
+			c2 = utils.getCamera(self,'T2')
+			f['XFIBER2'] = (c2.fau.xfiber,'X position of fiber on FAU')
+			f['YFIBER2'] = (c2.fau.yfiber,'Y position of fiber on FAU')
+		except:
+			f['XFIBER2'] = ('UNKNOWN','X position of fiber on FAU')
+			f['YFIBER2'] = ('UNKNOWN','Y position of fiber on FAU')
+		try:
+			c3 = utils.getCamera(self,'T3')
+			f['XFIBER3'] = (c3.fau.xfiber,'X position of fiber on FAU')
+			f['YFIBER3'] = (c3.fau.yfiber,'Y position of fiber on FAU')
+		except:
+			f['XFIBER3'] = ('UNKNOWN','X position of fiber on FAU')
+			f['YFIBER3'] = ('UNKNOWN','Y position of fiber on FAU')
+		try:
+			c4 = utils.getCamera(self,'T4')
+			f['XFIBER4'] = (c4.fau.xfiber,'X position of fiber on FAU')
+			f['YFIBER4'] = (c4.fau.yfiber,'Y position of fiber on FAU')
+		except:
+			f['XFIBER4'] = ('UNKNOWN','X position of fiber on FAU')
+			f['YFIBER4'] = ('UNKNOWN','Y position of fiber on FAU')
+			
 		return f
 
 
@@ -1713,6 +1748,7 @@ class control:
 			else: telstr = str(telid)
 
 			telescope = utils.getTelescope(self,telid)
+			if not telescope: continue
 			camera = utils.getCamera(self,telid)
 	
 			telescopeStatus = telescope.getStatus()
@@ -1846,10 +1882,10 @@ class control:
 		f['OBSERVER'] = ('MINERVA Robot',"Observer")
 
 		if type(tele_list) is int:
-			tel = "T" + str(tele_list)
+			tel = tele_list
 		else: 
 			if len(tele_list) == 1:
-				tel = "T" + str(tele_list[0])
+				tel = tele_list[0]
 			else: tel = 'ALL'
 
 		f['TELESCOP'] = (tel,"Telescope name")
@@ -1901,6 +1937,7 @@ class control:
 				telstr = str(telid)[-1]
 
 			telescope = utils.getTelescope(self,telid)
+			if not telescope: continue
 			camera = utils.getCamera(self,telid)
 			
 			# WCS
@@ -2193,7 +2230,8 @@ class control:
 						self.logger.info("Scaling exptime to " + str(exptime))
 					i += 1
 
-
+	### USE UTILS.SCHEDULEISVALID INSTEAD ###
+	### this version is deprecated ###
 	def scheduleIsValid(self, scheduleFile, email=True):
 
 		if not os.path.exists(self.base_directory + '/schedule/' + scheduleFile):
@@ -2464,14 +2502,15 @@ class control:
 
 		if email: mail.send(telescope.id + ' Starting observing','Love,\nMINERVA',directory=self.directory)
 		
-	def backup(self, num, night=None):
+	def backup(self, telid, night=None):
 		
 		if night == None:
 			night = self.site.night
 
+		telescope = utils.getTelescope(self,telid)
+		dataPath = telescope.datadir
 
-		dataPath = '/Data/t' + str(num) + '/' + night + '/'
-		backupPath = '/home/minerva/backup/t' + str(num) + '/' + night + '/'
+		backupPath = '/home/minerva/backup/' + telid + '/' + night + '/'
 		if not os.path.exists(backupPath):
 			os.mkdir(backupPath)
 		self.logger.info('backing up files from ' + dataPath + ' to ' + backupPath)
@@ -2536,8 +2575,8 @@ class control:
 # 		self.imager_disconnect()
 
                 #TODO: Back up the data
-		if kiwispec: pass
-		else: self.backup(telescope.id,night=night)
+#		if kiwispec: pass
+#		else: self.backup(telescope.id,night=night)
 
 		# copy schedule to data directory
 		schedulename = self.base_directory + "/schedule/" + night + "." + telescope.id + ".txt"
@@ -2547,7 +2586,7 @@ class control:
 		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + scheduleDest)
 
 		# copy server logs to data directory
-		logs = glob.glob('/Data/serverlogs/t?/' + night + '/*.log')
+		logs = glob.glob('/Data/serverlogs/*/' + night + '/*.log')
 		for log in logs:
 			self.logger.info("Copying log file " + log + " to " + dataPath)
 			try: shutil.copyfile(log, dataPath + os.path.basename(log))
@@ -2755,7 +2794,7 @@ class control:
 		#set up night's directory
 		self.prepNight(telescope)
 		scheduleFile = self.site.night + '.' + telescope.id + '.txt'
-		if not self.scheduleIsValid(scheduleFile):
+		if not utils.scheduleIsValid(self.base_directory + '/schedule/' + scheduleFile,logger=self.logger, directory=self.directory):
 			mail.send("No schedule file for telescope " + telescope.id,'',level='serious',directory=self.directory)
 			return False
 
@@ -2941,9 +2980,9 @@ class control:
 		self.takeSpecDark(ndark, darkexptime)
 		self.takeSlitFlat(nflat, flatexptime)
 
-	def specCalib_catch(self):
+	def specCalib_catch(self, nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1,checkiftime=True):
 		try:
-			self.specCalib()
+			self.specCalib(nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1,checkiftime=checkiftime)
 		except Exception as e:
 			self.logger.exception('specCalib thread died: ' + str(e.message) )
                         body = "Dear benevolent humans,\n\n" + \
@@ -2981,7 +3020,7 @@ class control:
 
 #		speccalib_thread = threading.Thread(target=self.specCalib_catch)
 #		speccalib_thread.start()
-			       
+
 		for t in range(len(self.telescopes)):
 			threads[t].join()
 #		speccalib_thread.join()

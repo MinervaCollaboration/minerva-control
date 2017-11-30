@@ -74,9 +74,9 @@ class CDK700:
 		self.load_config()
 
 		if directory == None:
-                        if red: self.directory = 'directory_red.txt'
-                        elif south: self.directory = 'directory_south.txt'
-                        else: self.directory = 'directory.txt'
+                       if red: self.directory = 'directory_red.txt'
+		       elif south: self.directory = 'directory_south.txt'
+		       else: self.directory = 'directory.txt'
                 else: self.directory=directory
 
 		self.num = self.logger_name[-1]		
@@ -165,28 +165,28 @@ class CDK700:
 		if telescopeStatus.mount.connected <> 'True': 
 			self.logger.info('Connecting to mount')
 			if not self.mountConnect(): return False
-			time.sleep(5.00)
+			time.sleep(10.00)
 			telescopeStatus = self.getStatus()
 
 		# enable motors if not enabled
 		if telescopeStatus.mount.alt_enabled <> 'True' or telescopeStatus.mount.azm_enabled <> 'True':
 			self.logger.info('Enabling motors')
 			if not self.mountEnableMotors(): return False
-			time.sleep(0.25)
+			time.sleep(5.25)
 			telescopeStatus = self.getStatus()
 
 		# connect to the focuser if not connected
 		if telescopeStatus.focuser1.connected <> 'True' or telescopeStatus.rotator1.connected <> 'True':
 			self.logger.info('Connecting to focuser')
 			if not self.focuserConnect('1'): return False
-			time.sleep(0.25)
+			time.sleep(5.25)
 			telescopeStatus = self.getStatus()
 
 		# connect to the focuser if not connected
 		if telescopeStatus.focuser2.connected <> 'True' or telescopeStatus.rotator2.connected <> 'True':
 			self.logger.info('Connecting to focuser')
 			if not self.focuserConnect('2'): return False
-			time.sleep(0.25)
+			time.sleep(5.25)
 			telescopeStatus = self.getStatus()
 
 ### Usually not necessary -- now part of the recovery procedure 
@@ -823,7 +823,7 @@ class CDK700:
 		'''
 
 		# unrecoverable error
-		filename = "telescope" + self.id + '.error'
+		filename = "telescope." + self.id + '.error'
 		body = "Dear benevolent humans,\n\n" + \
 		    "I have failed to recover automatially. Please recover me, then delete " + filename + " to restart operations.\n\n" + \
 		    "Love,\n" + \
@@ -937,7 +937,7 @@ class CDK700:
 			#'''
 			camera.fau.guiding=True
 			camera.fau.acquisition_tolerance=1.5
-			if minerva.fauguide(target,int(self.num),acquireonly=True,xfiber=xcenter,yfiber=ycenter,skiponfail=True):
+			if minerva.fauguide(target,self.id,acquireonly=True,xfiber=xcenter,yfiber=ycenter,skiponfail=True):
 				# add point to model
 				self.logger.info("Adding point to model: ra = " + str(ra) + ", dec = " + str(dec))
 				self.mountAddToModel(ra,dec)

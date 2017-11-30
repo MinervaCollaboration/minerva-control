@@ -9,6 +9,7 @@ import ipdb
 import logging
 import unicodecsv
 import json
+import mail
 
 # this kills main.py if running (use before runninging to ensure a clean start)
 def killmain(red=False,south=False):
@@ -97,7 +98,7 @@ def parseTarget(line, logger=None):
     target['endtime'] = datetime.datetime.strptime(target['endtime'],'%Y-%m-%d %H:%M:%S')
     return target
 
-def scheduleIsValid(scheduleFile, email=True, logger=None):
+def scheduleIsValid(scheduleFile, email=True, logger=None, directory=None):
     if not os.path.exists(scheduleFile):
         if logger != None: logger.error('No schedule file: ' + scheduleFile)
         return False
@@ -161,20 +162,31 @@ def scheduleIsValid(scheduleFile, email=True, logger=None):
                             if logger != None: logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
                             emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
                             
-                            if target['name'] <> 'autofocus':
-                                try:
-                                    nnum = len(target['num'])
-                                    nexptime = len(target['exptime'])
-                                    nfilter = len(target['filter'])
-                                    if nnum <> nexptime or nnum <> nfilter:
-                                        if logger != None: logger.error('Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
-                                        emailbody = emailbody + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree\n'                   \
-
-                                except:
-                                    pass
+                    if target['name'] <> 'autofocus':
+                        try:
+                            nnum = len(target['num'])
+                            nexptime = len(target['exptime'])
+                            nfilter = len(target['filter'])
+                            if nnum <> nexptime or nnum <> nfilter:
+                                if logger != None: logger.error('Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
+                                emailbody = emailbody + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree\n'                   \
+                                    
+                        except:
+                            pass
+                        try: 
+                            if target['ra'] > 24.0 or target['ra'] < 0:
+                                if logger != None: logger.error('Line ' + str(linenum) + ': RA (' + str(target['ra']) + ') must be in decimal hours (0 < RA < 24)')
+                                emailbody = emailbody + 'Line ' + str(linenum) + ': RA (' + str(target['ra']) + ') must be in decimal hours (0 < RA < 24)\n'
+                        except: pass
+                        try: 
+                            if target['dec'] > 90.0 or target['dec'] < -90:
+                                if logger != None: logger.error('Line ' + str(linenum) + ': Dec (' + str(target['dec']) + ') must be in decimal degrees (-90 < RA < 90)')
+                                emailbody = emailbody + 'Line ' + str(linenum) + ': Dec (' + str(target['dec']) + ') must be in decimal degrees (-90 < RA < 90)\n'
+                        except: pass
+                        
             linenum = linenum + 1
             if emailbody <> '':
-                if email: mail.send("Errors in target file: " + scheduleFile,emailbody,level='serious',directory=self.directory)
+                if email: mail.send("Errors in target file: " + scheduleFile,emailbody,level='serious',directory=directory)
                 return False
     return True
 
@@ -353,12 +365,15 @@ def ten(string):
     return float(array[0]) + float(array[1])/60.0 + float(array[2])/3600.0
 
 # run astrometry.net on imageName, update solution in header
-def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None):
+def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixscale=None, nopositionlimit=False, noquadlimit=False):
     hdr = pyfits.getheader(imageName)
 
-    if pixscale == None:
-        pixscale = float(hdr[pixscalekey])
-    
+    try:
+        if pixscale == None:
+            pixscale = float(hdr[pixscalekey])
+    except:
+        return False
+
     try: ra = float(hdr[rakey])
     except: ra = ten(hdr[rakey])*15.0
     
@@ -370,13 +385,16 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
     
     cmd = 'solve-field --scale-units arcsecperpix' + \
         ' --scale-low ' + str(0.99*pixscale) + \
-        ' --scale-high ' + str(1.01*pixscale) + \
-        ' --ra ' + str(ra) + \
-        ' --dec ' + str(dec) + \
-        ' --radius ' + str(radius) +\
-        ' --quad-size-min 0.4' + \
-        ' --quad-size-max 0.6' + \
-        ' --cpulimit 30' + \
+        ' --scale-high ' + str(1.01*pixscale)
+
+    if not nopositionlimit:
+        cmd += ' --ra ' + str(ra) + \
+            ' --dec ' + str(dec) + \
+            ' --radius ' + str(radius)
+    if not noquadlimit:
+        cmd += ' --quad-size-min 0.4' + \
+            ' --quad-size-max 0.6'
+    cmd += ' --cpulimit 30' + \
         ' --no-verify' + \
         ' --crpix-center' + \
         ' --no-fits2fits' + \
@@ -384,6 +402,8 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
         ' --overwrite ' + \
         imageName
 #        ' --use-sextractor' + \ #need to install sextractor
+#        ' --quad-size-min 0.4' + \
+#        ' --quad-size-max 0.6' + \
 
     cmd = r'/usr/local/astrometry/bin/' + cmd + ' >/dev/null 2>&1'
     os.system(cmd)
@@ -442,8 +462,10 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
         f[0].header['BP_1_0'] = newhdr['BP_1_0']
         f[0].header['BP_1_1'] = newhdr['BP_1_1']
         f[0].header['BP_2_0'] = newhdr['BP_2_0']
+        success = True
     else:
         f[0].header['WCSSOLVE'] = 'False'
+        success = False
     f.flush()
     f.close()
 
@@ -453,7 +475,9 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
     for ext in extstodelete:
         if os.path.exists(baseName + ext):
             os.remove(baseName + ext)
-            
+        
+    return success
+    
 # run sextractor on an image
 def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=None,catfile=None):
     #S Path on MinervaMAIN where all the .sex, .param, etc. files will be
