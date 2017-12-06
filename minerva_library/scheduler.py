@@ -313,7 +313,7 @@ class scheduler:
                     # only count it if the observation is good
                     if line[5] == 1:
                         obs_list.append(line)
-                        if line[0] > self.prevsunset(timeof): target['observed'] += 1
+#                        if line[0] > self.prevsunset(timeof): target['observed'] += 1
         else:
             # default to observed a long time ago
             obs_list = [[datetime.datetime(2000,1,1,0,0,0),datetime.datetime(2000,1,1,0,0,59),59,80,0,1]]
