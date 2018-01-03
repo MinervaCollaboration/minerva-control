@@ -501,7 +501,7 @@ class server:
 		self.run_server()
 
 if __name__ == '__main__':
-    if socket.gethostname() == 'Minervared2-PC':
+    if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC':
         config_file = 'imager_server_red.ini'
     else:
 	config_file = 'imager_server.ini'
