@@ -217,7 +217,7 @@ class astrohaven:
 							
 if __name__ == '__main__':
 
-        if socket.gethostname() == 'Minervared2-PC': base_directory = 'C:\minerva-control'
+        if socket.gethostname() == 'Telcom-PC': base_directory = 'C:\minerva-control'
         else: base_directory = '/home/minerva/minerva-control'
 	dome = astrohaven('astrohaven_red.ini',base_directory)
 	ipdb.set_trace()

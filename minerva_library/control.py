@@ -101,8 +101,8 @@ class control:
 				except:
 					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 			# initialize the 4 telescopes
-			#self.logger.error("***T1 is disabled***")
-			telescopes = [1,2,3,4]
+			self.logger.error("***T3 is disabled***")
+			telescopes = [1,2,4]
 			for i in telescopes:
 				try: 
 					self.cameras.append(imager.imager('imager_t' + str(i) + '.ini',self.base_directory))
@@ -1988,7 +1988,7 @@ class control:
 
 		return f
 
-	def takeImage(self, target, telid):
+	def takeImage(self, target, telid, fau=False, piggyback=False):
 
 		dome = utils.getDome(self,telid)
 		telescope = utils.getTelescope(self,telid)
@@ -2017,15 +2017,16 @@ class control:
 		if camera.write_header(header):
 			camera.logger.info("finish writing image header")
 
-			#S if the objname is not in the list of calibration or test names
-			no_pa_list = ['bias','dark','skyflat','autofocus','testbias','test']
-			if target['name'].lower() not in no_pa_list:
-				# run astrometry asynchronously
-				camera.logger.info("Running astrometry to find PA on " + camera.file_name)
-				dataPath = telescope.datadir + self.site.night + '/'
-				astrometryThread = threading.Thread(target=self.getPA, args=(dataPath + camera.file_name,), kwargs={})
-				astrometryThread.name = camera.telid
-				astrometryThread.start()
+			if not fau:
+			        #S if the objname is not in the list of calibration or test names
+				no_pa_list = ['bias','dark','skyflat','autofocus','testbias','test']
+				if target['name'].lower() not in no_pa_list:
+					# run astrometry asynchronously
+					camera.logger.info("Running astrometry to find PA on " + camera.file_name)
+					dataPath = telescope.datadir + self.site.night + '/'
+					astrometryThread = threading.Thread(target=self.getPA, args=(dataPath + camera.file_name,), kwargs={})
+					astrometryThread.name = camera.telid
+					astrometryThread.start()
 			return camera.file_name
 
 		camera.logger.error("takeImage failed: " + camera.file_name)

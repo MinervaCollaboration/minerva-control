@@ -791,8 +791,8 @@ class CDK700:
 			self.logger.info('recovered after restarting PWI')
 			return True
 		
-		# power cycle and rehome the scope
 		if self.id != 'MRED':
+			# power cycle and rehome the scope
 			self.logger.info('restarting PWI failed, power cycling the mount')
 			try: self.shutdown()
 			except: pass

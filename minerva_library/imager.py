@@ -77,6 +77,8 @@ class imager:
 			self.telcom_client_config = config['Setup']['TELCOM']
 			self.platescale = float(config['Setup']['PLATESCALE'])
 			self.filters = config['FILTERS']
+			try: self.pbfilters = config['PBFILTERS']
+			except: self.pbfilters = None
 			self.pointingModel = config['Setup']['POINTINGMODEL']
 			self.telid = config['Setup']['TELESCOPE']
 			self.telnum = self.telid[1]
@@ -282,29 +284,33 @@ class imager:
 	def get_filter_name(self):
 		return self.send('get_filter_name ' + str(len(self.filters)),5)
 	
-	def getMean(self):
-		res = self.send('getMean none',15).split()
+	def getMean(self, guider=False):
+		if guider: res = self.send('getMean guider',15).split()
+		else: res = self.send('getMean none',15).split()
 		if res[0] == 'success':
 			return float(res[1])
 		else:
 			return -9999
 	
-	def getMode(self):
-		res = self.send('getMode none',15).split()
+	def getMode(self,guider=False):
+		if guider: res = self.send('getMode guider',15).split()
+		else: res = self.send('getMode none',15).split()
 		if res[0] == 'success':
 			return float(res[1])
 		else:
 			return -1
 	
-	def isSuperSaturated(self):
-		res = self.send('isSuperSaturated none', 15).split()
+	def isSuperSaturated(self, guider=False):
+		if guider: res = self.send('isSuperSaturated guider', 15).split()
+		else: res = self.send('isSuperSaturated none', 15).split()
 		if res[0] == 'success':
 			if res[1] == 'true':
 				return True
 		return False
 
-	def remove(self):
-		res = self.send('remove none',5).split()
+	def remove(self, guider=False):
+		if guider: res = self.send('remove guider',5).split() 
+		else: res = self.send('remove none',5).split()
 		if res[0] == 'success':
 			return True
 		else:
@@ -374,14 +380,18 @@ class imager:
 		else: return False
 
 	#block until image is ready, then save it to file_name
-	def save_image(self,file_name,fau=False):
+	def save_image(self,file_name,guider=False):
 		cmd = 'save_image ' + file_name
-		if fau: cmd += " fau"
+		if guider: cmd += " guider"
 		if self.send(cmd,30) == 'success': return True
 		else: return False
 
 	#write fits header for self.file_name, header_info must be in json format
-	def write_header(self, header_info):
+	def write_header(self, header_info, guider=False):
+		
+		if guider: hdrstr = ' guider'
+		else: hdrstr = ''
+
 		if self.file_name == '':
 			self.logger.error('Empty file name')
 			return False
@@ -394,14 +404,14 @@ class imager:
 				self.logger.error('Error sending header string::: ' +header_info[i-800:i])
 				return False
 
-		if self.send('write_header_done ' + header_info[i-800:length],10) == 'success':
+		if self.send('write_header_done ' + header_info[i-800:length]+hdrstr,10) == 'success':
 			return True
 		else:
 			self.logger.error('Failed to finish writing header')			
 			return False
 
 	# returns file name of the image saved, return 'error' if error occurs
-	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False):		
+	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False, piggyback=False):		
 #		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
 		ndx = self.get_index()
@@ -414,9 +424,25 @@ class imager:
 		if fau:	
 			self.file_name = self.night + "." + self.telid + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
 			exptype = 1
+			guider = True
+		elif piggyback:
+			if filterInd == None: self.file_name = self.night + "." + self.telid + ".PB." + objname + "." + str(ndx).zfill(4) + ".fits"
+			else: self.file_name = self.night + "." + self.telid + ".PB." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
+			guider = True
+			# chose appropriate filter
+			if filterInd != None and filterInd not in self.pbfilters:
+				self.logger.error("Requested filter (" + filterInd + ") not present")
+				self.file_name = ''
+				return 'error'
+			# chose exposure type
+			if objname in self.exptypes.keys():
+				exptype = self.exptypes[objname] 
+			else: exptype = 1 # science exposure
 		else: 
 			if filterInd == None: self.file_name = self.night + "." + self.telid + "." + objname + "." + str(ndx).zfill(4) + ".fits"
 			else: self.file_name = self.night + "." + self.telid + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
+			guider=False
+
 			# chose exposure type
 			if objname in self.exptypes.keys():
 				exptype = self.exptypes[objname] 
@@ -428,21 +454,22 @@ class imager:
 				self.file_name = ''
 				return 'error'
 
+
 		self.logger.info('Start taking image: ' + self.file_name)
 		if filterInd != None: filt = filt = self.filters[filterInd]
 		else: filt = None
 		
-		if self.expose(exptime,exptype,filt,guider=fau):
+		if self.expose(exptime,exptype,filt,guider=guider):
 			self.write_status()
 			time.sleep(exptime)
-			if self.save_image(self.file_name, fau=fau):
+			if self.save_image(self.file_name, guider=guider):
 				self.logger.info('Finish taking image: ' + self.file_name)
 				self.nfailed = 0 
 				return self.file_name
 			else: 
 				self.logger.error('Failed to save image: ' + self.file_name)
 				self.file_name = ''
-				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=fau)
+				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=guider)
 
 		self.logger.error('Taking image failed, image not saved: ' + self.file_name)
 		self.file_name = ''
