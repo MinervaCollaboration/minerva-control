@@ -259,7 +259,8 @@ class server:
 		if param[-7:] == ' guider':
 			guider = True
 			param = param[0:-7]
-
+                else: guider = False
+			
 		try: 
 			if guider: filename=self.guider_file_name
 			else: filename=self.file_name
