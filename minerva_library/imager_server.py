@@ -259,7 +259,8 @@ class server:
 		if param[-7:] == ' guider':
 			guider = True
 			param = param[0:-7]
-
+                else: guider = False
+			
 		try: 
 			if guider: filename=self.guider_file_name
 			else: filename=self.file_name
@@ -355,16 +356,16 @@ class server:
 			nx = len(image)
 			ny = len(image[1])
 			size = 100
-			x1 = max(nx/2.0 - size/2.0,0)
-			x2 = min(nx/2.0 + size/2.0,nx-1)
-			y1 = max(ny/2.0 - size/2.0,0)
-			y2 = min(ny/2.0 + size/2.0,ny-1)
+			x1 = int(max(nx/2.0 - size/2.0,0))
+			x2 = int(min(nx/2.0 + size/2.0,nx-1))
+			y1 = int(max(ny/2.0 - size/2.0,0))
+			y2 = int(min(ny/2.0 + size/2.0,ny-1))
 			
 			mode = stats.mode(image[x1:x2,y1:y2],axis=None)[0][0]
 			res = 'success ' + str(mode)
 		except:
 			res = 'fail'
-		return res
+                return res
 		
 	def isSuperSaturated(self, guider=False):
 		try:
