@@ -27,7 +27,8 @@ def killmain(red=False,south=False):
                             os.kill(pid, signal.SIGKILL)    
                     else:
                         # kill main.py
-                        os.kill(pid, signal.SIGKILL)    
+                        if not red and not south:
+                            os.kill(pid, signal.SIGKILL)    
 
 def dateobs2jd(dateobs):
     t0 = datetime.datetime(2000,1,1)
@@ -100,7 +101,10 @@ def parseTarget(line, logger=None):
 
 def scheduleIsValid(scheduleFile, email=True, logger=None, directory=None):
     if not os.path.exists(scheduleFile):
-        if logger != None: logger.error('No schedule file: ' + scheduleFile)
+        if logger != None: 
+            logger.error('No schedule file: ' + scheduleFile)
+        else: 
+            print 'No schedule file: ' + scheduleFile
         return False
 
     emailbody = ''
@@ -296,12 +300,12 @@ def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0,timeof=None
 
     # if the chosen start/end time is outside of night time, correct it
     if target['starttime'] < sunset or target['starttime'] > sunrise:
-        target['starttime'] = sunset
+        target['starttime'] = min(sunset,target['endtime'])
 
     if target['endtime'] < sunset or target['endtime'] > sunrise:
-        target['endtime'] = sunrise
+        target['endtime'] = min(sunrise,target['endtime'])
 
-    starttime = max(sunset,target['starttime'])
+    starttime = min(max(sunset,target['starttime']),target['endtime'])
     endtime = min(sunrise,target['endtime'])
 
     site.obs.horizon = str(horizon)
@@ -347,7 +351,7 @@ def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0,timeof=None
 
     # modify start time to ensure the target is always above the horizon
     if starttime < risetime:
-        starttime = risetime
+        starttime = min(risetime,endtime)
     if endtime > settime:
         endtime = settime
 
@@ -522,6 +526,7 @@ def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=
 def readsexcat(catname):
 
     data = {}
+    if not os.path.exists(catname): return data
     with open(catname,'rb') as filep:
         header = []
         for line in filep:

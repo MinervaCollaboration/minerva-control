@@ -26,10 +26,15 @@ def domeControl(minerva,dome,day=False):
         openRequested = os.path.isfile(minerva.base_directory + '/minerva_library/' + dome.id + '.request.txt')
         day = os.path.isfile(minerva.base_directory + '/minerva_library/sunOverride.' + dome.id + '.txt')
 
+        # if the weather says it's not ok to open
         if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen()):
-            if minerva.site.oktoopen(dome.id, domeopen=dome.isOpen(),ignoreSun=True):
-                minerva.logger.info('Weather not ok to open; resetting timeout')
+            if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen(),ignoreSun=True):
+                # if it wouldn't be ok to open if we ignored the sun, reset the timeout
+                minerva.logger.info('Weather not ok to open; resetting 30 minute timeout')
                 minerva.site.lastClose = datetime.datetime.utcnow()
+            # otherwise, just log it
+            else: minerva.logger.info('Weather not ok to open')
+            # regardless, make sure the dome is closed
             dome.close_both()
         elif (datetime.datetime.utcnow() - minerva.site.lastClose).total_seconds() < (30.0*60.0):
             minerva.logger.info('Conditions must be favorable for 30 minutes before opening; last bad weather at ' + str(minerva.site.lastClose))

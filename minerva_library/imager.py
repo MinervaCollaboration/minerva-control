@@ -77,13 +77,31 @@ class imager:
 			self.telcom_client_config = config['Setup']['TELCOM']
 			self.platescale = float(config['Setup']['PLATESCALE'])
 			self.filters = config['FILTERS']
-			try: self.pbfilters = config['PBFILTERS']
-			except: self.pbfilters = None
 			self.pointingModel = config['Setup']['POINTINGMODEL']
 			self.telid = config['Setup']['TELESCOPE']
 			self.telnum = self.telid[1]
 			self.exptypes = {'Dark' : 0,'Bias' : 0,'SkyFlat' : 1,}
 			self.fau_config = config['Setup']['FAU_CONFIG']
+			try: self.telescope_config = config['Setup']['TELESCOPE_CONFIG']
+			except: self.telescope_config = ''
+
+			try: self.PBfilters = config['PBFILTERS']
+			except: self.PBfilters = None
+			try: self.PBflatminsunalt = config['PBFLATMINSUNALT']
+			except: self.PBflatminsunalt = None
+
+			try: self.PBflatmaxsunalt = config['PBFLATMAXSUNALT']
+			except: self.PBflatmaxsunalt = None
+			try: self.PBflattargetcounts = config['PBFLATTARGETCOUNTS']
+			except: self.PBflattargetcounts = None
+			try: self.PBbiaslevel = config['PBBIASLEVEL']
+			except: self.PBbiaslevel = None
+			try: self.PBsaturation = config['PBSATURATION']
+			except: self.PBsaturation = None
+			try: self.PBflatmaxexptime = config['PBFLATMAXEXPTIME']
+			except: self.PBflatmaxexptime = None
+			try: self.PBflatminexptime = config['PBFLATMINEXPTIME']
+			except: self.PBflatminexptime = None
 
 			# fau
 			self.fau = fau.fau(self.fau_config,self.base_directory)
@@ -418,21 +436,23 @@ class imager:
 		if ndx == -1:
 			self.logger.error("Error getting the filename index")
 			if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=fau)
-			self.file_name = ''
+			if fau or piggyback: self.guider_file_name = ''
+			else: self.file_name = ''
 			return 'error'
 
 		if fau:	
-			self.file_name = self.night + "." + self.telid + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
+			self.guider_file_name = self.night + "." + self.telid + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
 			exptype = 1
 			guider = True
 		elif piggyback:
-			if filterInd == None: self.file_name = self.night + "." + self.telid + ".PB." + objname + "." + str(ndx).zfill(4) + ".fits"
-			else: self.file_name = self.night + "." + self.telid + ".PB." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
+			if filterInd == None: self.guider_file_name = self.night + "." + self.telid + ".PB." + objname + "." + str(ndx).zfill(4) + ".fits"
+			else: self.guider_file_name = self.night + "." + self.telid + ".PB." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
 			guider = True
+
 			# chose appropriate filter
 			if filterInd != None and filterInd not in self.pbfilters:
 				self.logger.error("Requested filter (" + filterInd + ") not present")
-				self.file_name = ''
+				self.guider_file_name = ''
 				return 'error'
 			# chose exposure type
 			if objname in self.exptypes.keys():
@@ -454,25 +474,28 @@ class imager:
 				self.file_name = ''
 				return 'error'
 
-
-		self.logger.info('Start taking image: ' + self.file_name)
+		if fau or piggyback: filename = self.guider_file_name
+		else: filename = self.file_name
+		self.logger.info('Start taking image: ' + filename)
 		if filterInd != None: filt = filt = self.filters[filterInd]
 		else: filt = None
 		
 		if self.expose(exptime,exptype,filt,guider=guider):
 			self.write_status()
 			time.sleep(exptime)
-			if self.save_image(self.file_name, guider=guider):
-				self.logger.info('Finish taking image: ' + self.file_name)
+			if self.save_image(filename, guider=guider):
+				self.logger.info('Finish taking image: ' + filename)
 				self.nfailed = 0 
-				return self.file_name
+				return filename
 			else: 
-				self.logger.error('Failed to save image: ' + self.file_name)
-				self.file_name = ''
-				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=guider)
-
-		self.logger.error('Taking image failed, image not saved: ' + self.file_name)
-		self.file_name = ''
+				self.logger.error('Failed to save image: ' + filename)
+				if fau or piggyback: self.guider_file_name = ''
+				else: self.file_name = ''
+				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=guider, piggyback=piggyback)
+				
+		self.logger.error('Taking image failed, image not saved: ' + filename)
+		if fau or piggyback: self.guider_file_name = ''
+		else: self.file_name = ''
 		return 'error'		
 
 	def compress_data(self,night=None):
@@ -623,15 +646,22 @@ class imager:
                         self.logger.info('Camera recovered by killing maxim') 
                         return True
 
-		self.logger.info('*** camera power cycle disabled due to black box messiness ***')
-#		# power cycle camera
-#                self.logger.warning('Camera failed to recover after restarting maxim; power cycling the camera') 
-#                self.quit_maxim()
-#		self.kill_maxim()
-#                self.powercycle()
-#                if self.connect_camera():
-#                        self.logger.info('Camera recovered by power cycling it') 
-#                        return True
+#		# power cycle camera (need to disconnect telescope, close PWI first)
+#		self.logger.info('*** camera power cycle disabled due to black box messiness ***')
+                self.logger.warning('Camera failed to recover after restarting maxim; power cycling the camera') 
+		if self.telescope_config <> '':
+			telescope = cdk700.CDK700(self.telescope_config, self.base_directory)
+			telescope.shutdown()
+			telescope.killPWI()
+                self.quit_maxim()
+		self.kill_maxim()
+                self.powercycle()
+		if self.telescope_config <> '':
+			telescope.startPWI()
+			telescope.initialize()
+                if self.connect_camera():
+                        self.logger.info('Camera recovered by power cycling it') 
+                        return True
 
 		'''
 		# power cycle camera and wait longer?

@@ -90,12 +90,6 @@ def Acq_Exp_RdO(acquisition, target_dict, readtime):
 
      return datetime.timedelta( seconds = acquisition + np.sum( num_exposures*(exptime + readtime) ) )
      
-     
-          
-          
-          
-          
-
 
 def get_States(minerva, tel_phot_targets):
     '''
@@ -546,11 +540,11 @@ if __name__ == '__main__':  # do a bunch of threading stuff
     try:
         observe()
     except Exception as e:
-        minerva.logger.exception(str(e.message) )
+        #minerva.logger.exception(str(e.message) )
         body = "Dear benevolent humans,\n\n" + \
             'I have encountered an unhandled exception which has killed MINERVA observations. The error message is:\n\n' + \
             str(e.message) + "\n\n" + \
             "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart mainNew.py.\n\n" + \
             "Love,\n" + \
             "MINERVA"
-        mail.send("mainNew.py Crashed",body,level='serious',directory=self.directory)
+        mail.send("mainNew.py Crashed",body,level='serious',directory='directory.txt')

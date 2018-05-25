@@ -250,6 +250,17 @@ def autofocus_step(control,telescope,newfocus,af_target):
     status = telescope.getStatus()
     m3port = status.m3.port
 
+    # default (bad) values
+    # will be overwritten by good values or serve as flags later
+    median = np.nan
+    stddev = np.inf
+    numstar = 0
+    imnum = '9999'
+
+    if newfocus < float(telescope.minfocus[m3port]) or newfocus > float(telescope.maxfocus[m3port]):
+        telescope.logger.warning("Focus position (" + str(newfocus) + ") out of range (" + str(telescope.minfocus[m3port]) + "," + str(telescope.maxfocus[m3port]) + ")")
+        return median,stddev,numstar,imnum
+
     if not telescope.focuserMoveAndWait(newfocus,m3port):
         telescope.recoverFocuser(newfocus,m3port)
         telescope.acquireTarget(af_target)
@@ -259,17 +270,10 @@ def autofocus_step(control,telescope,newfocus,af_target):
     else:
         imagename = control.takeImage(af_target,telescope.id)
     
-    # default (bad) values
-    # will be overwritten by good values or serve as flags later
-    median = np.nan
-    stddev = np.inf
-    numstar = 0
-
     try: 
         imnum = imagename.split('.')[4]
     except: 
         telescope.logger.exception('Failed to save image')
-        imnum = '9999'
         return median,stddev,numstar,imnum
     
     datapath = '/Data/t' + telescope.num + '/' + control.site.night + '/'
@@ -390,7 +394,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
         newfocus = telescope.focus[m3port] + step*1000.0
 
         # if new focus out of mechanical range, skip this step
-        if newfocus < 100 or newfocus > 33000 or (telescope.num == '1' and m3port == '2' and newfocus < 455): 
+        if newfocus < float(telescope.minfocus[m3port]) or newfocus > float(telescope.maxfocus[m3port]):
             telescope.logger.info("Autofocus step (" + str(newfocus) + ") out of range; skipping")
             continue 
 

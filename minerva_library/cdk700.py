@@ -243,6 +243,10 @@ class CDK700:
 			self.modeldir = config['Setup']['MODELDIR']
 			self.datadir = config['Setup']['DATADIR']
 			self.model = config['MODEL']
+			try: self.minfocus = config['MINFOCUS']
+			except: self.minfocus = {'0':100,'1':100,'2':100}
+			try: self.maxfocus = config['MAXFOCUS']
+			except: self.minfocus = {'0':33000,'1':33000,'2':33000}
 			self.rotatoroffset = config['ROTATOROFFSET']
 			self.default_focus = config['DEFAULT_FOCUS']
 			self.focus_offset = config['FOCUS_OFFSET']
@@ -260,7 +264,7 @@ class CDK700:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
 
-	# SUPPORT FUNCITONS
+	# SUPPORT FUNCTIONS
 	def makeUrl(self, **kwargs):
 		"""
 		Utility function that takes a set of keyword=value arguments
@@ -399,10 +403,7 @@ class CDK700:
 		"""
 
 		# make sure it's a legal move first
-		if position < 0 or position > 33000: return False
-
-		# port 2 on T1 is less forgiving and cannot go below 455 um...
-		if self.id == 'T1' and str(m3port) == '2' and position < 455: return False
+		if position < float(self.minfocus[m3port]) or position > float(self.maxfocus[m3port]): return False
 
 		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="move", position=position)
 
@@ -454,9 +455,41 @@ class CDK700:
 		"""
 		return self.pwiRequestAndParse(device="focuser", cmd="startautofocus")
 
+	def homeAllMechanisms(self):
+		threads= []
+                thread = threading.Thread(target = self.homeAndPark)
+		thread.name = self.id
+		thread.start()
+                threads.append(thread)
+
+                for m3port in ['1','2']:
+                        # home both rotators                                                                                                              
+                        thread = threading.Thread(target = self.rotatorHome180, args=(m3port))
+			thread.name = self.id
+                        thread.start()
+			threads.append(thread)
+
+                        # home both focusers
+                        thread = threading.Thread(target = self.focuserHomeNominal, args=(m3port))
+			thread.name = self.id
+                        thread.start()
+                        threads.append(thread)
+
+                for thread in threads:
+			thread.join()
+		
+		
+	
+	# home the focuser then return to nominal focus
+	def focuserHomeNominal(self, m3port):
+		self.focuserHomeAndWait(m3port)
+		self.focuserMove(self.focus[m3port],m3port)
+
+	# home the focuser
 	def focuserHome(self, m3port):
 		return self.pwiRequestAndParse(device="focuser" + str(m3port), cmd="findhome")
 
+	# home the focuser and wait to completion
 	def focuserHomeAndWait(self, m3port, timeout=300.0):
 
 		# make sure it's not homing in another thread first
@@ -512,6 +545,10 @@ class CDK700:
 
 	def rotatorStopDerotating(self, m3port):
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="derotatestop")
+
+	def rotatorHome180(self, m3port):
+		self.rotatorHomeAndWait(m3port)
+		self.rotatorMove(180,m3port)
 
 	def rotatorHome(self, m3port):
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="findhome")	
@@ -759,27 +796,16 @@ class CDK700:
 		#S shutdown looks clear, all basePWI functions
 		self.nfailed += 1
 
+		self.logger.warning('failed ' + str(self.nfailed) + ' times; trying to reconnect')
+
 		# reconnect
 		if self.nfailed <= 1:
-			self.logger.warning('failed; trying to reconnect')
 			try: self.shutdown()
 			except: pass
 		
 			if self.initialize(tracking=tracking, derotate=derotate):
 				self.logger.info('recovered after reconnecting')
 				return True
-
-
-		if self.nfailed >= 2:
-
-			self.initialize(tracking=tracking,derotate=derotate)
-			telescopeStatus = self.getStatus()
-			
-			if telescopeStatus.mount.encoders_have_been_set <> 'True':
-				self.logger.info('Homing telescope')
-				if not self.home(): return False
-				time.sleep(0.25)
-				telescopeStatus = self.getStatus()
 
 		# restart PWI
 		self.logger.warning('reconnecting failed; restarting PWI')
@@ -790,15 +816,29 @@ class CDK700:
 		if self.initialize(tracking=tracking, derotate=derotate):
 			self.logger.info('recovered after restarting PWI')
 			return True
+
+		# home the scope
+		telescopeStatus = self.getStatus()
+		if telescopeStatus.mount.encoders_have_been_set <> 'True':
+			self.logger.warning('restarting PWI failed, homing telescope')
+			self.home()
+			time.sleep(0.25)
+			if self.initialize(tracking=tracking, derotate=derotate):
+				self.logger.info('recovered after homing')
+				return True
+		else: self.logger.warning('Telescope already home')
 		
-		if self.id != 'MRED':
+#		if self.id != 'MRED':
+		if True:
 			# power cycle and rehome the scope
-			self.logger.info('restarting PWI failed, power cycling the mount')
+			self.logger.info('Homing failed, power cycling the mount')
 			try: self.shutdown()
 			except: pass
 			self.killPWI()
 			self.powercycle()
 			self.startPWI()
+			self.home()
+			time.sleep(0.25)
 			if self.initialize():
 				self.logger.info('recovered after power cycling the mount')
 				return True
@@ -1173,6 +1213,7 @@ class CDK700:
 				#S Need to track elapsed time.
 				elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 				changedPort = True
+
 			if elapsedTime > timeout: 
 				self.logger.error('Failed to select correct M3 port (' + str(m3port) + ')')
 				return False
@@ -1398,7 +1439,7 @@ class CDK700:
 			return 'out of bounds'
 			return False
 
-		#S make sure the m3 port is in the correct orientation
+		#S make sure the m3 port is in the correct orientation and it's tracking
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
 				if m3port == None: m3port = self.port['FAU']
@@ -1425,6 +1466,31 @@ class CDK700:
 			
 		self.mountGotoRaDecJ2000(ra_corrected,dec_corrected)
 
+		# if it's not initialized here, it might have tracked up against its limits before
+		# wait for it to slew off them and retry
+		if not self.isInitialized(tracking=tracking,derotate=derotate):
+			time.sleep(10)
+		        #S make sure the m3 port is in the correct orientation and it's tracking
+			if 'spectroscopy' in target.keys():
+				if target['spectroscopy']:
+					if m3port == None: m3port = self.port['FAU']
+				        #S Initialize the telescope
+					self.initialize(tracking=True,derotate=False)
+				else: 
+					if m3port == None: m3port = self.port['IMAGER']
+					#S Initialize the telescope
+					self.initialize(tracking=True,derotate=True)
+					rotator_angle = self.solveRotatorPosition(target)
+					self.rotatorMove(rotator_angle,m3port)
+
+			else:
+				if m3port == None: m3port = self.port['IMAGER']
+				self.initialize(tracking=True,derotate=True)
+				rotator_angle = self.solveRotatorPosition(target)
+				self.rotatorMove(rotator_angle,m3port)
+			
+
+
 		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected, tracking=tracking, derotate=derotate):
 			self.logger.info('Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 			return True
@@ -1439,7 +1505,7 @@ class CDK700:
 		telescopeStatus = self.getStatus()
 		timeElapsed = 0.0
 		t0 = datetime.datetime.utcnow()
-		while telescopeStatus.mount.moving == 'True' or timeElapsed < timeout:
+		while telescopeStatus.mount.moving == 'True' and timeElapsed < timeout:
 			time.sleep(1.0)
 			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()			
 			telescopeStatus = self.getStatus()
@@ -1543,36 +1609,54 @@ class CDK700:
 	def recoverFocuser(self, focus, m3port):
 		timeout = 60.0
 
-		self.m3port_switch(m3port)
+                if focus < float(self.minfocus[m3port]) or focus > float(self.maxfocus[m3port]): 
+			self.logger.warning('Requested focus position out of range')
+			return False
 
+		# restart PWI
 		self.logger.info('Beginning focuser recovery')
-
-		self.focuserStop(m3port)
-		self.rotatorStopDerotating(m3port)
-		self.focuserDisconnect(m3port)
+		self.shutdown(m3port)
 		self.restartPWI(email=False)
 		time.sleep(5)
-
 		self.initialize()
 		self.focuserConnect(m3port)
-
+		self.m3port_switch(m3port)
 		status = self.getStatus()
-		if self.focuserMoveAndWait(self.focus[m3port],m3port):
-			self.logger.info('Focuser recovered')			
-			return
+		if self.focuserMoveAndWait(focus,m3port):
+			self.logger.info('Focuser recovered after reconnecting')			
+			return True
 
-		# simple reconnecting failed, recover PWI
-		self.nfailed += 2 # skip reconnecting step
-		self.recover()
-		if self.focuserMoveAndWait(self.focus[m3port],m3port):
-			self.logger.info('Focuser recovered')			
-			return
-		self.logger.error('Focus timed out')
-		mail.send('Focuser failed on ' + str(self.logger_name),"Try powercycling?",level='serious', directory=self.directory)
+		# Home the focuser
+		self.logger.info('Focuser failed to recover with a reconnect; homing focuser')
+		self.focuserHomeAndWait(m3port)
+		status = self.getStatus()
+		if self.focuserMoveAndWait(focus,m3port):
+			self.logger.info('Focuser recovered after rehoming')			
+			return True	
 
-		return
+		# Power cycle the mount (and focuser); requires a rehome
+#                if self.id != 'MRED':
+		if True:
+                        self.logger.info('Homing failed, power cycling the mount')
+                        try: self.shutdown()
+                        except: pass
+                        self.killPWI()
+                        self.powercycle()
+                        self.startPWI()
+                        self.home()
+                        time.sleep(0.25)
+			status = self.getStatus()
+			if self.focuserMoveAndWait(focus,m3port):
+				self.logger.info('Focuser recovered after reconnecting')
+				return True
+
+		self.logger.error('Focuser on port ' + str(m3port) + ' failed')
+		mail.send(self.id + ' port ' + str(m3port) + ' focuser failed','',level='serious', directory=self.directory)
+		
+		return False
 					
 	def shutdown(self,m3port):
+                self.focuserStop(m3port)
 		self.rotatorStopDerotating(m3port)
 		self.focuserDisconnect(m3port)
 		self.mountTrackingOff()
@@ -1587,7 +1671,11 @@ class CDK700:
 
 	#S increased default timeout to ten minutes due to pokey t2
 	#S we can probably set this to be only for t2, but just a quick edit
-	#TODO work on real timout
+	#TODO work on real timeout
+	def homeAndPark(self):
+		self.home()
+		self.park()
+
 	def home(self, timeout=600):#420.0):
 		
 		# make sure it's not homing in another thread first (JDE 2017-06-09)

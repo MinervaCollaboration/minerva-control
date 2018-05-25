@@ -114,7 +114,10 @@ def rv_observing(minerva):
                         for thread in threads(): thread.start()
                         for thread in threads(): thread.join()
                     else:
-                        doSpectra(minerva,target,[1,2,3,4])
+                        telelist = []
+                        for telescope in minerva.telescopes:
+                            telelist.append(telescope.id)
+                        doSpectra(minerva,target,telelist)
                 else: minerva.logger.info(target['name']+ ' not observable; skipping')
 
 
@@ -165,7 +168,7 @@ def doSpectra(minerva, target, tele_list, test=False):
     # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
     minerva.logger.info("Waiting for all telescopes to slew")
     t0 = datetime.datetime.utcnow()
-    slewTimeout = 660.0 # sometimes it needs to home as part of a recovery, give it time for that
+    slewTimeout = 600.0 # sometimes it needs to home as part of a recovery, give it time for that
     for thread in threads:
         elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
         thread.join(slewTimeout - elapsedTime)
@@ -263,6 +266,10 @@ def doSpectra(minerva, target, tele_list, test=False):
 
     # let's take another backlit image to see how stable it was
     backlight(minerva)
+    
+    # stop tracking for all scopes (so they don't track out of bounds)
+    for telescope in minerva.telescopes:
+        telescope.monutTrackingOff()
 
     return
 
@@ -322,8 +329,9 @@ def backlight(minerva, tele_list=0, exptime=0.03, name='backlight'):
         #S Catch to default a zero argument or outside array range tele_list 
         #S and if so make it default to controling all telescopes.
         if (tele_list < 1) or (tele_list > len(minerva.telescopes)):
-            #S This is a list of numbers fron 1 to the number scopes
-            tele_list = [x+1 for x in range(len(minerva.telescopes))]
+            tele_list = []
+            for telescope in minerva.telescopes:
+                tele_list.append(telescope.id)
         #S If it is in the range of telescopes, we'll put in a list to
         # avoid issues later on
         else:
