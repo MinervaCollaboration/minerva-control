@@ -123,6 +123,10 @@ class scheduler:
 
         for target in self.target_list:
 
+            # overwrite previous windows
+            target['starttime'] = datetime.datetime(2015,01,01,00,00,00)
+            target['endtime'] = datetime.datetime(2115,01,01,00,00,00)
+
             try:
                 target = utils.truncate_observable_window(self.site, target,timeof=timeof,logger=logger)
             except:
