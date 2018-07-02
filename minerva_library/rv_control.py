@@ -156,8 +156,11 @@ def doSpectra(minerva, target, tele_list, test=False):
     threads = []
     for telid in tele_list:
         telescope = utils.getTelescope(minerva,telid)
-        m3port = telescope.port['FAU']
-#        m3port = telescope.port['IMAGER'] # why was this the imager JDE 2016-12-18??
+#        m3port = telescope.port['FAU']
+        
+        # block light from the star by switching to the imaging port (don't confuse star with fiber)
+        m3port = telescope.port['IMAGER'] 
+
         kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
         thread = threading.Thread(target = telescope.acquireTarget,args=(target,),kwargs=kwargs)
         thread.name = telescope.id
@@ -194,16 +197,25 @@ def doSpectra(minerva, target, tele_list, test=False):
         telescope = utils.getTelescope(minerva,telid)
         camera = utils.getCamera(minerva,telid)
         
-        if 'backlight' not in camera.file_name:
+        if 'backlight' not in camera.guider_file_name:
             minerva.logger.error(telid + ": backlight image not taken; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+            mail.send(telid + " could not identify fiber position",
+                      "Dear Benevolent Humans,\n\n"+
+                      telid + " failed to take the backlight image and is relying on the default fiber position in the config file. This is likely to significantly impact throughput.\n\n" + 
+                      "Love,\nMINERVA",level='serious')
         else:
-            xfiber, yfiber = find_fiber(telescope.datadir + minerva.night + '/' + camera.file_name, camera)
+            xfiber, yfiber = find_fiber(telescope.datadir + minerva.night + '/' + camera.guider_file_name, camera, control=minerva)
             if xfiber <> None:
-                minerva.logger.info(telid + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + camera.file_name)
+                minerva.logger.info(telid + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + camera.guider_file_name)
                 camera.fau.xfiber = xfiber
                 camera.fau.yfiber = yfiber
             else:
-                minerva.logger.error(telid + ": failed to find fiber in image " + camera.file_name + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+                minerva.logger.error(telid + ": failed to find fiber in image " + camera.guider_file_name + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+                mail.send(telid + " could not identify fiber position",
+                          "Dear Benevolent Humans,\n\n"+
+                          telid + " failed to idenitfy the fiber position and is relying on the default fiber position in the config file. This is likely to significantly impact throughput.\n\n" + 
+                          "Love,\nMINERVA",level='serious')
+
 
         camera.fau.guiding=True
 
@@ -215,7 +227,11 @@ def doSpectra(minerva, target, tele_list, test=False):
     threads = []
     for telid in tele_list:
         telescope = utils.getTelescope(minerva,telid)
-        thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,telid,))
+
+        # set the timeout to be the end of exposure
+        timeout = max([target['exptime'],300])
+        kwargs = {'timeout':timeout}
+        thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,telid,),kwargs=kwargs)
         thread.name = telid
         thread.start()
         threads.append(thread)
@@ -273,30 +289,49 @@ def doSpectra(minerva, target, tele_list, test=False):
 
     return
 
-def acquireFocusGuide(minerva, target, telid):
+def acquireFocusGuide(minerva, target, telid, timeout=300.0):
     telescope = utils.getTelescope(minerva,telid)
     camera = utils.getCamera(minerva,telid)
     camera.fau.guiding=True
+    t0 = datetime.datetime.utcnow()
 
     try:
         # slew to the target
         minerva.logger.info("beginning course acquisition")
         telescope.acquireTarget(target,tracking=True,derotate=False,m3port=telescope.port['FAU'])
-        
+        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+            minerva.logger.error("course acquisition timed out")
+            return
+
         # put the target on the fiber
         minerva.logger.info("beginning fine acquisition")
         try: minerva.fauguide(target,telid,acquireonly=True, skiponfail=True)
         except: minerva.logger.exception("acquisition failed")
+        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+            minerva.logger.error("fine acquisition timed out")
+            return
 
         # autofocus
         minerva.logger.info("beginning autofocus")
         try: newauto.autofocus(minerva, telid)
         except: minerva.logger.exception("autofocus failed")
+        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+            minerva.logger.error("autofocus timed out")
+            return
+
+        # if there's a focus offset (FAU and Fiber have a calibrated offset), apply it
+        if camera.fau.focusOffset != 0:
+            m3port = telescope.port['FAU']
+            telescope.focuserMoveAndWait(telescope.focus[m3port]+camera.fau.focusOffset, m3port)
 
         # guide
         minerva.logger.info("beginning guiding")
         try: minerva.fauguide(target,telid, skiponfail=True)
         except: minerva.logger.exception("guiding failed")
+        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+            minerva.logger.error("guiding timed out")
+            return
+
     except:
         minerva.logger.exception("pointing and guiding failed")
         #mail.send("Pointing and guiding failed","",level="serious")
@@ -385,7 +420,7 @@ def backlight(minerva, tele_list=0, exptime=0.03, name='backlight'):
 #    minerva.spectrograph.start_log_expmeter()
 
 # given a backlit FAU image, locate the fiber
-def find_fiber(imagename, camera, tolerance=5.,control=None):
+def find_fiber(imagename, camera, tolerance=20.,control=None):
     
     catname = utils.sextract('',imagename,sexfile='backlight.sex')
     cat = utils.readsexcat(catname)
@@ -401,13 +436,12 @@ def find_fiber(imagename, camera, tolerance=5.,control=None):
         yfiber = cat['YWIN_IMAGE'][brightest]        
         dist = math.sqrt(math.pow(camera.fau.xfiber - xfiber,2) + math.pow(camera.fau.yfiber-yfiber,2))
         if dist <= tolerance:
-            if control==None:
-                camera.logger.info("Fiber found at (" + str(xfiber) +","+str(yfiber) + "), "+ str(dist) + " pixels from nominal position")
+            camera.logger.info("Fiber found at (" + str(xfiber) +","+str(yfiber) + "), "+ str(dist) + " pixels from nominal position")
             
             #S if a control class is handed to find_fiber
-            elif control!=None:
+            if control!=None:
                 #S get the zero-indexed telescope number
-                telescope = utils.getTelescope(control,camera.telescope)
+                telescope = utils.getTelescope(control,camera.telid)
 
                 #S get the status of the telescope the camera is on
                 status = telescope.getStatus()
@@ -431,13 +465,12 @@ def find_fiber(imagename, camera, tolerance=5.,control=None):
                 except: tamb = 'UNKNOWN'
                 try:    tback = str(status.temperature.backplate)
                 except: tback = 'UNKNOWN'
-                str_telnum = str(telnum + 1)
             
                 camera.logger.info(('fibstab001, Fiberpos:(%0.3f,%0.3f), '+\
                                         'dist:%0.3f, T:%s, alt:%s, azm:%s, '+\
                                         'focpos:%s, rotpos:%s, tm1:%s, '+\
                                         'tm2:%s, tm3:%s, tamb:%s, tback:%s'),\
-                                       xfiber,yfiber,dist,str_telnum,alt,azm,\
+                                       xfiber,yfiber,dist,telescope.id,alt,azm,\
                                        focpos,rotpos,tm1,tm2,tm3,tamb,tback)
 
                 
@@ -502,7 +535,7 @@ def fiber_stability(minerva):
             for ind in np.arange(4):
                 path = '/Data/t%s/%s/%s'\
                     %(str(ind+1),minerva.night,\
-                          minerva.cameras[ind].file_name)
+                          minerva.cameras[ind].guider_file_name)
                 find_fiber(path, minerva.cameras[ind],control=minerva)
                 
                 

@@ -696,6 +696,80 @@ class control:
 		cc = centroid_all_blobs(imtofeed)
 
 		return cc
+	
+	# if the telescope fails to point precisely enough to get the
+	# star in the FAU field of view, use the imager and offsets in
+	# the config files to acquire the star
+	def findWithImager(self, telid):
+		target = {
+			"name":"acquisition",
+			"objname":"acquisition",
+			'exptime':5,
+			'fauexptime':5,
+			'fau':False,
+			}
+		telescope = utils.getTelescope(self,telid)
+		camera = utils.getCamera(self,telid)
+		dome = utils.getDome(self,telid)
+		m3port = telescope.port['IMAGER']
+		dataPath = telescope.datadir + self.night + '/'
+		
+		# take image
+		filename = self.takeImage(target,telid)
+
+		PA = self.getPA(datapath + filename)
+		
+
+	# search for an object in an outward spiral from current location
+	# used for acquiring targets on FAU when pointing is bad
+	# this is an inefficient hack treating the symptom, not the problem
+	def spiralSearch(self, telid, step=120, maxx=10,maxy=10, timeout=86400.0):		
+
+		target = {
+			"name":"spiral",
+			"objname":"spiral",
+			'exptime':5,
+			'fauexptime':5,
+			'fau':True,
+			}
+
+		telescope = utils.getTelescope(self,telid)
+		camera = utils.getCamera(self,telid)
+		dome = utils.getDome(self,telid)
+		m3port = telescope.port['FAU']
+		dataPath = telescope.datadir + self.night + '/'
+
+		t0 = datetime.datetime.utcnow()
+
+		x = y = 0
+		dx = 0
+		dy = -1
+		for i in range(max(maxx,maxy)**2):
+			if (-maxx/2.0 < x <= maxx/2.0) and (-maxy/2.0 < y <= maxy/2.0):
+				# jog telescope
+				self.logger.info(telid + ": jogging telescope by " + str(dx) + ',' + str(dy) + " steps to arrive at " + str(x) + ',' + str(y) + ')')
+				telescopeStatus = telescope.getStatus()
+				dec = utils.ten(telescopeStatus.mount.dec_2000)
+				telescope.mountOffsetRaDec(dx*step/math.cos(dec*math.pi/180.0),dy*step)
+				self.logger.info("waiting for jog")
+				time.sleep(1)
+				moving = telescope.isMoving()
+		
+				# take image
+				filename = self.takeFauImage(target,telid)
+				stars = self.getstars(dataPath + filename)
+				if len(stars) >= 1:
+					self.logger.info(telid + ": found a star!")
+					return filename
+
+			if x==y or (x < 0 and x == -y) or (x > 0 and x == 1-y):
+				dx,dy=-dy,dx
+			x,y=x+dx,y+dy
+
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			if elapsedTime > timeout: return filename
+
+		return filename
 
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
@@ -768,8 +842,24 @@ class control:
 			dataPath = telescope.datadir + self.night + '/'
 			stars = self.getstars(dataPath + filename)
 
+			# this could be fooled by clouds or an out of focus image...
 			if len(stars) < 1:
-				self.logger.info(telid + ": no stars in imaging; skipping guide correction")
+				self.logger.info(telid + ": no stars in " + filename + "; beginning spiral search to acquire target")
+				body = 'Dear benevolent humans,\n\n'\
+				    'The pointing is so bad I am initiating a spiral search to acquire. This is very inefficient. If this is clouds, you should see it for all telescopes. ' +\
+				    'Otherwise, you need to redo the pointing model for ' + telid + '. \n\n'\
+				    'Love,\nMINERVA'
+				mail.send('Initiating Spiral search for ' + telid,body,level='serious',directory=self.directory)
+				filename = self.spiralSearch(telid, timeout=300)
+				stars = self.getstars(dataPath + filename)
+
+			if len(stars) < 1:
+				self.logger.info(telid + ": spiral search failed to find object; skipping guider")
+				body = 'Dear benevolent humans,\n\n'\
+				    'I could not locate a star even after an extensive spiral search. If this is clouds, you should see it for all telescopes. ' +\
+				    'Otherwise, you need to redo the pointing model for ' + telid + '. \n\n'\
+				    'Love,\nMINERVA'
+				mail.send('Spiral search failed for ' + telid,body,level='serious',directory=self.directory)
 				if skiponfail: return False
 			else:
 
@@ -797,6 +887,25 @@ class control:
 				tvals = np.append(tvals,i)
 				xvals = np.append(xvals, curpos[0])
 				yvals = np.append(yvals, curpos[1])
+				
+				# make sure it's actually converging
+				if not camera.fau.acquired:
+					body = 'Dear benevolent humans,\n\n'\
+					    'My acquisition is not converging. The rotator position may need to be recalibrated for ' + telid + '. \n\n'\
+					    'Love,\nMINERVA'
+					if len(xvals) > 1 and len(yvals) > 1:
+						if abs(camera.fau.xfiber+xoffset-curpos[0]) > 10:
+							# if it was better before, send an email -- it's running away!
+							if abs(xvals[-2] - (camera.fau.xfiber + xoffset)) < abs(xvals[-1] - (camera.fau.xfiber + xoffset)):
+								mail.send('Acquisition not converging for ' + telid,body,level='serious',directory=self.directory)
+								self.logger.info(telid + ": Acquisition not converging, check rotator calibration")
+						if abs(camera.fau.yfiber+yoffset-curpos[1]) > 10:
+							if abs(yvals[-2] - (camera.fau.yfiber + yoffset)) < abs(yvals[-1] - (camera.fau.yfiber + yoffset)):
+								mail.send('Acquisition not converging for ' + telid,body,level='serious',directory=self.directory)
+								self.logger.info(telid + ": Acquisition not converging, check rotator calibration")
+
+					# TODO:
+					# if we see this often, we probably want to automatically recalibrate the rotator!
 
 				filterx=camera.fau.filterdata(xvals, N=camera.fau.smoothing)
 				filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
@@ -1749,7 +1858,7 @@ class control:
 			
 			# if there's only one telescope (i.e., imager), no need to specify
 			if len(tele_list) == 1:	telstr = ""
-			else: telstr = str(telid)
+			else: telstr = str(telid)[-1]
 
 			telescope = utils.getTelescope(self,telid)
 			if not telescope: continue
@@ -2497,6 +2606,30 @@ class control:
 		except: pass
 		try: os.remove("telescope." + telescope.id + ".error")
 		except: pass
+
+		# check disk space on all machines; email warnings if low
+		drives = ['/Data/t1/','/Data/t2/','/Data/t3/','/Data/t4/','/nas/','/Data/kiwispec','/']
+		for drive in drives:
+			s = os.statvfs(drive)
+			free_space = s.f_bsize * s.f_bavail/1024./1024./1024. # GB
+			print drive, free_space
+			self.logger.info('Drive ' + drive + ' has ' + str(free_space) + ' GB remaining')
+			if free_space < 20:
+				self.logger.error('The disk space on a system critical drive (' + drive +
+						  ') is low (' + str(free_space) + ' GB)')
+				mail.send('Disk space on ' + drive + ' critically low','Dear Benevolent Humans,\n\n'+
+					  'The disk space on a system critical drive (' + drive +
+					  ') is critically low (' + str(free_space) + ' GB). '+
+					  'Please free up space immediately or operations will be compromised.\n\n'+
+					  'Love,\nMINERVA.',level='serious', directory=self.directory)
+			elif free_space < 50:
+				self.logger.warning('The disk space on a system critical drive (' + drive +
+						    ') is low (' + str(free_space) + ' GB)')
+				mail.send('Disk space on ' + drive + ' low','Dear Benevolent Humans,\n\n'+
+					  'The disk space on a system critical drive (' + drive +
+					  ') is low (' + str(free_space) + ' GB). '+
+					  'Please free up space or operations may be compromised in the next ~week.\n\n'+
+					  'Love,\nMINERVA.',level='normal', directory=self.directory)
 
 		# check that kiwispec is configured correctly
 		# check overscan set to 2090

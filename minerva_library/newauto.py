@@ -95,9 +95,10 @@ def recordplot(recordfile,step=1,saveplot=False):
         #S return path for email attachment, whatever else you need
         return path+fname
     
-    #S just show it if we aren't saving
-    plt.show()
-    plt.close(fig)
+    else:
+        #S just show it if we aren't saving
+        plt.show()
+        plt.close(fig)
     print 'leaving recordplot()'
 
 def quad(x,c):

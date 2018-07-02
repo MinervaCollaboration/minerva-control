@@ -98,11 +98,13 @@ class scheduler:
         #S so we will just return the first entries dictionary
 
         # if no targets are observable, return an empty dictionary
-        if self.target_list[0]['weight'] == -999.0: return {}
+        if self.target_list[0]['weight'] == -999.0: 
+            if logger != None:
+                self.logger.info("No viable targets at " + str(timeof))
+            else: 
+                print "No viable targets at " + str(timeof)
+            return {}
  
-        # this is done within calculate_weights (right?)
-#        target = utils.truncate_observable_window(self.site, self.target_list[0])
-
         return self.target_list[0]
 
 
@@ -122,7 +124,7 @@ class scheduler:
         for target in self.target_list:
 
             try:
-                target = utils.truncate_observable_window(self.site, target,timeof=timeof)
+                target = utils.truncate_observable_window(self.site, target,timeof=timeof,logger=logger)
             except:
                 print 'lskdjf'
                 ipdb.set_trace()
@@ -150,7 +152,7 @@ class scheduler:
                 target['weight'] = -999.0
 
             if logger != None:     
-                pass
+                logger.debug(target['name'] + ' ' + str(target['starttime']) + ' ' + str(target['endtime']) + ' '  + str(timeof) + ' ' + str(target['exptime']) + ' ' + str(target['weight']))
             else:
                 print target['name'], target['starttime'], target['endtime'], timeof,  target['exptime'], target['weight']
 

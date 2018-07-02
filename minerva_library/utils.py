@@ -285,7 +285,7 @@ def setup_logger(base_dir, night, logger_name):
 
 # Truncates target['starttime'] and target['endtime'] to ensure 
 # the object is observable (Sun below sunalt and target above horizon)
-def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0,timeof=None):
+def truncate_observable_window(site,target,sunalt=-18.0,horizon=21.0,timeof=None,logger=None):
 
     if timeof == None: timeof = datetime.datetime.utcnow()
 

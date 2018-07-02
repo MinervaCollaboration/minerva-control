@@ -26,16 +26,16 @@ if __name__ == '__main__':
 	minerva = control.control('control.ini',base_directory)
 	
 #	minerva.telescopes[3].recoverFocuser(29000,'2')
-	ipdb.set_trace()
+#	ipdb.set_trace()
 
-	newauto.autofocus(minerva,'T2',simulate=True)
+#	newauto.autofocus(minerva,'T2',simulate=True)
 
 	ipdb.set_trace()
 	true = True
 	false = False
 
 #	minerva.telescopes[0].makePointingModel(minerva)
-	target = utils.parseTarget('{"name": "Stein2051", "ra": 4.519866, "dec": 58.9770833, "starttime": "2018-03-01 02:00:00", "endtime": "2018-03-31 03:00:00", "filter": ["ip"], "exptime":[30.0], "num":[999], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0}')
+	target = utils.parseTarget('{"name": "Stein2051", "ra": 4.519866, "dec": 58.9770833, "starttime": "2018-03-01 02:00:00", "endtime": "2021-03-31 03:00:00", "filter": ["ip"], "exptime":[30.0], "num":[999], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0}')
 	
 
 	utils.truncate_observable_window(minerva.site, target, timeof=datetime.datetime(2018,3,16,12,58,47))

@@ -111,6 +111,10 @@ class fau:
 			self.x2 = int(config['Setup']['X2'])
 			self.y1 = int(config['Setup']['Y1'])
 			self.y2 = int(config['Setup']['Y2'])
+
+			try: self.focusOffset = float(config['Setup']['FOCUSOFFSET'])
+			except: self.focusOffset = 0.0
+
 			self.biaslevel = float(config['Setup']['BIASLEVEL'])
 			self.saturation = float(config['Setup']['SATURATION'])
 			self.datapath = ''
