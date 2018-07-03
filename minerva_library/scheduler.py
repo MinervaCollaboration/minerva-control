@@ -100,7 +100,7 @@ class scheduler:
         # if no targets are observable, return an empty dictionary
         if self.target_list[0]['weight'] == -999.0: 
             if logger != None:
-                self.logger.info("No viable targets at " + str(timeof))
+                logger.info("No viable targets at " + str(timeof))
             else: 
                 print "No viable targets at " + str(timeof)
             return {}
