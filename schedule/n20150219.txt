@@ -1,2 +1,0 @@
-{"nbias": 5, "ndark": 5, "nflat": 5, darkexptime": [10], "flatFilters": [gp","rp","ip","zp"], "WaitForMorning": false}
-{"name": "GD71", "ra": 5.8745286, "dec": 15.91610, "starttime": "2015-02-18 03:45:00", "endtime": "2016-01-24 05:00:00", "filter": ["gp", "rp", "ip", "zp"], "num": [2, 2, 2, 2], "exptime": [20.0, 10.0, 10.0, 10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false}

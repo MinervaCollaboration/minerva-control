@@ -1,1 +1,0 @@
-ssh2 -x jdeast@demonxl "cd /home/jdeast/idl/demonex/reductions; idl -e \"asyncsolve, 'E:\demonex\data\n20110504\n20110504.KELT-03667.P.0001.fits', 186.439815d0, 27.480165d0 \""

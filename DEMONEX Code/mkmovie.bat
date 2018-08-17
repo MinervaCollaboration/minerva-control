@@ -1,1 +1,0 @@
-ssh2 -x jdeast@demonxl "cd /home/jdeast/idl/demonex/reductions; idl -e mkmovie; sleep 1"

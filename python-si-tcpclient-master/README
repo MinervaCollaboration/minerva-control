@@ -1,0 +1,14 @@
+Spectral Instruments (c) frame grabber
+======================================
+
+This package implement the required functions to get images from an Spectral Instruments (c) camera server.
+
+The package communicates with the server using BSD sockets.
+
+
+This package requires Numpy v. 0.9.8 or greater and Pyfits 1.0.1rc1 or greater.
+
+
+Enjoy it,
+
+The Author.
