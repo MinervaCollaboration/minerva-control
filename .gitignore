@@ -1,0 +1,7 @@
+./schedule/ 
+./logs/
+./*/*.pyc
+*.log
+*.txt
+*.pyc
+weather_status
