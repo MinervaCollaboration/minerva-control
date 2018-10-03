@@ -1,4 +1,5 @@
-pip install ipdb
+pip install -U pip
+pip install ipdb==0.8
 pip install pyephem
 pip install pyfits
 pip install configobj
@@ -21,4 +22,6 @@ cd pywinauto-0.4.2
 python setup.py install
 cd ..
 #pip install google-api-python-client
-pip install astropy
+pip install astropy==1.1.2
+pip install matplotlib
+pip install pandas

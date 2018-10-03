@@ -24,6 +24,24 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+	
+#	minerva.telescopes[3].recoverFocuser(29000,'2')
+#	ipdb.set_trace()
+
+#	newauto.autofocus(minerva,'T2',simulate=True)
+
+	ipdb.set_trace()
+	true = True
+	false = False
+
+#	minerva.telescopes[0].makePointingModel(minerva)
+	target = utils.parseTarget('{"name": "Stein2051", "ra": 4.519866, "dec": 58.9770833, "starttime": "2018-03-01 02:00:00", "endtime": "2021-03-31 03:00:00", "filter": ["ip"], "exptime":[30.0], "num":[999], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0}')
+	
+
+	utils.truncate_observable_window(minerva.site, target, timeof=datetime.datetime(2018,3,16,12,58,47))
+
+	ipdb.set_trace()
+
 	target = {
 		"name": "HD62613", 
 		"ra": 23.25, 
@@ -31,9 +49,9 @@ if __name__ == '__main__':
 		"starttime": datetime.datetime(2016,1,1),
 		"endtime": datetime.datetime(2017,1,1),
 		#"spectroscopy": True, 
-		"filter": ["rp"], 
+		"filter": "rp", 
 		"num": [1], 
-		"exptime": [5.0], 
+		"exptime": 5.0, 
 		"fauexptime": 1,#5.0, 
 		"defocus": 0.0, 
 		"positionAngle": 0.0, 
@@ -46,10 +64,14 @@ if __name__ == '__main__':
 
 	ipdb.set_trace()
 
+
+#	minerva.telescopes[1].calibrateRotator(minerva.cameras[1])
+	ipdb.set_trace()
+
 #	minerva.telescopes[0].makePointingModel(minerva,npoints=50,exptime=2.0)
 #	minerva.endNight(num=3,email=False,kiwispec=False)
 
-#	newauto.autofocus(minerva,1)
+#	newauto.autofocus(minerva,'T1')
 #	minerva.scheduler.choose_target(remaining_time=22700,logger=minerva.logger,timeof=datetime.datetime.utcnow())
 
 	ipdb.set_trace()
@@ -65,14 +87,14 @@ if __name__ == '__main__':
 		  }
 	minerva.takeSpectrum(target)
 	ipdb.set_trace()
-	newauto.autofocus(minerva,1,target=target,defocus_step=0.03,num_steps=3,dome_override=True)
+	newauto.autofocus(minerva,'T1',target=target,defocus_step=0.03,num_steps=3,dome_override=True)
 	ipdb.set_trace()
 	minerva.takeSpectrum(target,[1,2,3,4])
 	
 	
 #	minerva.telescopes[0].m3port_switch('2',force=True)
-#	newauto.autofocus(minerva,1,target=target)
-#	newauto.autofocus(minerva,3,target=target)
+#	newauto.autofocus(minerva,'T1',target=target)
+#	newauto.autofocus(minerva,'T3',target=target)
 #	minerva.telescopes[3].calibrateRotator(minerva.cameras[3])
 #	minerva.telescopes[0].makePointingModel(minerva.cameras[0],npoints=1)
 
@@ -255,7 +277,7 @@ if __name__ == '__main__':
 		"i2": False,
 		"comment":"RV standard star"}
 
-	minerva.autofocus(4,fau=True,target=target)
+	newauto.autofocus(minerva,'T4',fau=True,target=target)
 	"""
 	target = {
 		"name" : "HD125455", 
@@ -277,8 +299,8 @@ if __name__ == '__main__':
 		"i2": False,
 		"comment":"RV standard star"}
 	ipdb.set_trace()
-	newauto.autofocus(minerva,3,target=target)
-	rv_control.doSpectra(minerva,target,[1,2,3,4])
+	newauto.autofocus(minerva,'T3',target=target)
+	rv_control.doSpectra(minerva,target,['T1','T2','T3','T4'])
 	ipdb.set_trace()
 
 #	target['name'] = 'ThAr_T1'
@@ -359,7 +381,7 @@ if __name__ == '__main__':
         #S a TODO to make sure it's looked at again.
         #TODO
         #ipdb.set_trace()
-	minerva.telescope_initialize(tele_list = [3,4])
+	minerva.telescope_initialize(tele_list = ['T3','T4'])
 	
         minerva.takeSpectrum(60.0,'test',expmeter=1000000.0)
 

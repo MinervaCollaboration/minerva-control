@@ -90,12 +90,6 @@ def Acq_Exp_RdO(acquisition, target_dict, readtime):
 
      return datetime.timedelta( seconds = acquisition + np.sum( num_exposures*(exptime + readtime) ) )
      
-     
-          
-          
-          
-          
-
 
 def get_States(minerva, tel_phot_targets):
     '''
@@ -365,7 +359,7 @@ def observe():
         #set up night's directory
         minerva.prepNight(telescope)
         scheduleFile = minerva.base_directory + '/schedule/' + minerva.site.night + '.' + telescope.id + '.txt'
-        utils.scheduleIsValid(scheduleFile, email=True, logger=minerva.logger)
+        utils.scheduleIsValid(scheduleFile, email=True, logger=minerva.logger,directory=minerva.directory)
 
         # Setup tech thread
         thread = threading.Thread( target = SetupTech, args=(minerva, telescope, camera) ) 
@@ -395,7 +389,7 @@ def observe():
          
         # by default, checkiftime = True. This is just here as a reminder
         kwargs ={'checkiftime': True}
-        thread = threading.Thread( target = minerva.specCalib, args=(),kwargs=kwargs ) 
+        thread = threading.Thread( target = minerva.specCalib_catch, args=(),kwargs=kwargs ) 
         thread.name = 'Kiwispec'
         thread.start()
         threads.append(thread)
@@ -427,7 +421,7 @@ def observe():
         # Prepare Domes before taking Sky flats
         dome = utils.getDome(minerva, telescope.id)
 
-        sunfile = minerva.base_directory + '/minerva_library/sunOverride.txt'
+        sunfile = minerva.base_directory + '/minerva_library/sunOverride.' + dome.id + '.txt'
         if os.path.exists(sunfile): os.remove(sunfile)
 
         with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
@@ -465,7 +459,6 @@ def observe():
                         target = utils.truncate_observable_window(minerva.site, target)
                              
                         # The target dictionary's start and end times should be in datetime.datetime format now
-                        
                         if target['starttime'] < target['endtime']:
                             p_targets.append( target )
                             # starttime and endtime should only represent when the object is observable
@@ -547,11 +540,11 @@ if __name__ == '__main__':  # do a bunch of threading stuff
     try:
         observe()
     except Exception as e:
-        self.logger.exception(str(e.message) )
+        #minerva.logger.exception(str(e.message) )
         body = "Dear benevolent humans,\n\n" + \
             'I have encountered an unhandled exception which has killed MINERVA observations. The error message is:\n\n' + \
             str(e.message) + "\n\n" + \
             "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart mainNew.py.\n\n" + \
             "Love,\n" + \
             "MINERVA"
-        mail.send("mainNew.py Crashed",body,level='serious',directory=self.directory)
+        mail.send("mainNew.py Crashed",body,level='serious',directory='directory.txt')

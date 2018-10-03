@@ -95,9 +95,10 @@ def recordplot(recordfile,step=1,saveplot=False):
         #S return path for email attachment, whatever else you need
         return path+fname
     
-    #S just show it if we aren't saving
-    plt.show()
-    plt.close(fig)
+    else:
+        #S just show it if we aren't saving
+        plt.show()
+        plt.close(fig)
     print 'leaving recordplot()'
 
 def quad(x,c):
@@ -159,8 +160,7 @@ def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
 
     return hfr_med, hfr_std, numstars
 
-def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None,
-	telescope_num=99):
+def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
     
     #S if given a list of stadard deviations, we need to do the inverse of 
     #S that for the wieght in np.polyfit per the documentation it minimizes 
@@ -251,6 +251,17 @@ def autofocus_step(control,telescope,newfocus,af_target):
     status = telescope.getStatus()
     m3port = status.m3.port
 
+    # default (bad) values
+    # will be overwritten by good values or serve as flags later
+    median = np.nan
+    stddev = np.inf
+    numstar = 0
+    imnum = '9999'
+
+    if newfocus < float(telescope.minfocus[m3port]) or newfocus > float(telescope.maxfocus[m3port]):
+        telescope.logger.warning("Focus position (" + str(newfocus) + ") out of range (" + str(telescope.minfocus[m3port]) + "," + str(telescope.maxfocus[m3port]) + ")")
+        return median,stddev,numstar,imnum
+
     if not telescope.focuserMoveAndWait(newfocus,m3port):
         telescope.recoverFocuser(newfocus,m3port)
         telescope.acquireTarget(af_target)
@@ -260,17 +271,10 @@ def autofocus_step(control,telescope,newfocus,af_target):
     else:
         imagename = control.takeImage(af_target,telescope.id)
     
-    # default (bad) values
-    # will be overwritten by good values or serve as flags later
-    median = np.nan
-    stddev = np.inf
-    numstar = 0
-
     try: 
         imnum = imagename.split('.')[4]
     except: 
         telescope.logger.exception('Failed to save image')
-        imnum = '9999'
         return median,stddev,numstar,imnum
     
     datapath = '/Data/t' + telescope.num + '/' + control.site.night + '/'
@@ -289,12 +293,12 @@ def autofocus_step(control,telescope,newfocus,af_target):
     return median,stddev,numstar,imnum
 
 # the high-level auto-focus routine
-def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
+def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                   target=None,dome_override=False,simulate=False):
 
-    telescope = utils.getTelescope(control,telescope_number)
-    camera = utils.getCamera(control,telescope_number)
-    dome = utils.getDome(control,telescope_number)
+    telescope = utils.getTelescope(control,telid)
+    camera = utils.getCamera(control,telid)
+    dome = utils.getDome(control,telid)
     
     #S Define/make sure we have a target
     if target != None:
@@ -356,7 +360,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         telescope.logger.info('No ra and dec, using current position')
 
     # S our data path
-    datapath = '/Data/t' + str(telescope_number) + '/' + control.site.night + '/'
+    datapath = telescope.datadir + control.site.night + '/'
 
     # wait for dome to be open
     # S Get current time for measuring timeout
@@ -391,7 +395,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         newfocus = telescope.focus[m3port] + step*1000.0
 
         # if new focus out of mechanical range, skip this step
-        if newfocus < 100 or newfocus > 33000 or (telescope.num == '1' and m3port == '2' and newfocus < 455): 
+        if newfocus < float(telescope.minfocus[m3port]) or newfocus > float(telescope.maxfocus[m3port]):
             telescope.logger.info("Autofocus step (" + str(newfocus) + ") out of range; skipping")
             continue 
 
@@ -432,7 +436,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
 
     new_best_focus,fitcoeffs = fitquadfindmin(poslist[goodind],focusmeas_list[goodind],\
                                               weight_list=stddev_list[goodind],\
-                                              logger=telescope.logger,telescope_num=telescope_number)
+                                              logger=telescope.logger)
 
     # want to record old best focus
     old_best_focus = telescope.focus[m3port]
@@ -469,9 +473,7 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
             #S 'nYYYYMMDD.T#.autorecord.port#.filter.AAAA.BBBB.txt',
             #S where AAAA is the image number on the first image of the
             #S autofocus sequence, and BBBB the last image number.
-            datafile = control.site.night+'.T'+str(telescope_number)+\
-                '.autorecord.port'+str(m3port)+'.'+af_target['filter'][0]+\
-                '.'+imagenum_list[0]+'.'+imagenum_list[-1]+'.txt'
+            datafile = control.site.night+telid+'.autorecord.port'+str(m3port)+'.'+af_target['filter'][0]+'.'+imagenum_list[0]+'.'+imagenum_list[-1]+'.txt'
             with open(datapath+datafile,'a') as fd:
                 #S Write all the environment temps, etc. also record old
                 #S and new best focii
@@ -552,16 +554,16 @@ def autofocus(control,telescope_number,num_steps=10,defocus_step=0.3,\
         if len(goodind)!=0:
             try:
                 afplot = recordplot(datapath+datafile,saveplot=True)
-                subject = "Autofocus failed on T%s; plot attached"\
-                    %(str(telescope_number))
+                subject = "Autofocus failed on %s; plot attached"\
+                    %(telid)
             except:
                 afplot = None
-                subject = "Autofocus failed on T%s; exception raised"\
-                    %(str(telescope_number))
+                subject = "Autofocus failed on %s; exception raised"\
+                    %(telid)
         else:
             afplot=None
-            subject = "Autofocus failed on T%s; no stars in image"\
-                %(str(telescope_number))
+            subject = "Autofocus failed on %s; no stars in image"\
+                %(telid)
  
         mail.send(subject,body,level='serious',attachments=[afplot])
 

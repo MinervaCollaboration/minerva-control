@@ -326,7 +326,6 @@ class server:
                         #S addr is he address where the socket is bound to. 
                         conn, addr = s.accept()
                         try:
-                               
                                 conn.settimeout(3)
                                 data = conn.recv(1024)
                         except:
@@ -348,7 +347,6 @@ class server:
 		
 	def save_image(self):
 
-
 		self.logger.info('saving image to:' + self.file_name)
 
                 try:
@@ -358,7 +356,7 @@ class server:
 		except: return 'fail'
 
         def get_index(self,param):
-                files = glob.glob(self.data_path() + "/*.fits*")
+                files = glob.glob(self.data_path() + "/*.fits")
                 return 'success ' + str(len(files)+1)
 		
 	def write_header(self,param):		
@@ -366,6 +364,8 @@ class server:
 		return 'success'
 		
 	def write_header_done(self,param):
+
+                self.logger.info("here")
 
 		try: 
 			self.logger.info("Writing header for " + self.file_name)
@@ -377,6 +377,8 @@ class server:
 		try:
 			header_info = self.header_buffer + param
 			self.header_buffer = ''
+                        self.logger.debug("filename = " + self.file_name)
+			
 			f = pyfits.open(self.file_name, mode='update')
 			for key,value in json.loads(header_info,object_pairs_hook=collections.OrderedDict).iteritems():
 				if isinstance(value, (str, unicode)):

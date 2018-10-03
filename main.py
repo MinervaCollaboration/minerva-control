@@ -8,6 +8,7 @@ from minerva_library import control
 from minerva_library import rv_control
 import datetime
 import argparse, ipdb
+from minerva_library import utils
 
 if __name__ == '__main__':
 
@@ -18,21 +19,17 @@ if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 
-
-	if os.path.exists('minerva_library/sunOverride.txt'): os.remove('minerva_library/sunOverride.txt')
-
-	#### don't want this if it starts in the middle of the night***********###
-	if datetime.datetime.utcnow().hour < 2 or datetime.datetime.utcnow().hour > 20:
-		if opt.red:
-			if os.path.exists('minerva_library/astrohaven1.request.txt'): 
-				os.remove('minerva_library/astrohaven1.request.txt')
-		else:
-			if os.path.exists('minerva_library/aqawan1.request.txt'): 
-				os.remove('minerva_library/aqawan1.request.txt')
-			if os.path.exists('minerva_library/aqawan2.request.txt'): 
-				os.remove('minerva_library/aqawan2.request.txt')
-
+	utils.killmain(red=opt.red,south=opt.south)
 	minerva = control.control('control.ini',base_directory,red=opt.red,south=opt.south)
+
+	for dome in minerva.domes:
+		sunfile = 'minerva_library/sunOverride.' + dome.id + '.request.txt'
+		if os.path.exists(sunfile): os.remove(sunfile)
+		# make sure the domes are closed
+	        # but not if it starts in the middle of the night #
+		if datetime.datetime.utcnow().hour < 2 or datetime.datetime.utcnow().hour > 20:
+			requestfile = 'minerva_library/' + dome.id + '.request.txt'
+			if os.path.exists(requestfile): os.remove(requestfile)
 
 	# if a file for kiwispec exists, use that. If not, observe with all four telescopes
 	if os.path.exists(minerva.base_directory + '/schedule/' + minerva.site.night + '.kiwispec.txt'):

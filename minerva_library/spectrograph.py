@@ -390,14 +390,15 @@ class spectrograph:
                                 flux = self.get_expmeter_total()
                                 self.logger.info("flux = " + str(flux))
                                 if expmeter < flux:
-					self.logger.info('got to flux of '+str(flux)+', greater then expmeter: '+str(expmeter))
+					self.logger.info('got to flux of '+str(flux)+', greater than expmeter: '+str(expmeter))
 					self.si_imager.interrupt()
                                         #imager.retrieve_image()
                                         break
-			#S this is on a level outside of the while for the elapsed time as the imager.do thread is 
+			
+                        #S this is on a level outside of the while for the elapsed time as the imager.do thread is 
 			#S is still running. e.g., we still want to wait whether the elapsed time has gone through or
 			#S the expmeter has triggered the interrupt.
-			thread.join(30)
+			thread.join(60)
 #			time.sleep(25)
 			#S I don't know if this is true.. i think if we terminate it still might leave the imager.do thread alive..
 			#TODO, or did you test this?

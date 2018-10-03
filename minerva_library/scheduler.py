@@ -98,11 +98,13 @@ class scheduler:
         #S so we will just return the first entries dictionary
 
         # if no targets are observable, return an empty dictionary
-        if self.target_list[0]['weight'] == -999.0: return {}
+        if self.target_list[0]['weight'] == -999.0: 
+            if logger != None:
+                logger.info("No viable targets at " + str(timeof))
+            else: 
+                print "No viable targets at " + str(timeof)
+            return {}
  
-        # this is done within calculate_weights (right?)
-#        target = utils.truncate_observable_window(self.site, self.target_list[0])
-
         return self.target_list[0]
 
 
@@ -121,8 +123,12 @@ class scheduler:
 
         for target in self.target_list:
 
+            # overwrite previous windows
+            target['starttime'] = datetime.datetime(2015,01,01,00,00,00)
+            target['endtime'] = datetime.datetime(2115,01,01,00,00,00)
+
             try:
-                target = utils.truncate_observable_window(self.site, target,timeof=timeof)
+                target = utils.truncate_observable_window(self.site, target,timeof=timeof,logger=logger)
             except:
                 print 'lskdjf'
                 ipdb.set_trace()
@@ -150,7 +156,7 @@ class scheduler:
                 target['weight'] = -999.0
 
             if logger != None:     
-                pass
+                logger.debug(target['name'] + ' ' + str(target['starttime']) + ' ' + str(target['endtime']) + ' '  + str(timeof) + ' ' + str(target['exptime']) + ' ' + str(target['weight']))
             else:
                 print target['name'], target['starttime'], target['endtime'], timeof,  target['exptime'], target['weight']
 
@@ -205,13 +211,18 @@ class scheduler:
         if logger == None: print target['name'] + ' was last observed at ' + str(target['last_obs'][-1][0])
         else: logger.info(target['name'] + ' was last observed at ' + str(target['last_obs'][-1][0]))
 
-        history_weight=2.0
+        history_weight=0.0
 
         # make sure it's been observed more than 'seplimit' apart
-        if (timeof-target['last_obs'][-1][0]).total_seconds() < target['seplimit']: history_weight = 0.0
+        if (timeof-target['last_obs'][-1][0]).total_seconds() < target['seplimit']: history_weight = -2.0
 
         # make sure it hasn't been observed more than maxobs times.
-        if target['observed']>target['maxobs']: history_weight = 0.0
+        if target['observed']>target['maxobs']: history_weight = -99.0
+
+        target_ha=(math.degrees(self.obs.sidereal_time())/15.0-float(target['ra']))
+        #NM keep hour angle in range -12 to +12                                    
+        if target_ha > 12:                                                         
+            target_ha-=24.                                                         
 
         # if hasn't been observed in the past day, boost its priority
         if (timeof-target['last_obs'][-1][0]).total_seconds() > 86400.0: cad_weight = 1.0
@@ -223,17 +234,15 @@ class scheduler:
             #S start to think about cadence. if we want to make cadence
             #S and the three obs weight complimetnary or something, a steeper
             #S drop off of the gaussian WILL matter when mixed with a cad term.
-            target_ha=(math.degrees(self.obs.sidereal_time())/15.0-target['ra'])
-            threeobs_weight= \
-                np.exp(-((target_ha-self.start_ha)**2./(2.*.5**2.)))
+            threeobs_weight= np.exp(-((target_ha-self.start_ha)**2./(2.*.5**2.)))\
+                +1.5*np.exp(-(target_ha**2./(2.*1.0**2.)))
 
         #S weight for the second observation of a three obs run.
         elif target['observed']%3 == 1:
-            #S there is a cap of 2. on this weight, which means a third 
-            #S observation will always be prioritized.
-            threeobs_weight=np.min(\
-                [2.,1.+((timeof-target['last_obs'][-1][0]).total_seconds()-\
-                            -target['seplimit'])/target['seplimit']])
+            #N wider Gaussian near transit to grab second obs at good airmass
+            #N taller Gaussian to prioritize second obs over first of another target
+            threeobs_weight= 1+np.exp(-((target_ha+self.start_ha)**2./(2.*.75**2.)))\
+                             +1.5*np.exp(-(target_ha**2./(2.*2.5**2.))) 
 
         #S weight for the third observation of a three obs run, but note that
         #S there is no cap on this one.
@@ -310,7 +319,7 @@ class scheduler:
                     # only count it if the observation is good
                     if line[5] == 1:
                         obs_list.append(line)
-                        if line[0] > self.prevsunset(timeof): target['observed'] += 1
+#                        if line[0] > self.prevsunset(timeof): target['observed'] += 1
         else:
             # default to observed a long time ago
             obs_list = [[datetime.datetime(2000,1,1,0,0,0),datetime.datetime(2000,1,1,0,0,59),59,80,0,1]]

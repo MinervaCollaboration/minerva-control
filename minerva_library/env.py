@@ -38,8 +38,8 @@ class site:
 			self.elevation = float(config['Setup']['ELEVATION'])
 			self.logger_name = config['Setup']['LOGNAME']
 			# touch a file in the current directory to enable cloud override
-			self.cloudOverride = os.path.isfile(self.base_directory + '/minerva_library/cloudOverride.txt')
-			self.sunOverride = os.path.isfile(self.base_directory + '/minerva_library/sunOverride.txt')
+			self.cloudOverride = False
+			self.sunOverride = False
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
@@ -233,7 +233,7 @@ class site:
 		for key in weather.keys():
 			self.logger.debug(key + '=' + str(weather[key]))
 
-	def oktoopen(self, domeopen=False, ignoreSun=False):
+	def oktoopen(self, domeid, domeopen=False, ignoreSun=False):
 
 		retval = True
 		decisionFile = self.base_directory + '/manualDecision.txt'
@@ -283,9 +283,9 @@ class site:
 			weatherLimits = copy.deepcopy(self.openLimits)
 
 		# change it during execution
-		if os.path.exists(self.base_directory + '/minerva_library/sunOverride.txt') or ignoreSun: self.sunOverride = True
+		if os.path.exists(self.base_directory + '/minerva_library/sunOverride.' + domeid + '.txt') or ignoreSun: self.sunOverride = True
 		else: self.sunOverride = False
-		if os.path.exists(self.base_directory + '/minerva_library/cloudOverride.txt'): self.cloudOverride = True
+		if os.path.exists(self.base_directory + '/minerva_library/cloudOverride.' + domeid + '.txt'): self.cloudOverride = True
 		else: self.cloudOverride = False
 
 		if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]

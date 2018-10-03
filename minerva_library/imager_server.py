@@ -31,6 +31,8 @@ class server:
 		self.cam = None
                 self.maxim = None
 		self.connect_camera()
+		self.file_name = ''
+		self.guider_file_name = ''
 
 #		if socket.gethostname() == 't2-PC':
 #			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
@@ -202,25 +204,25 @@ class server:
 
                 if len(param.split()) == 2:
                         file_name = param.split()[0]
-                        fau = True
+                        guider = True
                 elif len(param.split()) == 1:
                         file_name = param.split()[0]
-			if file_name == 'fau':
+			if file_name == 'guider':
 				self.logger.error("empty filename")
 				return 'fail'
-                        fau = False	
+                        guider = False	
                 else:
 			self.logger.error('parameter mismatch')
 			return 'fail'
 		try:
-                        if fau:
+                        if guider:
                                 self.logger.info('Saving guider image')
                                 time.sleep(0.2) # wait for the image to start
                                 while self.cam.GuiderRunning:
                                         time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)
-                                self.file_name = self.data_path + '\\' + file_name
-                                self.maxim.CurrentDocument.SaveFile(self.file_name,3, False, 1)
+                                self.guider_file_name = self.data_path + '\\' + file_name
+                                self.maxim.CurrentDocument.SaveFile(self.guider_file_name,3, False, 1)
 				return 'success'				
                         else:
                                 time.sleep(0.2) # wait for the image to start
@@ -253,10 +255,18 @@ class server:
 		
 	def write_header_done(self,param):
 
+		# the last 7 characters may or may not indicate this is a guider image
+		if param[-7:] == ' guider':
+			guider = True
+			param = param[0:-7]
+                else: guider = False
+			
 		try: 
-			self.logger.info("Writing header for " + self.file_name)
+			if guider: filename=self.guider_file_name
+			else: filename=self.file_name
+			self.logger.info("Writing header for " + filename)
 		except: 
-			self.logger.error("self.file_name not defined; saving failed earlier")
+			self.logger.error("file name not defined; saving failed earlier")
 			self.header_buffer = ''
 			return 'fail'
 
@@ -265,16 +275,16 @@ class server:
 
 		try:
 			# check to see if the image exists
-			if os.path.isfile(self.file_name):
-				f = pyfits.open(self.file_name, mode='update')
+			if os.path.isfile(filename):
+				f = pyfits.open(filename, mode='update')
 			else:
-				self.logger.error("FITS file (" + self.file_name + ") not found")
+				self.logger.error("FITS file (" + filename + ") not found")
 				return 'fail'
 
 			try: 
 				hdr = json.loads(header_info,object_pairs_hook=collections.OrderedDict)
 			except: 
-				self.logger.exception('Error updating header for ' +self.file_name+ "; header string is: " + header_info)
+				self.logger.exception('Error updating header for ' + filename+ "; header string is: " + header_info)
 				hdr = {}
 
 			for key,value in hdr.iteritems():
@@ -290,7 +300,7 @@ class server:
 			f.flush()
 			f.close()
 		except:
-			self.logger.exception('Error updating header for ' +self.file_name+ "; header string is: " + header_info)
+			self.logger.exception('Error updating header for ' + filename+ "; header string is: " + header_info)
 			return 'fail'
 		return 'success'
 		
@@ -327,37 +337,40 @@ class server:
 			subprocess.call([self.base_directory + '/cfitsio/fpack.exe','-D',filename])
 		
 
-	def getMean(self):
+	def getMean(self,guider=False):
 		try:
-			mean = pyfits.getdata(self.file_name,0).mean()
+			if guider: mean = pyfits.getdata(self.file_name,0).mean()
+			else: mean = pyfits.getdata(self.guider_file_name,0).mean()
 			mean = str(mean)
 			res = 'success ' + mean
 		except:
 			res = 'fail'
 		return res
 	
-	def getMode(self):
+	def getMode(self,guider=False):
 		try:
-			image = pyfits.getdata(self.file_name,0)
+			if guider: image = pyfits.getdata(self.guider_file_name,0)
+			else: image = pyfits.getdata(self.file_name,0)
 			# mode is slow; take the central 100x100 region
 			# (or the size of the image, which ever is smaller)
 			nx = len(image)
 			ny = len(image[1])
 			size = 100
-			x1 = max(nx/2.0 - size/2.0,0)
-			x2 = min(nx/2.0 + size/2.0,nx-1)
-			y1 = max(ny/2.0 - size/2.0,0)
-			y2 = min(ny/2.0 + size/2.0,ny-1)
+			x1 = int(max(nx/2.0 - size/2.0,0))
+			x2 = int(min(nx/2.0 + size/2.0,nx-1))
+			y1 = int(max(ny/2.0 - size/2.0,0))
+			y2 = int(min(ny/2.0 + size/2.0,ny-1))
 			
 			mode = stats.mode(image[x1:x2,y1:y2],axis=None)[0][0]
 			res = 'success ' + str(mode)
 		except:
 			res = 'fail'
-		return res
+                return res
 		
-	def isSuperSaturated(self):
+	def isSuperSaturated(self, guider=False):
 		try:
-			image = pyfits.getdata(self.file_name,0)
+			if guider: image = pyfits.getdata(self.guider_file_name,0)
+			else: image = pyfits.getdata(self.file_name,0)
 			# mode is slow; take the central 100x100 region
 			# (or the size of the image, which ever is smaller)
 			nx = len(image)
@@ -376,9 +389,10 @@ class server:
 		except:
 			return 'fail'
 			
-	def remove(self):
+	def remove(self, guider=False):
 		try:
-			os.remove(self.file_name)
+			if guider: os.remove(self.guider_file_name)
+			else: os.remove(self.file_name)
 			return 'success'
 		except:
 			return 'fail'
@@ -440,18 +454,22 @@ class server:
 		elif tokens[0] == 'compress_data':
 			response = self.compress_data(night=tokens[1])
 		elif tokens[0] == 'getMean':
-			response = self.getMean()
+			guider = (tokens[1] == 'guider')
+			response = self.getMean(guider=guider)
 		elif tokens[0] == 'getMode':
-			response = self.getMode()
+			guider = (tokens[1] == 'guider')
+			response = self.getMode(guider=guider)
 		elif tokens[0] == 'isSuperSaturated':
-			response = self.isSuperSaturated()
+			guider = (tokens[1] == 'guider')
+			response = self.isSuperSaturated(guider=guider)
 		elif tokens[0] == 'moveAO':
 			array = tokens[1].split(',')
 			response = self.ao.move(array[0],array[1])
 		elif tokens[0] == 'homeAO':
 			response = self.ao.home()
 		elif tokens[0] == 'remove':
-			response = self.remove()
+			guider = (tokens[1] == 'guider')
+			response = self.remove(guider=guider)
 		elif tokens[0] == 'connect_camera':
 			response = self.connect_camera()
 		elif tokens[0] == 'disconnect_camera':
@@ -501,7 +519,7 @@ class server:
 		self.run_server()
 
 if __name__ == '__main__':
-    if socket.gethostname() == 'Minervared2-PC':
+    if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC':
         config_file = 'imager_server_red.ini'
     else:
 	config_file = 'imager_server.ini'
