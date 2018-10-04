@@ -1315,7 +1315,7 @@ class control:
 			i2stage_move_thread.name = "Kiwispec"
                         i2stage_move_thread.start()
 
-                        # Configure the lamps #TTSIHERE
+                        # Configure the lamps
 #			self.logger.warning("*** Slit flat LED disabled ***")
                         self.spectrograph.led_turn_on()
 #                        self.spectrograph.thar_turn_off()
@@ -1779,7 +1779,7 @@ class control:
 
 
 	def addWeatherKeys(self, f):
-
+		#TTS Possible insertions here, depending on weather script adapt.
 		# other threads can overwrite the weather
 		weather = -1
 		while weather == -1:
@@ -1805,7 +1805,7 @@ class control:
 		return f
 
 	def addAqawanKeys(self,dome,f):
-
+		#TTS I recall there being some work here, but that may be managed already
 		try:
 			if dome.id <> 'aqawan1' and dome.id <> 'aqawan2':
 				self.logger.error("Invalid dome selected (" + str(dome) + ")")
@@ -2023,7 +2023,7 @@ class control:
 		f = self.addTelescopeKeys(target, tele_list, f)
 
 		# enclosure Specific
-		if dome != None:
+		if dome != None: #TTS looks like some change here
 			if 'astrohaven' in dome.id:
 				f = self.addAstrohavenKeys(f)
 			else:
@@ -2035,7 +2035,7 @@ class control:
 		return f
 
 	def addAstrohavenKeys(self, f):
-		return f
+		return f	#TTS actually what is this
 
 	def addImagerKeys(self, tele_list, f, fau=False):
 
@@ -2104,7 +2104,7 @@ class control:
 
 	def takeImage(self, target, telid, fau=False, piggyback=False):
 
-		dome = utils.getDome(self,telid)
+		dome = utils.getDome(self,telid) #TTS calls dome
 		telescope = utils.getTelescope(self,telid)
 
 		#S assign the camera.
@@ -2198,7 +2198,7 @@ class control:
 		#S all images named SkyFlat
 		target['name']='SkyFlat'
 
-		dome = utils.getDome(self,telid)
+		dome = utils.getDome(self,telid) #TTS dome called here
 		telescope = utils.getTelescope(self,telid)
 		camera = utils.getCamera(self,telid)
 
@@ -2275,7 +2275,7 @@ class control:
 		else: exptime = minExpTime
 
 		# filters ordered from least transmissive to most transmissive
-		# flats will be taken in this order (or reverse order in the morning)
+		# flats will be taken in this order (or reverse order in the morning) TTS masterfilters is hardwired. That doesn't scale well.
 		masterfilters = ['Calcium', 'H-Beta','H-Alpha','Ha','Y','U','up','zp','zs','B','I','ip','V','rp','R','gp','w','solar','air']
 		if morning: masterfilters.reverse()
 
@@ -2286,7 +2286,7 @@ class control:
 				firstImage = True
 				#S While the number of flats in the filter is less than required AND the dome is still open
 				#TODO needs testing, watch out for this.
-				while i < num and dome.isOpen():
+				while i < num and dome.isOpen(): #TTS isOpen demonstrated use
 
 					# Slew to the optimally flat part of the sky (Chromey & Hasselbacher, 1996)
 					Alt = 75.0 # degrees (somewhat site dependent)
@@ -2294,7 +2294,7 @@ class control:
 					if Az > 360.0: Az = Az - 360.0
 
 					inPosition = False
-					while not inPosition and dome.isOpen():
+					while not inPosition and dome.isOpen(): #TTS more isOpen.
 
 						self.logger.info('Slewing to the optimally flat part of the sky (alt=' + str(Alt) + ', az=' + str(Az) + ')')
 						telescope.mountGotoAltAz(Alt,Az)
@@ -2313,7 +2313,7 @@ class control:
 					#S update/get the exposure time
 					target['exptime'] = exptime
 
-					#S new target dict implementation
+					#S new target dict implementation #TTS isOpen
 					while filename == 'error' and dome.isOpen(): filename = self.takeImage(target,telid, piggyback = piggyback)
 
 					# determine the mode of the image (mode requires scipy, use mean for now...)
@@ -2457,7 +2457,7 @@ class control:
 	#S telescope commands were switched to.
 	def doScience(self,target,telid = None):
 
-		dome = utils.getDome(self,telid)
+		dome = utils.getDome(self,telid) #TTS dome related
 		telescope = utils.getTelescope(self,telid)
 
 		# if after end time, return
@@ -2523,7 +2523,7 @@ class control:
 				for j in range(len(target['filter'])):
 					filename = 'error'
 					while filename == 'error':
-						if dome.isOpen() == False:
+						if dome.isOpen() == False: #TTS isOpen
 							while dome.isOpen() == False:
 								self.logger.info('Enclosure closed; waiting for conditions to improve')
 								time.sleep(30)
@@ -2560,7 +2560,7 @@ class control:
 				for i in range(target['num'][j]):
 					filename = 'error'
 					while filename == 'error':
-						if dome.isOpen() == False:
+						if dome.isOpen() == False: #TTS isOpen
 							while dome.isOpen() == False:
 								self.logger.info('Enclosure closed; waiting for conditions to improve')
 								time.sleep(30)
@@ -2650,7 +2650,7 @@ class control:
 		self.imager_setDatapath(night,telescope.id)
 
 		# turn off shutter heaters
-		if not self.red and not self.south:
+		if not self.red and not self.south: #TTS and not self.thach.
 			self.logger.info('Turning off shutter heaters')
 			try: self.pdus[0].heater.off()
 			except: self.logger.exception("Turning off heater 1 failed")
@@ -2701,7 +2701,7 @@ class control:
 			if os.path.exists(self.base_directory + '/minerva_library/astrohaven1.request.txt'):
 				os.remove(self.base_directory + '/minerva_library/astrohaven1.request.txt')
 		elif self.south:
-			pass
+			pass #TTS elif self.thach
 		else:
 			if os.path.exists(self.base_directory + '/minerva_library/aqawan1.request.txt'):
 				os.remove(self.base_directory + '/minerva_library/aqawan1.request.txt')
@@ -3005,7 +3005,7 @@ class control:
 			self.doBias(CalibInfo['nbias'],telescope.id)
 			self.doDark(CalibInfo['ndark'], CalibInfo['darkexptime'],telescope.id)
 
-		dome = utils.getDome(self,telescope.id)
+		dome = utils.getDome(self,telescope.id) # TTS dome stuff
 
 		# Take Evening Sky flats
 		#S Initialize again, but with tracking on.
@@ -3019,7 +3019,7 @@ class control:
 		if timeUntilTwilEnd > 0:
 			self.logger.info('Waiting for nautical twilight to end (' + str(timeUntilTwilEnd) + 'seconds)')
 			time.sleep(timeUntilTwilEnd)
-
+				#TTS dome isOpen
 		while not dome.isOpen() and datetime.datetime.utcnow() < self.site.NautTwilBegin():
 			self.logger.info('Enclosure closed; waiting for conditions to improve')
 			time.sleep(60)
@@ -3092,9 +3092,9 @@ class control:
 			t0 = datetime.datetime.utcnow()
 			timeout = 600.0
 
-			dome = utils.getDome(self,telescope.id)
+			dome = utils.getDome(self,telescope.id) #TTS dome
 
-			# wait for the dome to close (the heartbeat thread will update its status)
+			# wait for the dome to close (the heartbeat thread will update its status) TTS isOpen
 			while dome.isOpen() and (datetime.datetime.utcnow()-t0).total_seconds() < timeout:
 				self.logger.info('Waiting for dome to close')
 				time.sleep(60)
