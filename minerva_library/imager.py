@@ -5,7 +5,10 @@ import errno
 import logging
 import time
 import threading
+
+
 import pdu
+import pdu_thach
 import telcom_client
 import mail
 import datetime
@@ -19,14 +22,18 @@ import utils
 
 class imager:
 
-	def __init__(self,config, base =''):
+	def __init__(self,config, base ='', thach=False):
 
 		self.lock = threading.Lock()
 		self.config_file = config
 		self.base_directory = base
+                self.thach = thach
 		self.load_config()
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
-		self.pdu = pdu.pdu(self.pdu_config,base)
+		if thach:
+                        self.pdu = pdu_thach.pdu(self.pdu_config,base)
+                else:
+                        self.pdu = pdu.pdu(self.pdu_config,base)
 		self.initialize()
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
@@ -82,7 +89,7 @@ class imager:
 			self.telnum = self.telid[1]
 			self.exptypes = {'Dark' : 0,'Bias' : 0,'SkyFlat' : 1,}
 			self.fau_config = config['Setup']['FAU_CONFIG']
-			try: self.telescope_config = config['Setup']['TELESCOPE_CONFIG']
+                        try: self.telescope_config = config['Setup']['TELESCOPE_CONFIG']
 			except: self.telescope_config = ''
 
 			try: self.PBfilters = config['PBFILTERS']
@@ -102,9 +109,11 @@ class imager:
 			except: self.PBflatmaxexptime = None
 			try: self.PBflatminexptime = config['PBFLATMINEXPTIME']
 			except: self.PBflatminexptime = None
-
+                        
 			# fau
-			self.fau = fau.fau(self.fau_config,self.base_directory)
+                        
+                        if not self.thach:
+                                self.fau = fau.fau(self.fau_config,self.base_directory)
 
  		except:
 			print('ERROR accessing config file: ' + self.config_file)
@@ -168,7 +177,8 @@ class imager:
 
 			try:
 				command = msg.split()[0]
-				data = repr(data).strip("'")
+                                if not self.thach:
+                                        data = repr(data).strip("'")
 				data_ret = data.split()[0]
 			except:
 				self.logger.error("Error processing server response")
@@ -238,8 +248,8 @@ class imager:
 
 	# ask server to connect to camera
 	def connect_camera(self):
-
-		if (self.send('connect_camera none',30)).split()[0] == 'success':
+                        
+		if self.send('connect_camera none', 30).split()[0]  == 'success':
 			if self.check_filters()==False:
 				self.logger.error('mismatch filter')
 				return False
@@ -250,8 +260,8 @@ class imager:
 			return False
 
 	def disconnect_camera(self):
-		
-		if self.send('disconnect_camera none',15) == 'success':
+                        
+		if self.send('disconnect_camera none', 15)  == 'success':
 			self.logger.info('successfully disconnected camera')
 			return True
 		else:
@@ -336,7 +346,7 @@ class imager:
 	
 	def check_filters(self):
 		filter_names = self.get_filter_name().split()
-			
+                
 		if len(filter_names) != len(self.filters)+1:
 			return False
 		for i in range(len(self.filters)):
@@ -509,10 +519,13 @@ class imager:
 		else: return False
 
 	def powercycle(self,downtime=30):
-                self.pdu.inst.off()
-                time.sleep(downtime)
-                self.pdu.inst.on()
-		time.sleep(30)
+                if self.thach:
+                        self.pdu.reboot(5)
+                else:
+                        self.pdu.inst.off()
+                        time.sleep(downtime)
+                        self.pdu.inst.on()
+		        time.sleep(30)
 
 	# this requires winexe on linux and a registry key on each Windows (7?) machine (apply keys.reg in dependencies folder):
 	def recover_server(self):

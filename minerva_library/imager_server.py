@@ -521,6 +521,8 @@ class server:
 if __name__ == '__main__':
     if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC':
         config_file = 'imager_server_red.ini'
+    elif socket.gethostname() == 'TacherControl':
+        config_file = 'imager_server_thach.ini'
     else:
 	config_file = 'imager_server.ini'
     base_directory = 'C:\minerva-control'
