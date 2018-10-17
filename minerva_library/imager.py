@@ -45,12 +45,11 @@ class imager:
 		self.set_binning()
 		self.set_size()
 		self.set_temperature()
-		
+
 	def load_config(self):
 		try:
                         # common to spectrograph detector and imaging camera
                         config = ConfigObj(self.base_directory + '/config/' + self.config_file)
-
 			self.ip = config['Setup']['SERVER_IP']
 			self.port = int(config['Setup']['SERVER_PORT'])
 			self.logger_name = config['Setup']['LOGNAME']
@@ -78,9 +77,9 @@ class imager:
 			self.night = 'test'
 			self.nfailed = 0
 			self.nserver_failed = 0
-			self.pdu_config = config['Setup']['PDU']			
-			
-			# imaging camera 
+			self.pdu_config = config['Setup']['PDU']
+
+			# imaging camera
 			self.telcom_client_config = config['Setup']['TELCOM']
 			self.platescale = float(config['Setup']['PLATESCALE'])
 			self.filters = config['FILTERS']
@@ -109,9 +108,9 @@ class imager:
 			except: self.PBflatmaxexptime = None
 			try: self.PBflatminexptime = config['PBFLATMINEXPTIME']
 			except: self.PBflatminexptime = None
-                        
+
 			# fau
-                        
+
                         if not self.thach:
                                 self.fau = fau.fau(self.fau_config,self.base_directory)
 
@@ -123,7 +122,7 @@ class imager:
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
                 self.night = 'n' + today.strftime('%Y%m%d')
-		
+
 	#return a socket object connected to the camera server
 	def connect_server(self):
 		try:
@@ -151,20 +150,20 @@ class imager:
 				s = self.connect_server()
 			except:
 				self.logger.error("Connection lost")
-				if self.recover_server(): return self.send(msg,timeout) 
+				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
-			try: 
+			try:
 				s.settimeout(3)
 			except:
 				self.logger.error("Failed to set timeout")
-				if self.recover_server(): return self.send(msg,timeout) 
+				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
-			
+
 			try:
 				s.sendall(msg)
 			except:
 				self.logger.error("Failed to send message (" + msg + ")")
-				if self.recover_server(): return self.send(msg,timeout) 
+				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
 
 			try:
@@ -179,23 +178,25 @@ class imager:
 				command = msg.split()[0]
                                 if not self.thach:
                                         data = repr(data).strip("'")
+#				else:
+#					data = repr(data).strip('"')
 				data_ret = data.split()[0]
 			except:
 				self.logger.error("Error processing server response")
 				if self.recover_server(): return self.send(msg,timeout)
 				return 'fail'
 
-			if data_ret == 'fail': 
+			if data_ret == 'fail':
 				self.logger.error("Command failed("+command+')')
 				return 'fail'
 
 			return data
-		
+
 	def cool(self):
 
 		settleTime = 1200
                 oscillationTime = 120.0
-		
+
                 self.logger.info('Turning cooler on')
 		self.set_temperature()
 
@@ -231,13 +232,13 @@ class imager:
                         time.sleep(10)
 			#S update the temperature
                         currentTemp = self.get_temperature()
-			#S check to see if we are actually getting temperatures. 
+			#S check to see if we are actually getting temperatures.
 			if currentTemp == 'fail':
 				self.recover()
 				self.currentTemp = self.get_temperature()
 
                         elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
-                # Failed to reach setpoint 
+                # Failed to reach setpoint
                 if (abs(self.setTemp - currentTemp)) > self.maxdiff:
                         self.logger.error('The camera was unable to reach its setpoint (' +
                                           str(self.setTemp) + ') in the elapsed time (' +
@@ -248,7 +249,7 @@ class imager:
 
 	# ask server to connect to camera
 	def connect_camera(self):
-                        
+
 		if self.send('connect_camera none', 30).split()[0]  == 'success':
 			if self.check_filters()==False:
 				self.logger.error('mismatch filter')
@@ -260,14 +261,14 @@ class imager:
 			return False
 
 	def disconnect_camera(self):
-                        
+
 		if self.send('disconnect_camera none', 15)  == 'success':
 			self.logger.info('successfully disconnected camera')
 			return True
 		else:
 			self.logger.error('failed to disconnect camera')
 			return False
-			
+
 	#get camera status and write into a json file with name == (self.logger_name + 'json')
 	def write_status(self):
 		res = self.send('get_status none',15).split(None,1)
@@ -282,7 +283,7 @@ class imager:
 			return False
 	#status thread
 	def write_status_thread(self):
-		
+
 		for i in threading.enumerate():
 				if i.name == "MainThread":
 					main_thread = i
@@ -296,10 +297,10 @@ class imager:
 				self.write_status()
 				n = 0
 			time.sleep(1)
-			
+
 	#set path for which new images will be saved,if not set image will go into dump folder
 	def set_dataPath(self):
-		
+
 		if self.send('set_data_path none',3) == 'success':
 			return True
 		else:
@@ -311,7 +312,7 @@ class imager:
 		else: return -1
 	def get_filter_name(self):
 		return self.send('get_filter_name ' + str(len(self.filters)),5)
-	
+
 	def getMean(self, guider=False):
 		if guider: res = self.send('getMean guider',15).split()
 		else: res = self.send('getMean none',15).split()
@@ -319,7 +320,7 @@ class imager:
 			return float(res[1])
 		else:
 			return -9999
-	
+
 	def getMode(self,guider=False):
 		if guider: res = self.send('getMode guider',15).split()
 		else: res = self.send('getMode none',15).split()
@@ -327,7 +328,7 @@ class imager:
 			return float(res[1])
 		else:
 			return -1
-	
+
 	def isSuperSaturated(self, guider=False):
 		if guider: res = self.send('isSuperSaturated guider', 15).split()
 		else: res = self.send('isSuperSaturated none', 15).split()
@@ -337,31 +338,31 @@ class imager:
 		return False
 
 	def remove(self, guider=False):
-		if guider: res = self.send('remove guider',5).split() 
+		if guider: res = self.send('remove guider',5).split()
 		else: res = self.send('remove none',5).split()
 		if res[0] == 'success':
 			return True
 		else:
 			return False
-	
+
 	def check_filters(self):
 		filter_names = self.get_filter_name().split()
-                
+
 		if len(filter_names) != len(self.filters)+1:
 			return False
 		for i in range(len(self.filters)):
 			if filter_names[i+1] not in self.filters.keys():
 				return False
 		return True
-			
+
 	def set_binning(self):
 		if self.send('set_binning ' + str(self.xbin) + ' ' + str(self.ybin), 5) == 'success': return True
 		else: return False
-		
+
 	def set_size(self):
 		if self.send('set_size '+ self.x1 + ' ' + self.x2 + ' ' + self.y1 + ' ' + self.y2,5) == 'success': return True
 		else: return False
-			
+
 	def set_temperature(self):
 		if self.send('set_temperature '+ str(self.setTemp),5) == 'success': return True
 		else: return False
@@ -376,10 +377,10 @@ class imager:
 					self.logger.error('parameter error')
 					return 'fail'
 				return float(temp[1])
-			else: 
+			else:
 				self.logger.error('failed to get temperature')
 				return 'fail'
-		except: 
+		except:
 			self.logger.exception('Unknown error getting temperature')
 			return 'fail'
 
@@ -416,7 +417,7 @@ class imager:
 
 	#write fits header for self.file_name, header_info must be in json format
 	def write_header(self, header_info, guider=False):
-		
+
 		if guider: hdrstr = ' guider'
 		else: hdrstr = ''
 
@@ -435,11 +436,11 @@ class imager:
 		if self.send('write_header_done ' + header_info[i-800:length]+hdrstr,10) == 'success':
 			return True
 		else:
-			self.logger.error('Failed to finish writing header')			
+			self.logger.error('Failed to finish writing header')
 			return False
 
 	# returns file name of the image saved, return 'error' if error occurs
-	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False, piggyback=False):		
+	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False, piggyback=False):
 #		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
 		ndx = self.get_index()
@@ -450,7 +451,7 @@ class imager:
 			else: self.file_name = ''
 			return 'error'
 
-		if fau:	
+		if fau:
 			self.guider_file_name = self.night + "." + self.telid + ".FAU." + objname + "." + str(ndx).zfill(4) + ".fits"
 			exptype = 1
 			guider = True
@@ -466,16 +467,16 @@ class imager:
 				return 'error'
 			# chose exposure type
 			if objname in self.exptypes.keys():
-				exptype = self.exptypes[objname] 
+				exptype = self.exptypes[objname]
 			else: exptype = 1 # science exposure
-		else: 
+		else:
 			if filterInd == None: self.file_name = self.night + "." + self.telid + "." + objname + "." + str(ndx).zfill(4) + ".fits"
 			else: self.file_name = self.night + "." + self.telid + "." + objname + "." + filterInd + "." + str(ndx).zfill(4) + ".fits"
 			guider=False
 
 			# chose exposure type
 			if objname in self.exptypes.keys():
-				exptype = self.exptypes[objname] 
+				exptype = self.exptypes[objname]
 			else: exptype = 1 # science exposure
 
 			# chose appropriate filter
@@ -489,24 +490,24 @@ class imager:
 		self.logger.info('Start taking image: ' + filename)
 		if filterInd != None: filt = filt = self.filters[filterInd]
 		else: filt = None
-		
+
 		if self.expose(exptime,exptype,filt,guider=guider):
 			self.write_status()
 			time.sleep(exptime)
 			if self.save_image(filename, guider=guider):
 				self.logger.info('Finish taking image: ' + filename)
-				self.nfailed = 0 
+				self.nfailed = 0
 				return filename
-			else: 
+			else:
 				self.logger.error('Failed to save image: ' + filename)
 				if fau or piggyback: self.guider_file_name = ''
 				else: self.file_name = ''
 				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=guider, piggyback=piggyback)
-				
+
 		self.logger.error('Taking image failed, image not saved: ' + filename)
 		if fau or piggyback: self.guider_file_name = ''
 		else: self.file_name = ''
-		return 'error'		
+		return 'error'
 
 	def compress_data(self,night=None):
 		#S I think we've given this too short of a time to reasonably compress
@@ -537,17 +538,17 @@ class imager:
 			if not self.mailsent: mail.send(self.telid + ' server failed','',level='serious')
 			self.mailsent = True
 			sys.exit()
-		
-		self.logger.warning('Server failed, beginning recovery') 
 
-		# if these don't work, we're in trouble		
+		self.logger.warning('Server failed, beginning recovery')
+
+		# if these don't work, we're in trouble
 		if not self.kill_server(): return False
 		if not self.kill_maxim(): return False
 
 		# restart the server
 		time.sleep(10)
-                self.logger.warning('Restarting server') 		
-                if not self.start_server(): 
+                self.logger.warning('Restarting server')
+                if not self.start_server():
 			self.logger.error("Failed to start server")
 			return False
 		return True
@@ -560,8 +561,8 @@ class imager:
 
 		# restart the server
 		time.sleep(10)
-                self.logger.warning('Restarting server') 		
-                if not self.start_server(): 
+                self.logger.warning('Restarting server')
+                if not self.start_server():
 			self.logger.error("Failed to start server")
 			return False
 
@@ -582,7 +583,7 @@ class imager:
 		config_file = 'telescope_' + self.telnum + '.ini'
 		telescope = cdk700.CDK700(config_file,self.base_directory)
 		try: telescope.shutdown()
-		except: pass	
+		except: pass
                 return self.kill_remote_task('PWI.exe')
 	'''
 
@@ -614,7 +615,7 @@ class imager:
                         mail.send(self.telid + ' is unreachable',
                                   "Dear Benevolent Humans,\n\n"+
                                   "I cannot reach " + self.telid + ". Can you please check the power and internet connection?\n\n" +
-                                  "Love,\nMINERVA",level="serious")			
+                                  "Love,\nMINERVA",level="serious")
                         return False
                 elif 'NT_STATUS_LOGON_FAILURE' in out:
                         self.logger.error('Invalid credentials')
@@ -628,40 +629,40 @@ class imager:
                 elif 'ERROR: The process' in err:
                         self.logger.info('Task already dead')
                         return True
-                return True	
+                return True
 
-	# This function attempts to automatically recover the camera using 
-	# increasingly drastic measures. If reconnecting, restarting maxim, 
-	# power cycling the camera, and rebooting the machine don't work, it 
+	# This function attempts to automatically recover the camera using
+	# increasingly drastic measures. If reconnecting, restarting maxim,
+	# power cycling the camera, and rebooting the machine don't work, it
 	# will email for help
 	def recover(self):
-		self.logger.warning('Camera failed, beginning recovery') 
-                
+		self.logger.warning('Camera failed, beginning recovery')
+
 		# disconnect and reconnect camera
                 self.disconnect_camera()
 		time.sleep(5.0)
                 if self.connect_camera():
-                        self.logger.info('Camera recovered by reconnecting') 
+                        self.logger.info('Camera recovered by reconnecting')
                         return True
 
 		# quit and restart maxim
-                self.logger.warning('Camera failed to connect; quitting maxim') 
+                self.logger.warning('Camera failed to connect; quitting maxim')
 		self.quit_maxim()
                 if self.connect_camera():
-                        self.logger.info('Camera recovered by quitting maxim') 
+                        self.logger.info('Camera recovered by quitting maxim')
                         return True
 
 		# force quit and restart maxim
-                self.logger.warning('Camera failed to connect; killing maxim') 
+                self.logger.warning('Camera failed to connect; killing maxim')
 		self.quit_maxim()
 		self.kill_maxim()
                 if self.connect_camera():
-                        self.logger.info('Camera recovered by killing maxim') 
+                        self.logger.info('Camera recovered by killing maxim')
                         return True
 
 #		# power cycle camera (need to disconnect telescope, close PWI first)
 #		self.logger.info('*** camera power cycle disabled due to black box messiness ***')
-                self.logger.warning('Camera failed to recover after restarting maxim; power cycling the camera') 
+                self.logger.warning('Camera failed to recover after restarting maxim; power cycling the camera')
 		if self.telescope_config <> '':
 			telescope = cdk700.CDK700(self.telescope_config, self.base_directory)
 			telescope.shutdown()
@@ -673,28 +674,28 @@ class imager:
 			telescope.startPWI()
 			telescope.initialize()
                 if self.connect_camera():
-                        self.logger.info('Camera recovered by power cycling it') 
+                        self.logger.info('Camera recovered by power cycling it')
                         return True
 
 		'''
 		# power cycle camera and wait longer?
-                self.logger.warning('Camera failed to recover after power cycling the camera; trying a longer down time') 
+                self.logger.warning('Camera failed to recover after power cycling the camera; trying a longer down time')
 		self.quit_maxim()
                 self.powercycle(downtime=300)
                 if self.connect_camera():
-                        self.logger.info('Camera recovered by power cycling it with a longer downtime') 
+                        self.logger.info('Camera recovered by power cycling it with a longer downtime')
                         return True
 
 		# power cycle camera and wait 20 minutes!
-                self.logger.warning('Camera failed to recover after power cycling the camera; trying a 20 minute down time') 
+                self.logger.warning('Camera failed to recover after power cycling the camera; trying a 20 minute down time')
 		self.quit_maxim()
                 self.powercycle(downtime=1200)
                 if self.connect_camera():
-                        self.logger.info('Camera recovered by power cycling it with a longer downtime') 
+                        self.logger.info('Camera recovered by power cycling it with a longer downtime')
                         return True
 
 		# reboot the machine???
-                self.logger.warning('Camera failed to recover after power cycling the camera; rebooting the machine') 
+                self.logger.warning('Camera failed to recover after power cycling the camera; rebooting the machine')
 		self.quit_maxim()
                 self.pdu.inst.off()
                 self.send_to_computer("shutdown -s")
@@ -709,7 +710,7 @@ class imager:
                 time.sleep(30) # wait for the camera to initialize
 
                 if self.connect_camera():
-                        self.logger.info('Camera recovered by rebooting the machine') 
+                        self.logger.info('Camera recovered by rebooting the machine')
                         return True
 		'''
 
@@ -717,7 +718,7 @@ class imager:
 		filename = self.base_directory + '/minerva_library/imager.' + self.telid + '.error'
 		while not self.connect_camera():
 			mail.send("Camera on " + self.telid + " failed to connect",
-				  "You must connect the camera and delete the file " + 
+				  "You must connect the camera and delete the file " +
 				  filename + " to restart operations.",level="serious")
 			fh = open(filename,'w')
 			fh.close()
@@ -727,8 +728,8 @@ class imager:
 
 
 
-                
-		
+
+
 #test program, edit camera name to test desired camera
 if __name__ == '__main__':
 
@@ -738,7 +739,7 @@ if __name__ == '__main__':
         else:
                 base_directory = 'C:/minerva-control/'
                 config_file = 'imager_t' + socket.gethostname()[1] + '.ini'
-                
+
 	test_imager = imager(config_file,base_directory)
 	ipdb.set_trace()
 	while True:
@@ -799,6 +800,3 @@ if __name__ == '__main__':
 			test_imager.recover()
 		else:
 			print 'invalid choice'
-			
-			
-	
