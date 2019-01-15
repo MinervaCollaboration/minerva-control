@@ -101,8 +101,9 @@ class control:
 				except:
 					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 			# initialize the 4 telescopes
-			#self.logger.error("***T1 is disabled***")
+#			self.logger.error("***T4 is disabled***")
 			telescopes = [1,2,3,4]
+			telescopes = [1,2,3]
 			for i in telescopes:
 				try: 
 					self.cameras.append(imager.imager('imager_t' + str(i) + '.ini',self.base_directory))
@@ -407,10 +408,14 @@ class control:
 	#load calibration file
 	def loadCalibInfo(self,telid):
 
-		scheduleFile = self.site.night + '.' + telid + '.txt'
+		scheduleFile = self.base_directory + '/schedule/' + self.site.night + '.' + telid + '.txt'
+		if not os.path.isfile(scheduleFile): 
+			self.logger.info('No photometry schedule; skipping imager calibrations')
+			return [None, None]
+			
 		self.logger.info('Loading calib file: ' + scheduleFile)
 		try:
-			with open(self.base_directory + '/schedule/' + scheduleFile, 'r') as calibfile:
+			with open(scheduleFile, 'r') as calibfile:
 				calibline = calibfile.readline()
 				calibendline = calibfile.readline()
 			
@@ -767,7 +772,7 @@ class control:
 			x,y=x+dx,y+dy
 
 			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-			if elapsedTime > timeout: return filename
+			if elapsedTime > timeout or telescope.abort: return filename
 
 		return filename
 
@@ -818,7 +823,7 @@ class control:
                 
                 #MAIN LOOP
 		i=0
-		while camera.fau.guiding:
+		while camera.fau.guiding and not telescope.abort:
 			self.logger.info("entering guiding loop")
 			if i>npts:
 				break
@@ -841,6 +846,15 @@ class control:
 								
 			dataPath = telescope.datadir + self.night + '/'
 			stars = self.getstars(dataPath + filename)
+
+			# could get stuck here a long time...
+			while len(stars) < 1:
+				# break if we're past the end time
+				if datetime.datetime.utcnow() < target['endtime']:
+					return False
+				filename = self.takeFauImage(target,telid)
+				stars = self.getstars(dataPath + filename)
+
 
 			# this could be fooled by clouds or an out of focus image...
 			if len(stars) < 1:
@@ -894,12 +908,12 @@ class control:
 					    'My acquisition is not converging. The rotator position may need to be recalibrated for ' + telid + '. \n\n'\
 					    'Love,\nMINERVA'
 					if len(xvals) > 1 and len(yvals) > 1:
-						if abs(camera.fau.xfiber+xoffset-curpos[0]) > 10:
+						if abs(camera.fau.xfiber+xoffset-curpos[0]) > 20:
 							# if it was better before, send an email -- it's running away!
 							if abs(xvals[-2] - (camera.fau.xfiber + xoffset)) < abs(xvals[-1] - (camera.fau.xfiber + xoffset)):
 								mail.send('Acquisition not converging for ' + telid,body,level='serious',directory=self.directory)
 								self.logger.info(telid + ": Acquisition not converging, check rotator calibration")
-						if abs(camera.fau.yfiber+yoffset-curpos[1]) > 10:
+						if abs(camera.fau.yfiber+yoffset-curpos[1]) > 20:
 							if abs(yvals[-2] - (camera.fau.yfiber + yoffset)) < abs(yvals[-1] - (camera.fau.yfiber + yoffset)):
 								mail.send('Acquisition not converging for ' + telid,body,level='serious',directory=self.directory)
 								self.logger.info(telid + ": Acquisition not converging, check rotator calibration")
@@ -1235,7 +1249,7 @@ class control:
 	#S Somethings, like turning lamps on, need to be called before. More
 	#S to develop on this
 	#TODO TODO
-        def spec_equipment_check(self,target):#objname,filterwheel=None,template = False):
+        def spec_equipment_check(self,target):
 
 		# make sure the back light is off and out of the way
 		self.spectrograph.backlight_off()
@@ -1244,7 +1258,7 @@ class control:
 			'locationstr':'in',
 			}
                 #S Desired warmup time for lamps, in minutes
-                #? Do we want seperate times for each lamp, both need to warm for the same rightnow
+                #? Do we want separate times for each lamp, both need to warm for the same rightnow
                 WARMUPMINUTES = 0.0#10.
                 #S Convert to lowercase, just in case.
                 objname = target['name'].lower()
@@ -2173,7 +2187,7 @@ class control:
 				camera.logger.info('Taking ' + objectName + ' ' + str(x+1) + ' of ' + str(num) + ' (exptime = ' + '0' + ')')
 				filename = self.takeImage(biastarget,telid , piggyback = piggyback)
 			
-	def doDark(self,num=11, exptime=60,telid=None, piggyback = False):
+	def doDark(self,num=11, exptime=[60],telid=None, piggyback = False):
 		#S Need to build dictionary to get up to date with new takeimage
 		darktarget = {}
 		darktarget['name'] = 'Dark'
@@ -3042,7 +3056,7 @@ class control:
 				if target <> -1:
 
 					# truncate the start and end times so it's observable
-					utils.truncate_observable_window(self.site,target)
+					utils.truncate_observable_window(self.site,target,logger=self.logger)
 					if target['starttime'] < target['endtime'] and datetime.datetime.utcnow() < self.site.NautTwilBegin():
 						if 'spectroscopy' in target.keys():
 							if target['spectroscopy']:
@@ -3132,16 +3146,17 @@ class control:
 	
 	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1,checkiftime=True):
 		#S seconds for reading out si imager
-		ro_time = 22
+		ro_time = 22.0
 		#S seconds needed for biases
 		b_time = nbias*ro_time
 		#S seconds needed for darks
 		d_time = ndark*(darkexptime+ro_time)
 		#S seconds for slitflats, plus (liberal) 120 seconds for stage moving
-		sf_time = nflat*(flatexptime+ro_time)+120
+		sf_time = nflat*(flatexptime+ro_time)+120.0
 		total_caltime = b_time+d_time+sf_time
 		# If there is no user override is in place (i.e. checkiftime==True) and total calibration time will go past sunset, then skip all spec calibrations
-		if datetime.timedelta(seconds=total_caltime)+datetime.datetime.utcnow() > self.site.NautTwilEnd() and checkiftime: 
+		if datetime.timedelta(seconds=total_caltime)+datetime.datetime.utcnow() > self.site.NautTwilEnd() and checkiftime:
+			self.logger.warning('Not enough time to complete calibrations '+str(total_caltime)+ ' seconds of calibrations; skipping')
 			return 
 		self.logger.info('Starting approx '+str(total_caltime)+ ' seconds of calibrations')
 		self.takeSpecBias(nbias)
@@ -3150,7 +3165,7 @@ class control:
 
 	def specCalib_catch(self, nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1,checkiftime=True):
 		try:
-			self.specCalib(nbias=11,ndark=11,nflat=11,darkexptime=300,flatexptime=1,checkiftime=checkiftime)
+			self.specCalib(nbias=nbias,ndark=ndark,nflat=nflat,darkexptime=darkexptime,flatexptime=flatexptime,checkiftime=checkiftime)
 		except Exception as e:
 			self.logger.exception('specCalib thread died: ' + str(e.message) )
                         body = "Dear benevolent humans,\n\n" + \
@@ -3299,7 +3314,7 @@ class control:
                         thread.join()
 
         #S For now let's anticipate that 'target' is a dictionary containging everything we
-        #S need to know about hte target in question
+        #S need to know about the target in question
         #S 'name','ra','dec','propermotion','parallax',weight stuff,
         def take_rv_spec(self,target):
                 pass
