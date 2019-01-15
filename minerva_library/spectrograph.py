@@ -96,7 +96,7 @@ class spectrograph:
 		return s
 	#send commands to camera server running on telcom that has direct control over instrument
 	def send(self,msg,timeout):
-		self.logger.debug("Beginning serial communications with the spectrograph server")
+		self.logger.info("Beginning serial communications with the spectrograph server to send " + msg)
 		with self.lock:
 
 			try:
@@ -506,6 +506,8 @@ class spectrograph:
 
         def cell_heater_set_temp(self, temp):
                 response = self.send('cell_heater_set_temp ' + str(temp),10)
+		print response
+
 		if response == 'fail': return False
                 return float(response.split()[1].split('\\')[0])
 
