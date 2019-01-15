@@ -99,7 +99,7 @@ class CDK700:
 				# if no recent best focus exists, initialize to 25000. (old: current value)
 				status = self.getStatus()
 				self.focus[port] = self.default_focus[port]  #focuserStatus.position
-				
+		self.abort = False		
 			
 	#additional higher level routines
 	#tracking and detrotating should be on by default
@@ -188,15 +188,7 @@ class CDK700:
 			if not self.focuserConnect('2'): return False
 			time.sleep(5.25)
 			telescopeStatus = self.getStatus()
-
-### Usually not necessary -- now part of the recovery procedure 
-#		# home if not homed
-#                if telescopeStatus.mount.encoders_have_been_set <> 'True':
-#			self.logger.info('Homing telescope')
-#                        if not self.home(): return False
-#			time.sleep(0.25)
-#			telescopeStatus = self.getStatus()
-
+			
 		# reload the pointing model
 		self.logger.info('re-loading pointing model for the current port')
 		m3port = telescopeStatus.m3.port
@@ -403,7 +395,9 @@ class CDK700:
 		"""
 
 		# make sure it's a legal move first
-		if position < float(self.minfocus[m3port]) or position > float(self.maxfocus[m3port]): return False
+		if position < float(self.minfocus[m3port]) or position > float(self.maxfocus[m3port]): 
+			self.logger.warning('Requested focus on port ' + m3port + ' (' + str(position) + ') out of bounds')
+			return False
 
 		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="move", position=position)
 
@@ -423,7 +417,7 @@ class CDK700:
 		# or the timeout (90 seconds is about how long it takes to go from one extreme to the other)
 		while focuserStatus.moving == 'True' and elapsedTime < timeout:
 			self.logger.info('Focuser on port ' + str(m3port) + ' moving (' + str(focuserStatus.position) + ')')
-			time.sleep(0.3)
+			time.sleep(1)
 			focuserStatus = self.getFocuserStatus(m3port)
 			elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
 
@@ -515,14 +509,15 @@ class CDK700:
 
 		t0 = datetime.datetime.utcnow()
 		elapsedTime = 0
+		focuserStatus = self.getFocuserStatus(m3port)
 		
-		while focuserStatus.moving == 'True' and elapsedTime < 20.0:
+		while abs(float(focuserStatus.position) - 1000) > 10 and elapsedTime < 20.0:
 			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
 			self.logger.info('Moving focuser ' + str(m3port) + ' to nominal position (elapsed time = ' + str(elapsedTime) + ')')
 			time.sleep(1.0)
 			focuserStatus = self.getFocuserStatus(m3port)
 			
-		if focuserStatus.moving == 'True':
+		if abs(float(focuserStatus.position) - 1000) > 10:
 			self.logger.error('Homing focuser ' + str(m3port) + ' failed')
 			return False
 
@@ -665,15 +660,28 @@ class CDK700:
 	def mountConnect(self):
 		status = self.pwiRequestAndParse(device="mount", cmd="connect")
 		if status.mount.connected == 'False':
-			self.logger.error('Failed to connect to mount')
-			return False
+			# after a power cycle, this takes longer than PWI allows -- try again
+			time.sleep(5.0)
+			status = self.pwiRequestAndParse(device="mount", cmd="connect")
+			if status.mount.connected == 'False':	
+				self.logger.error('Failed to connect to mount')
+				return False
 		return True
 
 	def mountDisconnect(self):
 		return self.pwiRequestAndParse(device="mount", cmd="disconnect")
 
 	def mountEnableMotors(self):
-		return self.pwiRequestAndParse(device="mount", cmd="enable")
+		status = self.pwiRequestAndParse(device="mount", cmd="enable")
+		if status.mount.azm_enabled == 'False' or status.mount.alt_enabled == 'False':
+			# after a power cycle, this takes longer than PWI allows -- try again
+			time.sleep(5.0)
+			status = self.pwiRequestAndParse(device="mount", cmd="enable")
+			if status.mount.azm_enabled == 'False' or status.mount.alt_enabled == 'False':
+				self.logger.error('Failed to enable motors')
+				return False
+		
+		return True
 
 	def mountHome(self):
 		return self.pwiRequestAndParse(device="mount", cmd="findhome")
@@ -792,6 +800,7 @@ class CDK700:
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
 	def recover(self, tracking=True, derotate=True):
+
 		#S need to make sure all these functions don't call recover
 		#S shutdown looks clear, all basePWI functions
 		self.nfailed += 1
@@ -846,7 +855,7 @@ class CDK700:
 		'''
 		# reboot the telcom machine
 		self.logger.info('power cycling the mount failed, rebooting the machine')
-		try: self.shutdown()
+		try: self.shutdown(m3port)
 		except: pass
 		self.killPWI()
 		self.pdu.panel.off()
@@ -884,7 +893,7 @@ class CDK700:
 	makes a pointing model
 	'''
 	def makePointingModel(self, minerva, npoints=100, maxmag=4.0, 
-			      fau=True, brightstar=True, random=False, grid=False, 
+			      fau=True, brightstar=True, randomgrid=False, grid=False, 
 			      nalt=5, naz=20, exptime=5.0, filterName='V', shuffle=True, 
 			      minalt=-999, maxalt=80.0,minaz=0.0,maxaz=360.0):
 		
@@ -914,7 +923,7 @@ class CDK700:
 		if brightstar:
 			brightstars = utils.brightStars(maxmag=maxmag)
 			nstars = len(brightstars['dec'])
-		elif random:			
+		elif randomgrid:			
 			pass
 		elif grid:
 			npoints = nalt*naz
@@ -938,11 +947,13 @@ class CDK700:
 
 			# create the pointing model by pointing to a series of bright stars
 			if brightstar:
+				ndx = random.random()*nstars
+
 				# apply proper motion to coordinates
-				raj2000 = float(brightstars['ra'][ntried % nstars])
-				decj2000 = float(brightstars['dec'][ntried % nstars])
-				pmra = float(brightstars['pmra'][ntried % nstars])
-				pmdec = float(brightstars['pmdec'][ntried % nstars])
+				raj2000 = float(brightstars['ra'][ndx])
+				decj2000 = float(brightstars['dec'][ndx])
+				pmra = float(brightstars['pmra'][ndx])
+				pmdec = float(brightstars['pmdec'][ndx])
 				ra,dec = self.starmotion(raj2000,decj2000,pmra,pmdec)
 				self.logger.info("J2000 " + str(raj2000) + ',' + str(decj2000) + 
 						 " adding proper motion " + str(pmra) + "," + str(pmdec) + 
@@ -952,7 +963,7 @@ class CDK700:
 				alt,az = self.radectoaltaz(ra,dec)
 				if alt < minalt or alt > maxalt: continue
 			# create the pointing model by slewing to random alt/az coordinates
-			elif random:
+			elif randomgrid:
 				alt = random.uniform(minalt,maxalt)
 				az = random.uniform(minaz,maxaz)
 				# TODO: convert to ra/dec
@@ -969,6 +980,7 @@ class CDK700:
 				'spectroscopy':fau,
 				'fauexptime': exptime,
 				'name':'Pointing',
+				'endtime':datetime.datetime(2100,12,31),
 				}
 
 			# slew to coordinates
@@ -1501,6 +1513,8 @@ class CDK700:
 			#XXX Something bad is going to happen here (recursive call, potential infinite loop).
 			return self.acquireTarget(target,pa=pa, tracking=tracking, derotate=derotate, m3port=m3port)
 
+	# returns true when moving in RA/Dec
+	# NOTE: when not tracking, it's "moving"
 	def isMoving(self, timeout=15.0):
 		telescopeStatus = self.getStatus()
 		timeElapsed = 0.0
@@ -1537,30 +1551,35 @@ class CDK700:
 		#S want to make sure we are at the right port before mount, focuser, rotator slew.
 		#S If an allowable port is specified	
 		telescopeStatus = self.getStatus()
+		tracking = (telescopeStatus.mount.tracking == 'True')
 		if (str(m3port)=='1') or (str(m3port)=='2'):
 			self.logger.info('Ensuring m3 port is at port %s.'%(str(m3port)))
 			if telescopeStatus.m3.port != str(m3port) or force:
-				if telescopeStatus.m3.port != str(m3port):
+				if force: 
+					self.logger.info('Re-loading pointing model just to be sure')
+				else:
 					self.logger.info('Port changed, loading pointing model')
 				
-					# load the pointing model
-					modelfile = self.modeldir + self.model[m3port]
-					if os.path.isfile(modelfile):
-						self.logger.info('changing model file')
-						self.mountSetPointingModel(self.model[m3port])
-					else:
-						self.logger.error('model file (%s) does not exist; using current model'%(modelfile))
-						mail.send('model file (%s) does not exist; using current model'%(modelfile),'',level='serious', directory=self.directory)
+				# load the pointing model
+				modelfile = self.modeldir + self.model[m3port]
+				if os.path.isfile(modelfile):
+					self.logger.info('changing model file')
+					self.mountSetPointingModel(self.model[m3port])
+					# this turns tracking off; turn it back on
+					if tracking: self.mountTrackingOn()
+				else:
+					self.logger.error('model file (%s) does not exist; using current model'%(modelfile))
+					mail.send('model file (%s) does not exist; using current model'%(modelfile),'',level='serious', directory=self.directory)
 					
-					telescopeStatus = self.m3SelectPort(m3port)
-					time.sleep(0.5)
+				telescopeStatus = self.m3SelectPort(m3port)
+				time.sleep(0.5)
 					
-					telescopeStatus = self.m3SelectPort(m3port)
+				telescopeStatus = self.m3SelectPort(m3port)
 
-					# TODO: add a timeout here!
-					while telescopeStatus.m3.moving_rotate == 'True':
-						time.sleep(0.1)
-						telescopeStatus = self.getStatus()
+				# TODO: add a timeout here!
+				while telescopeStatus.m3.moving_rotate == 'True':
+					time.sleep(0.1)
+					telescopeStatus = self.getStatus()
 						
 				
 		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
@@ -1613,11 +1632,15 @@ class CDK700:
 			self.logger.warning('Requested focus position out of range')
 			return False
 
+		# try going there
+		if self.focuserMoveAndWait(focus,m3port):
+			self.logger.info('Focuser recovered after requesting a move')			
+			return True		
+
 		# restart PWI
-		self.logger.info('Beginning focuser recovery')
+		self.logger.info('Beginning focuser recovery by restarting PWI')
 		self.shutdown(m3port)
 		self.restartPWI(email=False)
-		time.sleep(5)
 		self.initialize()
 		self.focuserConnect(m3port)
 		self.m3port_switch(m3port)
@@ -1638,13 +1661,14 @@ class CDK700:
 #                if self.id != 'MRED':
 		if True:
                         self.logger.info('Homing failed, power cycling the mount')
-                        try: self.shutdown()
+                        try: self.shutdown(m3port)
                         except: pass
                         self.killPWI()
                         self.powercycle()
                         self.startPWI()
-                        self.home()
-                        time.sleep(0.25)
+			self.initialize()
+			self.home()
+                        time.sleep(1)
 			status = self.getStatus()
 			if self.focuserMoveAndWait(focus,m3port):
 				self.logger.info('Focuser recovered after reconnecting')
@@ -1655,10 +1679,12 @@ class CDK700:
 		
 		return False
 					
-	def shutdown(self,m3port):
-                self.focuserStop(m3port)
-		self.rotatorStopDerotating(m3port)
-		self.focuserDisconnect(m3port)
+	def shutdown(self,m3port=None):
+
+		if not m3port==None:
+			self.focuserStop(m3port)
+			self.rotatorStopDerotating(m3port)
+			self.focuserDisconnect(m3port)
 		self.mountTrackingOff()
 		self.mountDisconnect()
 		self.mountDisableMotors()
@@ -1677,11 +1703,20 @@ class CDK700:
 		self.park()
 
 	def home(self, timeout=600):#420.0):
-		
+	
+		self.logger.info('Homing Telescope')
+	
 		# make sure it's not homing in another thread first (JDE 2017-06-09)
 		telescopeStatus = self.getStatus()
 		if not telescopeStatus.mount.is_finding_home == 'True': self.mountHome()
 
+		# make sure it's connected
+		if not telescopeStatus.mount.connected == 'True':
+			self.logger.warning('Home requested but not connected; reconnecting telescope')
+			if not self.initialize(tracking=False,derotate=False):
+				self.logger.error('Cannot connect to mount')
+				return False
+				
 		time.sleep(5.0)
 		telescopeStatus = self.getStatus()
 		t0 = datetime.datetime.utcnow()
@@ -1691,6 +1726,12 @@ class CDK700:
 			self.logger.info('Homing Telescope (elapsed time = ' + str(elapsedTime) + ')')
 			time.sleep(5.0)
 			telescopeStatus = self.getStatus()
+			if not telescopeStatus.mount.connected == 'True' or not telescopeStatus.mount.azm_enabled == 'True' or not telescopeStatus.mount.alt_enabled == 'True':
+				self.logger.error('Motors no longer enabled; reinitializing. Commutation problem?')
+				if not self.initialize(tracking=False,derotate=False):
+					self.logger.error('Cannot connect to mount')
+					return False
+				
 		
 		#S Let's force close PWI here (after a disconnect). What is happening I think is that 
 		#S PWI freezes, and it can't home. While it's stuck in this loop of rehoming
