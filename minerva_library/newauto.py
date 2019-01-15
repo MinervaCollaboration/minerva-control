@@ -296,9 +296,12 @@ def autofocus_step(control,telescope,newfocus,af_target):
 def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                   target=None,dome_override=False,simulate=False):
 
+    control.logger.info("Beginning autofocus")
     telescope = utils.getTelescope(control,telid)
     camera = utils.getCamera(control,telid)
     dome = utils.getDome(control,telid)
+    control.logger.info("identified objects")
+
     
     #S Define/make sure we have a target
     if target != None:
@@ -317,6 +320,9 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
             af_target['spectroscopy'] = False
             af_target['exptime'] = 5
             af_target['filter'] = "V"
+
+        control.logger.info("defined af_target")
+
             
     else:
         status = telescope.getStatus()
@@ -338,6 +344,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                      'dec' : dec
                      }
         
+    control.logger.info("setting platescale")
     #S set the platescale for the image
     if af_target['spectroscopy']:
         platescale = float(camera.fau.platescale)
@@ -348,11 +355,13 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
     if 'tracking' in af_target.keys(): tracking = af_target['tracking']
     else: tracking = True
 
+    control.logger.info("initializing scope")
     # make sure the telescope is tracking
     if not telescope.isInitialized(tracking=tracking,derotate=(not af_target['spectroscopy'])):
         if not telescope.initialize(tracking=tracking,derotate=(not af_target['spectroscopy'])):
             telescope.recover(tracking=tracking,derotate=(not af_target['spectroscopy']))
-            
+        
+    control.logger.info("checking keys")
     if 'ra' in af_target.keys() and 'dec' in af_target.keys():
         telescope.acquireTarget(af_target,derotate=(not af_target['spectroscopy']))
         # TODO: Need to think about incorporating guiding for FAU
@@ -360,6 +369,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
         telescope.logger.info('No ra and dec, using current position')
 
     # S our data path
+    control.logger.info("setting data path")
     datapath = telescope.datadir + control.site.night + '/'
 
     # wait for dome to be open
@@ -379,6 +389,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                 return
             time.sleep(30)
 
+    control.logger.info("defining autofocus steps")
     #S make array of af_defocus_steps
     defsteps = np.linspace(-defocus_step*(num_steps/2),defocus_step*(num_steps/2),num_steps)
 
@@ -391,6 +402,11 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
     poslist = np.array([])
 
     for step in defsteps:
+ 
+        if telescope.abort:
+            telescope.logger.info("Autofocus aborted")
+            return
+
         #S set the new focus, and move there if necessary
         newfocus = telescope.focus[m3port] + step*1000.0
 
