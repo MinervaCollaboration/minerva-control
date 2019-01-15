@@ -24,9 +24,7 @@ def SetupTech(minerva, telescope, camera):
     if not telescope.initialize(tracking=False, derotate=False):
         telescope.recover(tracking=False, derotate=False)
 
-    telescope.home()    
-    #S Finally (re)park the telescope.
-    telescope.park()     
+    telescope.homeAndPark()
 
     # wait for the camera to cool down
     camera.cool()
@@ -300,7 +298,7 @@ def omniObserve(minerva, states):
                 thread = threading.Thread( target = rv_control.doSpectra, args = (minerva,RV_target,rv_teles_id) ) 
                 thread.name = 'RV_Obs'
                 thread.start()
-                threads.append( thread)
+                threads.append(thread)
                 minerva.logger.info('RV thread is activated.')
 
                 # tell the scheduler that we observed the target
@@ -317,16 +315,12 @@ def omniObserve(minerva, states):
                 minerva.logger.info("The scheduler did not return any viable RV targets")
                 time.sleep(5.0)
 
-
             t_names = [threads[p].name for p in xrange(len(threads))]
             # Check if phot threads are dead.
             for telescope in minerva.telescopes:
                 if 'Phot_Obs_'+telescope.id in t_names:
-            
                     if threads[np.where(np.array(t_names)=='Phot_Obs_'+telescope.id)[0][0]].isAlive() != True:
-                                                 
                         minerva.logger.info('Photometry T'+telescope.id+' thread is now dead.')
-                        
                         threads.pop( np.where(np.array(t_names)=='Phot_Obs_'+telescope.id)[0][0] )
                          
             if len(RV_target) > 0: threads[-1].join() # wait until RV thread is done/dead.
@@ -412,6 +406,9 @@ def observe():
     for p in np.arange(len(threads)):
         threads[p].join()
 
+    minerva.logger.info("Done with daytime calibrations")
+
+
     # Now do Domes and Skyflats
     threads=[]
     for telescope in minerva.telescopes:
@@ -439,9 +436,7 @@ def observe():
                 threads.append(thread)
      
         # End FOR loop
-        
-
-       
+               
     tel_p_targets = {}
     for telescope in minerva.telescopes:
 
