@@ -24,11 +24,46 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+
+#	ipdb.set_trace()
+#	newauto.autofocus(minerva,'T2',simulate=True)
+	
 	
 #	minerva.telescopes[3].recoverFocuser(29000,'2')
 #	ipdb.set_trace()
 
-#	newauto.autofocus(minerva,'T2',simulate=True)
+
+	
+	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0}')
+	utils.truncate_observable_window(minerva.site,target,timeof=datetime.datetime(2018,9,25,2,9,55),logger=minerva.logger)
+	print target['starttime'], target['endtime']
+
+	ipdb.set_trace()
+	
+
+	scheduleFile = 'n20180923.MRED.txt'
+	with open(minerva.base_directory + '/schedule/' + scheduleFile, 'r') as targetfile:
+		next(targetfile) # skip the calibration headers                                                                                                                                        
+		next(targetfile) # skip the calibration headers                                                                                                                                        
+		for line in targetfile:
+			target = utils.parseTarget(line, logger=minerva.logger)
+			if target <> -1:
+
+
+				ipdb.set_trace()
+
+				# truncate the start and end times so it's observable                                                                                                                  
+				utils.truncate_observable_window(minerva.site,target, timeof=datetime.datetime(2018,9,23,2,15))
+				print target['starttime'], target['endtime']
+
+				if target['starttime'] < target['endtime'] and datetime.datetime.utcnow() < minerva.site.NautTwilBegin():
+					pass
+				else:
+					minerva.logger.info(target['name']+ ' not observable; skipping')
+
+
+
+
 
 	ipdb.set_trace()
 	true = True
