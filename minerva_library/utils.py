@@ -292,24 +292,23 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
     sunset = site.sunset(horizon=sunalt, start=timeof)
     sunrise = site.sunrise(horizon=sunalt, start=timeof)
 
+    niter = 0
+    while sunrise < timeof and niter < 100:
+        sunrise = site.sunrise(horizon=sunalt, start=timeof + datetime.timedelta(days=0.1*niter))
+        niter += 1
     if sunrise < timeof:
-        sunrise = site.sunrise(horizon=sunalt, start=timeof + datetime.timedelta(days=1))
-        sunset = site.sunset(horizon=sunalt, start=timeof + datetime.timedelta(days=1))
+        if logger <> None: logger.error("Error calculating nearest sunrise")
+        return
 
-    if sunset > sunrise: sunset = site.sunset(horizon=sunalt, start=timeof - datetime.timedelta(days=1))
-
-    # if the chosen start/end time is outside of night time, correct it
-    if target['starttime'] < sunset or target['starttime'] > sunrise:
-        target['starttime'] = min(sunset,target['endtime'])
-
-    if target['endtime'] < sunset or target['endtime'] > sunrise:
-        target['endtime'] = min(sunrise,target['endtime'])
-
-    starttime = min(max(sunset,target['starttime']),target['endtime'])
-    endtime = min(sunrise,target['endtime'])
-
+    niter = 0
+    while sunset > sunrise and niter < 100:
+        sunset = site.sunset(horizon=sunalt, start=timeof - datetime.timedelta(days=0.1*niter))
+        niter += 1
+    if sunset > sunrise:
+        if logger <> None: logger.error("Error calculating nearest sunset")
+        return
+        
     site.obs.horizon = str(horizon)
-
     body = ephem.FixedBody()
     body._ra = ephem.hours(str(target['ra']))
     body._dec = ephem.degrees(str(target['dec']))
@@ -322,38 +321,55 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
     try:
         risetime = site.obs.next_rising(body,start=sunset).datetime()
     except ephem.AlwaysUpError:
-        # if it's always up, don't modify the start time
-        risetime = starttime
+        # if it's always up, we can observe at sunset
+        risetime = sunset
     except ephem.NeverUpError:
         # if it's never up, skip the target
-        risetime = endtime
+        risetime = sunrise
 
     # calculate the object's set time
     try:
         settime = site.obs.next_setting(body,start=sunset).datetime()
     except ephem.AlwaysUpError:
-        # if it's always up, don't modify the end time
-        settime = endtime
+        # if it's always up, we can observe until sunrise
+        settime = sunrise
     except ephem.NeverUpError:
         # if it's never up, skip the target
-        settime = starttime
+        settime = sunset
 
     # if it rises before it sets, redo with the previous day
-    if risetime > settime:
+    niter = 0
+    while risetime > settime and niter < 100:
         try:
-            risetime = site.obs.next_rising(body,start=sunset - datetime.timedelta(days=1)).datetime()
+            risetime = site.obs.next_rising(body,start=sunset - datetime.timedelta(days=0.1*niter)).datetime()
         except ephem.AlwaysUpError:
             # if it's always up, don't modify the start time
-            risetime = starttime
+            risetime = sunset
         except ephem.NeverUpError:
             # if it's never up, skip the target
-            risetime = endtime
+            risetime = sunrise
+        niter += 1
 
-    # modify start time to ensure the target is always above the horizon
-    if starttime < risetime:
-        starttime = min(risetime,endtime)
-    if endtime > settime:
-        endtime = settime
+    if risetime > settime:
+        if logger <> None: logger.error("Error calculating nearest sunset")
+        return
+
+    # the start time should be the later of the requested start time, when the target rises, or when the sun sets
+    starttime = max(target['starttime'],risetime,sunset) 
+
+    # the end time should be the earlier of the requested end time, when the target sets, or when the sun rises
+    endtime = min(target['endtime'],sunrise,settime)
+
+    if logger <> None:
+        logger.info('Time of calculation is ' + str(timeof))
+        logger.info('Target start time is ' + str(target['starttime']))
+        logger.info('Target rise time is ' + str(risetime))
+        logger.info('The new start time is ' + str(starttime))
+        logger.info('Sun set time is '  + str(sunset))
+        logger.info('Target end time is ' + str(target['endtime']))
+        logger.info('Target set time is '  + str(settime))
+        logger.info('Sun rise time is '  + str(sunrise))
+        logger.info('The new end time is ' + str(endtime))   
 
     target['starttime'] = starttime
     target['endtime'] = endtime
