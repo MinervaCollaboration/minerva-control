@@ -48,60 +48,15 @@ def rv_observing(minerva):
             target = minerva.parseTarget(line)
             print target
             if target <> -1:
-                # check if the end is after morning twilight begins
-                if target['endtime'] > minerva.site.NautTwilBegin():
-                    target['endtime'] = minerva.site.NautTwilBegin()
-
-                # check if the start is after evening twilight ends
-                if target['starttime'] < minerva.site.NautTwilEnd():
-                    target['starttime'] = minerva.site.NautTwilEnd()
-
-                # compute the rise/set times of the target
-                #S I think something with coordinates is screwing us up here
-                #S We are still going below 20 degrees.                
-                minerva.site.obs.horizon = '25.0'
-                body = ephem.FixedBody()
-                body._ra = str(target['ra'])
-                body._dec = str(target['dec'])
-                    
-                #S using UTC now for the epoch, shouldn't make a significant
-                #S difference from using local time
-                body._epoch = datetime.datetime.utcnow()
-                body.compute()
-                        
-                try:
-                    risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()).datetime()
-                except ephem.AlwaysUpError:
-                    # if it's always up, don't modify the start time
-                    risetime = target['starttime']
-                except ephem.NeverUpError:
-                    # if it's never up, skip the target
-                    risetime = target['endtime']
-                try:
-                    settime = minerva.site.obs.next_setting(body,start=minerva.site.NautTwilEnd()).datetime()
-                except ephem.AlwaysUpError:
-                    # if it's always up, don't modify the end time
-                    settime = target['endtime']
-                except ephem.NeverUpError:
-                    # if it's never up, skip the target
-                    settime = target['starttime']
-                if risetime > settime:
-                    try:
-                        risetime = minerva.site.obs.next_rising(body,start=minerva.site.NautTwilEnd()-datetime.timedelta(days=1)).datetime()
-                    except ephem.AlwaysUpError:
-                        # if it's always up, don't modify the start time
-                        risetime = target['starttime']
-                    except ephem.NeverUpError:
-                        # if it's never up, skip the target
-                        risetime = target['endtime']
-
-                # make sure the target is always above the horizon
-                if target['starttime'] < risetime:
-                    target['starttime'] = risetime
-                if target['endtime'] > settime:
-                    target['endtime'] = settime
+                # truncate to now
+                target = utils.truncate_observable_window(minerva.site, target, logger=minerva.logger)
 
                 if target['starttime'] < target['endtime']:
+
+                    if target['starttime'] > datetime.datetime.utcnow():
+                        minerva.logger.info("waiting for start time (" + str(target['starttime']) + ')')
+                        time.sleep((datetime.datetime.utcnow() - target['starttime']).total_seconds())
+
                     if target['name'] == 'autofocus':
                         if 'spectroscopy' in target.keys(): fau = target['spectroscopy']
                         else: fau = False
@@ -156,12 +111,13 @@ def doSpectra(minerva, target, tele_list, test=False):
     threads = []
     for telid in tele_list:
         telescope = utils.getTelescope(minerva,telid)
-#        m3port = telescope.port['FAU']
+        m3port = telescope.port['FAU']
         
+        # JDE 2018-10-02: Don't do this (reduce mechanism wear, star not bright enough not to matter) 
         # block light from the star by switching to the imaging port (don't confuse star with fiber)
-        m3port = telescope.port['IMAGER'] 
-
+        #m3port = telescope.port['IMAGER'] 
         kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
+        minerva.logger.info("Starting acquisition for " + telid)
         thread = threading.Thread(target = telescope.acquireTarget,args=(target,),kwargs=kwargs)
         thread.name = telescope.id
         thread.start()
@@ -169,11 +125,11 @@ def doSpectra(minerva, target, tele_list, test=False):
 
     # wait for all telescopes to get to the target
     # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
-    minerva.logger.info("Waiting for all telescopes to slew")
     t0 = datetime.datetime.utcnow()
     slewTimeout = 600.0 # sometimes it needs to home as part of a recovery, give it time for that
     for thread in threads:
         elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
+        minerva.logger.info("Waiting for all telescopes to slew (elapsed time = " + str(elapsedTime) + ")")
         thread.join(slewTimeout - elapsedTime)
 
     # check if the thread timed out
@@ -216,14 +172,13 @@ def doSpectra(minerva, target, tele_list, test=False):
                           telid + " failed to idenitfy the fiber position and is relying on the default fiber position in the config file. This is likely to significantly impact throughput.\n\n" + 
                           "Love,\nMINERVA",level='serious')
 
-
         camera.fau.guiding=True
 
     # switch all ports back to the FAU asynchronously
     minerva.m3port_switch_list('FAU',tele_list)
     
     # acquire the target, run autofocus, then start guiding
-    minerva.logger.info("Beginning fine acquisition, autofocus, and guiding")
+    minerva.logger.info("Beginning acquisition, autofocus, and guiding")
     threads = []
     for telid in tele_list:
         telescope = utils.getTelescope(minerva,telid)
@@ -261,7 +216,7 @@ def doSpectra(minerva, target, tele_list, test=False):
     # begin exposure(s)
     for i in range(target['num'][0]):
         # make sure we're not past the end time
-        if datetime.datetime.utcnow() > target['endtime']:
+        if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
             minerva.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
             stopFAU(minerva,tele_list)
             return
@@ -270,7 +225,7 @@ def doSpectra(minerva, target, tele_list, test=False):
         for dome in minerva.domes:
             while not dome.isOpen():
                 minerva.logger.info("Waiting for dome to open")
-                if datetime.datetime.utcnow() > target['endtime']: 
+                if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
                     minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
                     stopFAU(minerva,tele_list)
                     return
@@ -280,6 +235,26 @@ def doSpectra(minerva, target, tele_list, test=False):
         
     stopFAU(minerva,tele_list)
 
+    # make sure all threads are done
+    exposureTimeout = target['exptime'] + 600.0
+    for t in range(len(tele_list)):
+        telescope = utils.getTelescope(minerva,tele_list[t])
+        telescope.abort=True
+        elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
+        threads[t].join(30.0)#exposureTimeout - elapsedTime)
+        telescope.abort=False
+
+    # check if the thread timed out                                                                                                                                                
+    for t in range(len(tele_list)):
+        if threads[t].isAlive():
+            minerva.logger.error(tele_list[t] + ": thread timed out while exposing")
+            mail.send(tele_list[t] + " thread timed out waiting for slew",
+                      "Dear Benevolent Humans,\n\n"+
+                      tele_list[t] + " thread timed out while exposing. "+
+                      "This shouldn't happen and will cause conflicts between "+
+                      "threads. Please fix me and note what was done.\n\n"+
+                      "Love,\nMINERVA",level='serious')
+            # should kill the errant thread, otherwise all hell breaks loose                                                                                                        
     # let's take another backlit image to see how stable it was
     backlight(minerva)
     
@@ -299,7 +274,7 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0):
         # slew to the target
         minerva.logger.info("beginning course acquisition")
         telescope.acquireTarget(target,tracking=True,derotate=False,m3port=telescope.port['FAU'])
-        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("course acquisition timed out")
             return
 
@@ -307,7 +282,7 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0):
         minerva.logger.info("beginning fine acquisition")
         try: minerva.fauguide(target,telid,acquireonly=True, skiponfail=True)
         except: minerva.logger.exception("acquisition failed")
-        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("fine acquisition timed out")
             return
 
@@ -315,12 +290,12 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0):
         minerva.logger.info("beginning autofocus")
         try: newauto.autofocus(minerva, telid)
         except: minerva.logger.exception("autofocus failed")
-        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("autofocus timed out")
             return
 
         # if there's a focus offset (FAU and Fiber have a calibrated offset), apply it
-        if camera.fau.focusOffset != 0:
+        if camera.fau.focusOffset != 0 and not telescope.abort:
             m3port = telescope.port['FAU']
             telescope.focuserMoveAndWait(telescope.focus[m3port]+camera.fau.focusOffset, m3port)
 
@@ -328,7 +303,7 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0):
         minerva.logger.info("beginning guiding")
         try: minerva.fauguide(target,telid, skiponfail=True)
         except: minerva.logger.exception("guiding failed")
-        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout:
+        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("guiding timed out")
             return
 
@@ -357,7 +332,7 @@ def endNight(minerva):
         minerva.endNight(num=int(telescope.num), email=False)
     minerva.endNight(kiwispec=True)
 
-def backlight(minerva, tele_list=0, exptime=0.03, name='backlight'):
+def backlight(minerva, tele_list=0, exptime=0.01, name='backlight'):
 
     #S check if tele_list is only an int
     if type(tele_list) is int:
@@ -420,7 +395,7 @@ def backlight(minerva, tele_list=0, exptime=0.03, name='backlight'):
 #    minerva.spectrograph.start_log_expmeter()
 
 # given a backlit FAU image, locate the fiber
-def find_fiber(imagename, camera, tolerance=20.,control=None):
+def find_fiber(imagename, camera, tolerance=40.,control=None):
     
     catname = utils.sextract('',imagename,sexfile='backlight.sex')
     cat = utils.readsexcat(catname)
