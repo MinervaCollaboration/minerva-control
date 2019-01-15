@@ -19,8 +19,8 @@ class server:
 		self.base_directory = base
 		self.load_config()
 
-		
-		# reset the night at 10 am local                                                                                                 
+
+		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
 		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
@@ -40,7 +40,7 @@ class server:
 		#S Setup shut down procedures
 		#win32api.SetConsoleCtrlHandler(self.safe_close,True)
 		#atexit.register(self.safe_close,'signal_arguement')
-		
+
 #==============utility functions=================#
 #these methods are not directly called by client
 
@@ -55,7 +55,7 @@ class server:
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
-			
+
                 today = datetime.datetime.utcnow()
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
                         today = today + datetime.timedelta(days=1)
@@ -64,7 +64,7 @@ class server:
 	def get_index(self,param):
 		files = glob.glob(self.data_path + "/*.fits*")
 		return 'success ' + str(len(files)+1)
-			
+
 	def get_status(self,param):
 
                 try:
@@ -86,10 +86,10 @@ class server:
                         return self.get_status(param)
 
 		return 'success ' + json.dumps(status)
-		
+
 	#return true if temperature settles successfully, false if it fails
 	def set_temperature(self,param):
-		
+
 		try:
 			setTemp = param.split()
 			if len(setTemp) != 1:
@@ -102,7 +102,7 @@ class server:
 		except:
 			self.logger.exception("Failed to set the temperature")
 			return 'fail'
-		
+
 	def get_temperature(self):
 		try:
 			return 'success '+ str(self.cam.Temperature)
@@ -118,13 +118,13 @@ class server:
 			# (This launches the app if needed)
                         if self.maxim == None:
                                 self.maxim = Dispatch("MaxIm.Application")
-			if self.cam == None: 
+			if self.cam == None:
 				self.cam = Dispatch("MaxIm.CCDCamera")
 
-			# Connect to the camera 
-			self.logger.info('Connecting to camera') 
+			# Connect to the camera
+			self.logger.info('Connecting to camera')
 			self.cam.LinkEnabled = True
-			
+
 			#S Turn on the cooler so we don't hit any issues with self.safe_close
 			self.cam.CoolerOn = True
 			return 'success'
@@ -133,10 +133,10 @@ class server:
 			return 'fail'
 
 
-		
+
 	#set binning
 	def set_binning(self,param):
-		
+
 		param = param.split()
 		if len(param) != 2:
 			return 'fail'
@@ -148,7 +148,7 @@ class server:
 		except:
 			self.logger.error('Setting binning to ' + param[0] + ',' + param[1] + ' failed')
 			return 'fail'
-			
+
 	def set_size(self,param):
 		param = param.split()
 		if len(param) != 4:
@@ -166,10 +166,10 @@ class server:
 			return 'success'
 		except:
 			return 'fail'
-		
+
 	def get_filter_name(self,param):
 		res = 'success '
-		
+
 		try:
 			num = int(param)
 			for i in range(int(param)):
@@ -177,7 +177,7 @@ class server:
 			return res
 		except:
 			return 'fail'
-		
+
 	def exposeGuider(self,param):
 		try:
 			self.cam.GuiderExpose(float(param))
@@ -210,7 +210,7 @@ class server:
 			if file_name == 'guider':
 				self.logger.error("empty filename")
 				return 'fail'
-                        guider = False	
+                        guider = False
                 else:
 			self.logger.error('parameter mismatch')
 			return 'fail'
@@ -223,7 +223,7 @@ class server:
                                 self.logger.info('saving image to:' + file_name)
                                 self.guider_file_name = self.data_path + '\\' + file_name
                                 self.maxim.CurrentDocument.SaveFile(self.guider_file_name,3, False, 1)
-				return 'success'				
+				return 'success'
                         else:
                                 time.sleep(0.2) # wait for the image to start
                 		print self.cam.ImageReady, self.cam.CameraStatus
@@ -249,10 +249,10 @@ class server:
 			return 'fail'
 
 	def write_header(self,param):
-		
+
 		self.header_buffer = self.header_buffer + param
 		return 'success'
-		
+
 	def write_header_done(self,param):
 
 		# the last 7 characters may or may not indicate this is a guider image
@@ -260,12 +260,12 @@ class server:
 			guider = True
 			param = param[0:-7]
                 else: guider = False
-			
-		try: 
+
+		try:
 			if guider: filename=self.guider_file_name
 			else: filename=self.file_name
 			self.logger.info("Writing header for " + filename)
-		except: 
+		except:
 			self.logger.error("file name not defined; saving failed earlier")
 			self.header_buffer = ''
 			return 'fail'
@@ -281,9 +281,9 @@ class server:
 				self.logger.error("FITS file (" + filename + ") not found")
 				return 'fail'
 
-			try: 
+			try:
 				hdr = json.loads(header_info,object_pairs_hook=collections.OrderedDict)
-			except: 
+			except:
 				self.logger.exception('Error updating header for ' + filename+ "; header string is: " + header_info)
 				hdr = {}
 
@@ -303,18 +303,18 @@ class server:
 			self.logger.exception('Error updating header for ' + filename+ "; header string is: " + header_info)
 			return 'fail'
 		return 'success'
-		
+
 	def set_data_path(self):
 		self.data_path = self.data_path_base + '\\' + self.night
 		if not os.path.exists(self.data_path):
 			os.makedirs(self.data_path)
 		return 'success'
-		
+
 	def compress_data(self,night=None):
 		try:
 			#S This will throw if it doesn;t have data path, which
-			#S seems like the only place how compression won't work now. 
-			#S Still need to practice caution though, as the thread that 
+			#S seems like the only place how compression won't work now.
+			#S Still need to practice caution though, as the thread that
 			#S this function starts may still barf. I'm not sure if this should
 			#S be communicated back to Main, but am still thinking about it.
 			#TODO
@@ -326,7 +326,7 @@ class server:
 			compress_thread = threading.Thread(target = self.compress_thread,args = (files,))
 			compress_thread.start()
 			return 'success'
-		
+
 		except:
                         self.logger.exception('Compress thread failed to start')
 			return 'fail'
@@ -335,7 +335,7 @@ class server:
 		for filename in files:
 			logging.info('Compressing ' + filename)
 			subprocess.call([self.base_directory + '/cfitsio/fpack.exe','-D',filename])
-		
+
 
 	def getMean(self,guider=False):
 		try:
@@ -346,7 +346,7 @@ class server:
 		except:
 			res = 'fail'
 		return res
-	
+
 	def getMode(self,guider=False):
 		try:
 			if guider: image = pyfits.getdata(self.guider_file_name,0)
@@ -360,13 +360,13 @@ class server:
 			x2 = int(min(nx/2.0 + size/2.0,nx-1))
 			y1 = int(max(ny/2.0 - size/2.0,0))
 			y2 = int(min(ny/2.0 + size/2.0,ny-1))
-			
+
 			mode = stats.mode(image[x1:x2,y1:y2],axis=None)[0][0]
 			res = 'success ' + str(mode)
 		except:
 			res = 'fail'
                 return res
-		
+
 	def isSuperSaturated(self, guider=False):
 		try:
 			if guider: image = pyfits.getdata(self.guider_file_name,0)
@@ -388,7 +388,7 @@ class server:
 				return 'success false'
 		except:
 			return 'fail'
-			
+
 	def remove(self, guider=False):
 		try:
 			if guider: os.remove(self.guider_file_name)
@@ -405,7 +405,7 @@ class server:
                 except:
                         self.logger.exception("quitting maxim failed")
                         return 'fail'
-	
+
 	def disconnect_camera(self):
 		try:
 			self.logger.info('turning cooler off')
@@ -490,18 +490,18 @@ class server:
 		except:
 			self.logger.exception('failed to send response, connection lost')
 			return
-			
+
 		if response.split()[0] == 'fail':
 			self.logger.info('command failed: (' + tokens[0] +')')
 		else:
 			self.logger.info('command succeeded(' + tokens[0] +')')
-			
+
 	#server loop that handles incoming command
 	def run_server(self):
-		
+
 		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		try: s.bind((self.host, self.port))
-		except: 
+		except:
 			self.logger.exception("Error connecting to server")
 			raise
 		s.listen(True)
@@ -521,9 +521,12 @@ class server:
 if __name__ == '__main__':
     if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC':
         config_file = 'imager_server_red.ini'
+    elif socket.gethostname() == "TacherControl":
+        config_file = "imager_server_thach.ini"
     else:
-	config_file = 'imager_server.ini'
+		config_file = 'imager_server.ini'
+
     base_directory = 'C:\minerva-control'
-	
+
     test_server = server(config_file,base_directory)
     test_server.run_server()

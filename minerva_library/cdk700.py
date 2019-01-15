@@ -11,6 +11,7 @@ import mail
 import math
 import numpy
 import pdu
+import pdu_thach
 import threading
 import numpy as np
 import socket
@@ -19,7 +20,10 @@ import subprocess
 import ephem
 import utils
 import random
-import pyfits
+try:
+        import pyfits
+except:
+        from astropy.io import fits as pyfits
 from astropy import wcs
 import env
 
@@ -65,13 +69,14 @@ def elementTreeToObject(elementTreeNode):
 
 
 class CDK700:
-	def __init__(self, config, base='', red=False, south=False, directory=None):
+	def __init__(self, config, base='', red=False, south=False, thach=False, directory=None):
 		#S Set config file
 		self.config_file = config
 		#S Set base directory
 		self.base_directory = base
 		#S Get values from config_file
 		self.load_config()
+                self.thach = thach
 
 		if directory == None:
                        if red: self.directory = 'directory_red.txt'
@@ -84,7 +89,12 @@ class CDK700:
 		#S Set up logger
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
-		self.pdu = pdu.pdu(self.pdu_config,base)
+                #TTS if at thacher, use our pdu code. 
+		if self.thach:
+                        self.pdu = pdu_thach.pdu(self.pdu_config, base)
+                else:
+		        self.pdu = pdu.pdu(self.pdu_config,base)
+                        
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
 		
@@ -1690,10 +1700,14 @@ class CDK700:
 		self.mountDisableMotors()
 		
 	def powercycle(self):
-		self.pdu.panel.off()
-		time.sleep(60)
-		self.pdu.panel.on()
-		time.sleep(30) # wait for the panel to initialize
+                if self.thach:
+                        #T Telescope power is the first outlet in pdu_dome1_thach.ini
+                        self.pdu.reboot(1)
+                else:
+                        self.pdu.panel.off()
+		        time.sleep(60)
+		        self.pdu.panel.on()
+		        time.sleep(30) # wait for the panel to initialize
 
 	#S increased default timeout to ten minutes due to pokey t2
 	#S we can probably set this to be only for t2, but just a quick edit

@@ -1,7 +1,10 @@
 # this file contains a set of generally useful utility functions for MINERVA operations
 import re
 import subprocess, psutil, os, signal
-import pyfits
+try:
+    import pyfits
+except:
+    from astropy.io import fits as pyfits
 import numpy as np
 import ephem
 import datetime, time
