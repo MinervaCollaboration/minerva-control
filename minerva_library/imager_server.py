@@ -34,8 +34,8 @@ class server:
 		self.file_name = ''
 		self.guider_file_name = ''
 
-#		if socket.gethostname() == 't2-PC':
-#			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
+		if socket.gethostname() == 't2-PC':
+			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
 		#XXX These do not work
 		#S Setup shut down procedures
 		#win32api.SetConsoleCtrlHandler(self.safe_close,True)
@@ -108,6 +108,11 @@ class server:
 			return 'success '+ str(self.cam.Temperature)
 		except:
 			return 'fail'
+
+        def isAOPresent(self):
+                if 'ao' in dir(self): return 'success'
+                return 'fail'
+
 #==========command functions==============#
 #methods directly called by client
 
@@ -462,9 +467,11 @@ class server:
 		elif tokens[0] == 'isSuperSaturated':
 			guider = (tokens[1] == 'guider')
 			response = self.isSuperSaturated(guider=guider)
+                elif tokens[0] == 'isAOPresent':
+                        response = self.isAOPresent()                     
 		elif tokens[0] == 'moveAO':
 			array = tokens[1].split(',')
-			response = self.ao.move(array[0],array[1])
+			response = self.ao.move(float(array[0]),float(array[1]))
 		elif tokens[0] == 'homeAO':
 			response = self.ao.home()
 		elif tokens[0] == 'remove':

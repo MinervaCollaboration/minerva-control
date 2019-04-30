@@ -74,17 +74,16 @@ class ao:
                 if (datetime.datetime.utcnow() - t0).total_seconds() > 10: break
                 response = self.ser.read(self.ser.inWaiting())
                 time.sleep(0.001)
-
             if response == "K": return "success " + response
-            return "failed " + response
-        return "failed; serial connection not open"
+            return "fail " + response
+        return "fail serial connection not open"
 
     def move(self,north,east):        
         # https://www.sxccd.com/handbooks/Starlight%20Xpress%20SXV%20AOL%20unit.pdf
         # pg 12
 
         # the magnitudes of the corrections for the Starlight Xpress
-        # converted to their definitions of North and East
+        # converted to their definitions of North and East       
         slxNorth = -self.gain*self.platescale*(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))
         slxEast  =  self.gain*self.platescale*(east*math.sin(self.rotoffset) + north*math.cos(self.rotoffset))
 
@@ -103,7 +102,7 @@ class ao:
 
         if self.North > self.ymax or self.North < self.ymin or self.East > self.xmax or self.East < self.xmin:
             # TODO: Move telescope to compensate
-            return "failed; request outside of limits"
+            return "fail request outside of limits"
         
         if self.ser.isOpen():
             cmd = cmdN + self.termstr + cmdE + self.termstr
@@ -117,8 +116,10 @@ class ao:
                 response += self.ser.read(self.ser.inWaiting())
                 time.sleep(0.001)
             #print (datetime.datetime.utcnow() - t0).total_seconds()
+
+            print response
             
             if "L" in response: return "Limits Reached " + response
             if response == "GG": return "success " + response
-            return "failed " + response
-        return "failed; serial connection not open"
+            return "fail " + response
+        return "fail serial connection not open"
