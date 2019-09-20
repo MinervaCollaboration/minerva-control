@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<dpInst>
+    <enableNotListedLanguages/> 
+    <promptIfDriverIsNotBetter/>
+
+    <language code="0x0409">
+        <dpinstTitle>Starlight XPress CCD Device Driver Installer</dpinstTitle>
+    
+        <welcomeTitle>Welcome to the Startlight XPress CCD Device Driver Installer.</welcomeTitle>
+        <welcomeIntro>This wizard will install or update the drivers for your Starlight XPress LodeStar and SXVR CCD.</welcomeIntro>
+    
+        <installHeaderTitle>Installing Starlight XPress CCD Device Driver...</installHeaderTitle>
+
+        <finishTitle>Driver installation complete. For additional assistance, please refer to the README_FIRST.txt file in the installation directory and Uninstall_info.txt for additional removal instructions.</finishTitle>
+    </language>
+ </dpInst>
