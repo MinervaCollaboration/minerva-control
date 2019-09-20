@@ -215,17 +215,18 @@ class server:
 			self.logger.error('parameter mismatch')
 			return 'fail'
 		try:
-                        if guider:
+                        if guider:      
                                 self.logger.info('Saving guider image')
-                                time.sleep(0.2) # wait for the image to start
+                                time.sleep(0.3) # wait for the image to start
                                 while self.cam.GuiderRunning:
                                         time.sleep(0.1)
+                                time.sleep(0.3)
                                 self.logger.info('saving image to:' + file_name)
                                 self.guider_file_name = self.data_path + '\\' + file_name
                                 self.maxim.CurrentDocument.SaveFile(self.guider_file_name,3, False, 1)
 				return 'success'
                         else:
-                                time.sleep(0.2) # wait for the image to start
+                                time.sleep(0.3) # wait for the image to start
                 		print self.cam.ImageReady, self.cam.CameraStatus
                                 t0 = datetime.datetime.utcnow()
                                 timeElapsed = 0.0
