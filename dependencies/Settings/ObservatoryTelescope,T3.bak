@@ -1,0 +1,10 @@
+BookmarkDialog	{
+}
+DoRotation	1
+NudgeSize	10
+NudgeUnits	0
+RollAngle	0.0
+ScopeCalMatchAccuracy	0.3
+ScopeCalSlewDistance	1.0
+TargetDec	""
+TargetRA	""

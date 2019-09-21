@@ -1,0 +1,6 @@
+BulbExposureMapping	"30AndOver"
+BulbType	"IR"
+CameraModel	"D70/D70s"
+ComPort	"COM1"
+NikonDLLs	"Default"
+ShutterRelease	"USBOnly"

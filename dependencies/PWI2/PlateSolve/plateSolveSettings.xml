@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <item>
+    <title>imageBin</title>
+    <value>2</value>
+  </item>
+  <item>
+    <title>imageExposureTimeSec</title>
+    <value>5</value>
+  </item>
+  <item>
+    <title>imageWidthArcmin</title>
+    <value>30</value>
+  </item>
+  <item>
+    <title>imageHeightArcmin</title>
+    <value>20</value>
+  </item>
+  <item>
+    <title>pixelScaleArcsec</title>
+    <value>0.6</value>
+  </item>
+</root>

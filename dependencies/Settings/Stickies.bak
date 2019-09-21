@@ -1,0 +1,29 @@
+AppDirV6	""
+ApplAppl_heig	733
+ApplAppl_innr	10
+ApplAppl_left	0
+ApplAppl_outr	22
+ApplAppl_rgap	4
+ApplAppl_scmd	1
+ApplAppl_topp	1
+ApplAppl_widt	1024
+ApplLargeRings	0
+CCDIsConnected	1
+CCDWindowVisible	1
+FileSave_cprs	36:00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00 \
+		   00 00 00 00 00 00 00 00 06 00 00 00 00 00 00 00 \
+		   00 00 00 00 
+FileSave_filx	1
+FileSave_idir	"C:\\Users\\minervaremote\\Documents\\MaxIm DL 6"
+Help_OnStartup6	0
+Is256Color	0
+LastPPAccessErr	0
+ViewCCD__mode	1
+ViewHist_mode	1
+ViewHist_posx	525
+ViewHist_posy	401
+ViewPan__mode	0
+ViewProf_mode	0
+ViewZoom_mode	0
+ViewZoom_posx	538
+ViewZoom_posy	418

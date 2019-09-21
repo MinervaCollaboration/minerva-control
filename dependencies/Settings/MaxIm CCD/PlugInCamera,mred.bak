@@ -1,0 +1,20 @@
+ApogeeUSBNetCameraINITPATH	""
+ApogeeUSBNetCameraP1	-1
+ApogeeUSBNetCameraP2	-1
+ApogeeUSBNetCameraP3	-1
+ApogeeUSBNetCameraP4	-1
+ApogeeUSBNetCameraP5	-1
+ASCOMGuiderINITPATH	""
+ASCOMGuiderP1	0
+ASCOMGuiderP2	-1
+ASCOMGuiderP3	-1
+ASCOMGuiderP4	-1
+ASCOMGuiderP5	-1
+SelectedCameraName	"Apogee USB/Net"
+SelectedGuiderName	"ASCOM"
+SimulatorCameraINITPATH	""
+SimulatorCameraP1	0
+SimulatorCameraP2	0
+SimulatorCameraP3	0
+SimulatorCameraP4	0
+SimulatorCameraP5	0

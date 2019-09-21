@@ -1,0 +1,706 @@
+ActivePreset	{
+  Autosave	{
+    BaseName	"Autosave Image "
+    BinningMode	0
+    DelayBetweenCalFrames	0
+    DelayFirst	0
+    DelayRest	0
+    DitherAxis	0
+    DitherMax	0.0
+    DitherMode	0
+    DitherTime	0.0
+    EnabledSlotsOnly	0
+    FiltChangeTime	0.0
+    GroupBySlot	0
+    Mosaic	{
+      Centred	0
+      CurrentPos	1
+      Dec	""
+      Enabled	0
+      Height	2
+      HSpacing	15.0
+      NamingConvention	0
+      Order	0
+      RA	""
+      StartTile	1
+      VSpacing	15.0
+      Width	2
+    }
+    RefTime	0
+    RepeatCountAll	1
+    ResyncBin2x2	0
+    ResyncInteval	1
+    ResyncMode	0
+    ResyncTime	0.0
+    SameRepeatCount	0
+    SameScriptName	0
+    Schedule	{
+    }
+    ScheduledMode	0
+    ScheduleNotice	600
+    ScriptPathAll	""
+    ScriptRunMode	0
+    SettleTime	0.0
+    TileSlewTime	0.0
+    UseNameFromScope	0
+  }
+  Binning[2]	{
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }, {
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }
+  CameraIndexGuider	1
+  CameraIndexMain	0
+  Cameras[2]	{
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	2
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }, {
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }
+  ExpDelay	0.0
+  ExpMode	"Single"
+  ExpTime	0.01
+  FrameType	"Light"
+  Name	"*Find Star"
+  NewBufferWanted	0
+  ScreenDuringExposures	"Normal"
+  Subframes[2]	{
+    Height	4096
+    InputMode	3
+    IsSubframeUsed	1
+    PosX	0
+    PosY	0
+    Width	4096
+  }, {
+    Height	2048
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	2048
+  }
+  TDI	{
+    Declination	-11.19
+    DriftRate	0.563074
+    Filter	0
+    FocalLength	2000.0
+    RateSelectMode	0
+    ReadScopeDec	1
+    Width	1000
+  }
+}
+ApplyCRIWeights[2]	0, 0
+AsynchronousOptions	{
+  UseAsynchronousCamera1	0
+  UseAsynchronousCamera2	0
+  UseAsynchronousFilterWheel1	0
+  UseAsynchronousFilterWheel2	0
+}
+AutoDarkPedestal[2]	100, 100
+AutosavePath	"C:\\Users\\minervaremote\\Documents\\"
+AutoSubfolderTime	"12:00:00"
+CoolerSetPoint[2]	-10.0, -20.0
+ExposureSettings[2]	{
+  CCDAutoDarkSubframing	0
+  FocusAide	0
+  Rotation	0
+  XFlip	0
+  YFlip	0
+}, {
+  CCDAutoDarkSubframing	1
+  FocusAide	0
+  Rotation	0
+  XFlip	0
+  YFlip	0
+}
+FilterToUseAsShutter[2]	0, 0
+GuiderSettings	{
+  Binning[2]	{
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }, {
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }
+  Cameras[2]	{
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+  }, {
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+  }
+  Subframes[2]	{
+    Height	4096
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	4096
+  }, {
+    Height	2080
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	3096
+  }
+}
+LastMaxSubframeHeight[2]	4096, 2080
+LastMaxSubframeWidth[2]	4096, 3096
+ReadoutOnStop	0
+RecordGuiderCalImages	0
+RecordGuiderTrackingImages	0
+SavedPresets[5]	{
+  Autosave	{
+    BaseName	"Autosave Image "
+    BinningMode	0
+    DelayBetweenCalFrames	0
+    DelayFirst	0
+    DelayRest	0
+    DitherAxis	0
+    DitherMax	0.0
+    DitherMode	0
+    DitherTime	0.0
+    EnabledSlotsOnly	0
+    FiltChangeTime	0.0
+    GroupBySlot	0
+    Mosaic	{
+      Centred	0
+      CurrentPos	1
+      Dec	""
+      Enabled	0
+      Height	2
+      HSpacing	15.0
+      NamingConvention	0
+      Order	0
+      RA	""
+      StartTile	1
+      VSpacing	15.0
+      Width	2
+    }
+    RefTime	0
+    RepeatCountAll	1
+    ResyncBin2x2	0
+    ResyncInteval	1
+    ResyncMode	0
+    ResyncTime	0.0
+    SameRepeatCount	0
+    SameScriptName	0
+    Schedule	{
+    }
+    ScheduledMode	0
+    ScheduleNotice	600
+    ScriptPathAll	""
+    ScriptRunMode	0
+    SettleTime	0.0
+    TileSlewTime	0.0
+    UseNameFromScope	0
+  }
+  Binning[2]	{
+    UseXBinForY	1
+    XBinIndex	1
+    YBinIndex	1
+  }, {
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }
+  CameraIndexGuider	1
+  CameraIndexMain	0
+  Cameras[2]	{
+    CalibrationOption	"SimpleAutoDark"
+    CurrentFilter	3
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }, {
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }
+  ExpDelay	0.0
+  ExpMode	"Single"
+  ExpTime	1.0
+  FrameType	"Light"
+  Name	"Find Star"
+  NewBufferWanted	0
+  ScreenDuringExposures	"Normal"
+  Subframes[2]	{
+    Height	0
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	0
+  }, {
+    Height	0
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	0
+  }
+  TDI	{
+    Declination	0.0
+    DriftRate	1.0
+    Filter	0
+    FocalLength	2000.0
+    RateSelectMode	0
+    ReadScopeDec	1
+    Width	1000
+  }
+}, {
+  Autosave	{
+    BaseName	"Autosave Image "
+    BinningMode	0
+    DelayBetweenCalFrames	0
+    DelayFirst	0
+    DelayRest	0
+    DitherAxis	0
+    DitherMax	0.0
+    DitherMode	0
+    DitherTime	0.0
+    EnabledSlotsOnly	0
+    FiltChangeTime	0.0
+    GroupBySlot	0
+    Mosaic	{
+      Centred	0
+      CurrentPos	1
+      Dec	""
+      Enabled	0
+      Height	2
+      HSpacing	15.0
+      NamingConvention	0
+      Order	0
+      RA	""
+      StartTile	1
+      VSpacing	15.0
+      Width	2
+    }
+    RefTime	0
+    RepeatCountAll	1
+    ResyncBin2x2	0
+    ResyncInteval	1
+    ResyncMode	0
+    ResyncTime	0.0
+    SameRepeatCount	0
+    SameScriptName	0
+    Schedule	{
+    }
+    ScheduledMode	0
+    ScheduleNotice	600
+    ScriptPathAll	""
+    ScriptRunMode	0
+    SettleTime	0.0
+    TileSlewTime	0.0
+    UseNameFromScope	0
+  }
+  Binning[2]	{
+    UseXBinForY	1
+    XBinIndex	1
+    YBinIndex	1
+  }, {
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }
+  CameraIndexGuider	1
+  CameraIndexMain	0
+  Cameras[2]	{
+    CalibrationOption	"SimpleAutoDark"
+    CurrentFilter	3
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }, {
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }
+  ExpDelay	0.0
+  ExpMode	"Single"
+  ExpTime	10.0
+  FrameType	"Light"
+  Name	"Find DSO"
+  NewBufferWanted	0
+  ScreenDuringExposures	"Normal"
+  Subframes[2]	{
+    Height	0
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	0
+  }, {
+    Height	0
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	0
+  }
+  TDI	{
+    Declination	0.0
+    DriftRate	1.0
+    Filter	0
+    FocalLength	2000.0
+    RateSelectMode	0
+    ReadScopeDec	1
+    Width	1000
+  }
+}, {
+  Autosave	{
+    BaseName	"Autosave Image "
+    BinningMode	0
+    DelayBetweenCalFrames	0
+    DelayFirst	0
+    DelayRest	0
+    DitherAxis	0
+    DitherMax	0.0
+    DitherMode	0
+    DitherTime	0.0
+    EnabledSlotsOnly	0
+    FiltChangeTime	0.0
+    GroupBySlot	0
+    Mosaic	{
+      Centred	0
+      CurrentPos	1
+      Dec	""
+      Enabled	0
+      Height	2
+      HSpacing	15.0
+      NamingConvention	0
+      Order	0
+      RA	""
+      StartTile	1
+      VSpacing	15.0
+      Width	2
+    }
+    RefTime	0
+    RepeatCountAll	1
+    ResyncBin2x2	0
+    ResyncInteval	1
+    ResyncMode	0
+    ResyncTime	0.0
+    SameRepeatCount	0
+    SameScriptName	0
+    Schedule	{
+    }
+    ScheduledMode	0
+    ScheduleNotice	600
+    ScriptPathAll	""
+    ScriptRunMode	0
+    SettleTime	0.0
+    TileSlewTime	0.0
+    UseNameFromScope	0
+  }
+  Binning[2]	{
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }, {
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }
+  CameraIndexGuider	1
+  CameraIndexMain	0
+  Cameras[2]	{
+    CalibrationOption	"SimpleAutoDark"
+    CurrentFilter	3
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }, {
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }
+  ExpDelay	0.0
+  ExpMode	"Single"
+  ExpTime	1.0
+  FrameType	"Light"
+  Name	"Focus"
+  NewBufferWanted	0
+  ScreenDuringExposures	"Normal"
+  Subframes[2]	{
+    Height	0
+    InputMode	1
+    IsSubframeUsed	1
+    PosX	0
+    PosY	0
+    Width	0
+  }, {
+    Height	0
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	0
+  }
+  TDI	{
+    Declination	0.0
+    DriftRate	1.0
+    Filter	0
+    FocalLength	2000.0
+    RateSelectMode	0
+    ReadScopeDec	1
+    Width	1000
+  }
+}, {
+  Autosave	{
+    BaseName	"Autosave Image "
+    BinningMode	0
+    DelayBetweenCalFrames	0
+    DelayFirst	0
+    DelayRest	0
+    DitherAxis	0
+    DitherMax	0.0
+    DitherMode	0
+    DitherTime	0.0
+    EnabledSlotsOnly	0
+    FiltChangeTime	0.0
+    GroupBySlot	0
+    Mosaic	{
+      Centred	0
+      CurrentPos	1
+      Dec	""
+      Enabled	0
+      Height	2
+      HSpacing	15.0
+      NamingConvention	0
+      Order	0
+      RA	""
+      StartTile	1
+      VSpacing	15.0
+      Width	2
+    }
+    RefTime	0
+    RepeatCountAll	1
+    ResyncBin2x2	0
+    ResyncInteval	1
+    ResyncMode	0
+    ResyncTime	0.0
+    SameRepeatCount	0
+    SameScriptName	0
+    Schedule	{
+    }
+    ScheduledMode	0
+    ScheduleNotice	600
+    ScriptPathAll	""
+    ScriptRunMode	0
+    SettleTime	0.0
+    TileSlewTime	0.0
+    UseNameFromScope	0
+  }
+  Binning[2]	{
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }, {
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }
+  CameraIndexGuider	0
+  CameraIndexMain	1
+  Cameras[2]	{
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }, {
+    CalibrationOption	"SimpleAutoDark"
+    CurrentFilter	3
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }
+  ExpDelay	0.0
+  ExpMode	"Single"
+  ExpTime	1.0
+  FrameType	"Light"
+  Name	"Focus Guider"
+  NewBufferWanted	0
+  ScreenDuringExposures	"Normal"
+  Subframes[2]	{
+    Height	0
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	0
+  }, {
+    Height	0
+    InputMode	1
+    IsSubframeUsed	1
+    PosX	0
+    PosY	0
+    Width	0
+  }
+  TDI	{
+    Declination	0.0
+    DriftRate	1.0
+    Filter	0
+    FocalLength	2000.0
+    RateSelectMode	0
+    ReadScopeDec	1
+    Width	1000
+  }
+}, {
+  Autosave	{
+    BaseName	"Autosave Image "
+    Binning[4]	2, 2, 2, 1
+    BinningMode	0
+    DelayBetweenCalFrames	0
+    DelayFirst	0
+    DelayRest	0
+    DitherAxis	0
+    DitherMax	0.0
+    DitherMode	0
+    DitherTime	0.0
+    Enabled[4]	1, 1, 1, 1
+    EnabledSlotsOnly	0
+    FiltChangeTime	0.0
+    Filter[4]	"Red", "Green", "Blue", "Luminance"
+    GroupBySlot	0
+    Mosaic	{
+      Centred	0
+      CurrentPos	1
+      Dec	""
+      Enabled	0
+      Height	2
+      HSpacing	15.0
+      NamingConvention	0
+      Order	0
+      RA	""
+      StartTile	1
+      VSpacing	15.0
+      Width	2
+    }
+    ReadoutMode[4]	"RAW Mono", "RAW Mono", "RAW Mono", "RAW Mono"
+    RefTime	0
+    Repeat[4]	10, 10, 10, 10
+    RepeatCountAll	1
+    ResyncBin2x2	0
+    ResyncInteval	1
+    ResyncMode	0
+    ResyncTime	0.0
+    SameRepeatCount	0
+    SameScriptName	0
+    Schedule	{
+    }
+    ScheduledMode	0
+    ScheduleNotice	600
+    Script[4]	"", "", "", ""
+    ScriptPathAll	""
+    ScriptRunMode	0
+    SettleTime	0.0
+    Speed[4]	0, 0, 0, 0
+    Suffix[4]	"R", "G", "B", "L"
+    TileSlewTime	0.0
+    Time[4]	60.0, 60.0, 60.0, 60.0
+    Type[4]	0, 0, 0, 0
+    UseNameFromScope	1
+  }
+  Binning[2]	{
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }, {
+    UseXBinForY	1
+    XBinIndex	0
+    YBinIndex	0
+  }
+  CameraIndexGuider	1
+  CameraIndexMain	0
+  Cameras[2]	{
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }, {
+    CalibrationOption	"NoCalibration"
+    CurrentFilter	0
+    CurrentSpeed	0
+    ReadoutMode	0
+    UseAutoTriColor	0
+  }
+  ExpDelay	0.0
+  ExpMode	"AutoSave"
+  ExpTime	1.0
+  FrameType	"Light"
+  Name	"LRGB"
+  NewBufferWanted	0
+  ScreenDuringExposures	"Normal"
+  Subframes[2]	{
+    Height	0
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	0
+  }, {
+    Height	0
+    InputMode	3
+    IsSubframeUsed	0
+    PosX	0
+    PosY	0
+    Width	0
+  }
+  TDI	{
+    Declination	0.0
+    DriftRate	1.0
+    Filter	0
+    FocalLength	2000.0
+    RateSelectMode	0
+    ReadScopeDec	1
+    Width	1000
+  }
+}
+SettlingDistance	0.001
+SettlingMode	0
+ShowToolTips	1
+ShutterLatency[2]	-1, -1
+TriColorSettings[2]	{
+  AutoTriColorB	0
+  AutoTriColorExposureFactorB	1.0
+  AutoTriColorExposureFactorG	1.0
+  AutoTriColorExposureFactorR	1.0
+  AutoTriColorG	0
+  AutoTriColorR	0
+}, {
+  AutoTriColorB	64
+  AutoTriColorExposureFactorB	1.0
+  AutoTriColorExposureFactorG	1.0
+  AutoTriColorExposureFactorR	1.0
+  AutoTriColorG	64
+  AutoTriColorR	64
+}
+UseAutoSubfolder	0
+UseFilterAsShutter[2]	0, 0

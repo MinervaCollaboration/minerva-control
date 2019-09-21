@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<config>
+  <version>PWI 2.2.0.2</version>
+  <focuser>
+    <autofocus>
+      <stepsizemicron>350.0</stepsizemicron>
+      <imagecount>4</imagecount>
+      <exposure>5.000</exposure>
+      <bin>1</bin>
+      <subframecentralquarterpix>True</subframecentralquarterpix>
+      <changefilterbeforeimage>False</changefilterbeforeimage>
+      <filterIndexBeforeImageStartAtOne>1</filterIndexBeforeImageStartAtOne>
+      <keepPlateSolveOpenSeconds>180</keepPlateSolveOpenSeconds>
+    </autofocus>
+  </focuser>
+</config>

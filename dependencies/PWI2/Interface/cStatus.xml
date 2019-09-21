@@ -1,0 +1,63 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <item>
+    <title>selectedTabTitle</title>
+    <value>Ports</value>
+  </item>
+  <item>
+    <title>width</title>
+    <value>398</value>
+  </item>
+  <item>
+    <title>height</title>
+    <value>788</value>
+  </item>
+  <item>
+    <title>showLeftTabs</title>
+    <value>False</value>
+  </item>
+  <item>
+    <title>xPosition</title>
+    <value>646</value>
+  </item>
+  <item>
+    <title>yPosition</title>
+    <value>50</value>
+  </item>
+  <item>
+    <title>activeFocRotPortNumber</title>
+    <value>Focuser1</value>
+  </item>
+  <item>
+    <title>sensorPort</title>
+    <value>Focuser1</value>
+  </item>
+  <item>
+    <title>port1Function</title>
+    <value>Rotating Focuser IRF90</value>
+  </item>
+  <item>
+    <title>port2Function</title>
+    <value>Rotating Focuser IRF90</value>
+  </item>
+  <item>
+    <title>port3Function</title>
+    <value>Not Assigned</value>
+  </item>
+  <item>
+    <title>AutoFocusDemo</title>
+    <value>False</value>
+  </item>
+  <item>
+    <title>Mount</title>
+    <value>CDK700</value>
+  </item>
+  <item>
+    <title>tcpState</title>
+    <value>any </value>
+  </item>
+  <item>
+    <title>tcpPortNumber</title>
+    <value>44444</value>
+  </item>
+</root>

@@ -1,0 +1,106 @@
+Camera0_FLIFilterF1	"air"
+Camera0_FLIFilterF10	"none5"
+Camera0_FLIFilterF11	"none6"
+Camera0_FLIFilterF12	"none7"
+Camera0_FLIFilterF13	"none8"
+Camera0_FLIFilterF14	"none9"
+Camera0_FLIFilterF15	"none10"
+Camera0_FLIFilterF16	"none11"
+Camera0_FLIFilterF17	"none12"
+Camera0_FLIFilterF18	"none13"
+Camera0_FLIFilterF19	"none14"
+Camera0_FLIFilterF2	"ip"
+Camera0_FLIFilterF20	"none15"
+Camera0_FLIFilterF21	"none16"
+Camera0_FLIFilterF22	"none17"
+Camera0_FLIFilterF23	"none18"
+Camera0_FLIFilterF24	"none19"
+Camera0_FLIFilterF25	"none20"
+Camera0_FLIFilterF26	"none21"
+Camera0_FLIFilterF27	"none22"
+Camera0_FLIFilterF28	"none23"
+Camera0_FLIFilterF29	"none24"
+Camera0_FLIFilterF3	"rp"
+Camera0_FLIFilterF30	"none25"
+Camera0_FLIFilterF31	"none26"
+Camera0_FLIFilterF32	"none27"
+Camera0_FLIFilterF4	"halpha"
+Camera0_FLIFilterF5	"air2"
+Camera0_FLIFilterF6	"none1"
+Camera0_FLIFilterF7	"none2"
+Camera0_FLIFilterF8	"none3"
+Camera0_FLIFilterF9	"none4"
+Camera0_FLIFilterP1	0
+Camera0_FLIFilterP2	-1
+Camera0_FLIFilterP3	-1
+Camera0_FLIFilterX1	0
+Camera0_FLIFilterX10	0
+Camera0_FLIFilterX11	0
+Camera0_FLIFilterX12	0
+Camera0_FLIFilterX13	0
+Camera0_FLIFilterX14	0
+Camera0_FLIFilterX15	0
+Camera0_FLIFilterX16	0
+Camera0_FLIFilterX17	0
+Camera0_FLIFilterX18	0
+Camera0_FLIFilterX19	0
+Camera0_FLIFilterX2	0
+Camera0_FLIFilterX20	0
+Camera0_FLIFilterX21	0
+Camera0_FLIFilterX22	0
+Camera0_FLIFilterX23	0
+Camera0_FLIFilterX24	0
+Camera0_FLIFilterX25	0
+Camera0_FLIFilterX26	0
+Camera0_FLIFilterX27	0
+Camera0_FLIFilterX28	0
+Camera0_FLIFilterX29	0
+Camera0_FLIFilterX3	0
+Camera0_FLIFilterX30	0
+Camera0_FLIFilterX31	0
+Camera0_FLIFilterX32	0
+Camera0_FLIFilterX4	0
+Camera0_FLIFilterX5	0
+Camera0_FLIFilterX6	0
+Camera0_FLIFilterX7	0
+Camera0_FLIFilterX8	0
+Camera0_FLIFilterX9	0
+Camera0_FlipFlatFilterF1	"Light"
+Camera0_FlipFlatFilterF2	"Dark"
+Camera0_FlipFlatFilterF3	"Flat 100%"
+Camera0_FlipFlatFilterF4	"Flat 80%"
+Camera0_FlipFlatFilterF5	"Flat 60%"
+Camera0_FlipFlatFilterF6	"Flat 40%"
+Camera0_SelectedFilterWheelName	"FLI"
+Camera0_SimulatorFilterF1	"Red"
+Camera0_SimulatorFilterF10	"Filter 10"
+Camera0_SimulatorFilterF2	"Green"
+Camera0_SimulatorFilterF3	"Blue"
+Camera0_SimulatorFilterF4	"Luminance"
+Camera0_SimulatorFilterF5	"Filter 5"
+Camera0_SimulatorFilterF6	"Filter 6"
+Camera0_SimulatorFilterF7	"Filter 7"
+Camera0_SimulatorFilterF8	"Filter 8"
+Camera0_SimulatorFilterF9	"Filter 9"
+Camera0_SimulatorFilterP1	0
+Camera0_SimulatorFilterP2	-1
+Camera0_SimulatorFilterP3	-1
+Camera0_SimulatorFilterX1	0
+Camera0_SimulatorFilterX10	0
+Camera0_SimulatorFilterX2	0
+Camera0_SimulatorFilterX3	0
+Camera0_SimulatorFilterX4	0
+Camera0_SimulatorFilterX5	0
+Camera0_SimulatorFilterX6	0
+Camera0_SimulatorFilterX7	0
+Camera0_SimulatorFilterX8	0
+Camera0_SimulatorFilterX9	0
+Camera0_Tricolor_Filter_0	0
+Camera0_Tricolor_Filter_1	1
+Camera0_Tricolor_Filter_2	2
+Camera1_FlipFlatFilterF1	"Light"
+Camera1_FlipFlatFilterF2	"Dark"
+Camera1_FlipFlatFilterF3	"Flat 100%"
+Camera1_FlipFlatFilterF4	"Flat 80%"
+Camera1_FlipFlatFilterF5	"Flat 60%"
+Camera1_FlipFlatFilterF6	"Flat 40%"

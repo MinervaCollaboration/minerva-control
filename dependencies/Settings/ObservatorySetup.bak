@@ -1,0 +1,28 @@
+BoltwoodDisabledForAll	0
+DavisDisabledForAll	0
+DomeDisabledForAll	0
+EnableASD	0
+FocuserDisabledForAll	0
+FocuserDisabledForAll2	0
+ID_Dome	""
+ID_Focuser	""
+ID_Focuser2	""
+ID_Rotator	""
+ID_Switch	""
+ID_Telescope	""
+ID_Webcam	0
+MountType	3
+Name_Dome	"No Device Selected"
+Name_Focuser	"No Device Selected"
+Name_Focuser2	"No Device Selected"
+Name_Rotator	"No Device Selected"
+Name_Switch	"No Device Selected"
+Name_Telescope	"No Device Selected"
+Name_Webcam	"No Device Selected"
+PierSideSense	0
+RotatorDisabledForAll	0
+RotatorReversed	0
+ScopeDisabledForAll	0
+StopMountOnDisconnect	0
+SwitchDisabledForAll	0
+WebcamDisabledForAll	0
