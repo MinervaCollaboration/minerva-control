@@ -20,9 +20,10 @@ pip install unicodecsv
 pip install filelock
 cd pywinauto-0.4.2
 python setup.py install
-copy CCDPlugFingerLakes.dll "C:\Program Files (x86)\Diffraction Limited\MaxIm DL 6"
 cd ..
 #pip install google-api-python-client
 pip install astropy==1.1.2
 pip install matplotlib
 pip install pandas
+pip install zwoasi
+#copy CCDPlugFingerLakes.dll "C:\Program Files (x86)\Diffraction Limited\MaxIm DL 6"
