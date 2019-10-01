@@ -350,8 +350,9 @@ class server:
 		self.logger.info('saving image to:' + self.file_name)
 
                 try:
-                        shutil.copy("C:/IMAGES/I","C:/minerva/data/n20151211/I10.fits")
-                        shutil.move("C:/IMAGES/I",self.file_name)
+                #if True:
+                        #shutil.copy("C:/IMAGES/I","C:/minerva/data/n20151211/I10.fits")
+                        shutil.move("C:/IMAGES/I", self.file_name)
                         return 'success'
 		except: return 'fail'
 
@@ -664,6 +665,7 @@ class server:
         #S Get the cell heater's status, used in a lot of the other functions. Returns
 	#S some good and some useless information. 
         def cell_heater_status(self):
+                
                 #S Get the status from the heater
                 statusstr = self.cellheater_com.send("stat?")
                 #S This function grabs all numbers in the string. Found
@@ -716,6 +718,7 @@ class server:
         
         #S Turn the heater on, uses the status of the heater.
         def cell_heater_on(self):
+
                 #S Get the current status of the heater  
                 status = self.cell_heater_status()
                 #S If it was off, we'll turn it on. Checked status due to toggle nature of heater power.
@@ -730,6 +733,7 @@ class server:
         
         #S You guessed it, turns the heater off.
         def cell_heater_off(self):
+
                 #S Get the currrent status of the cell heater
                 status = self.cell_heater_status()
                 #S Check if already off or on, due to fact that we can only toggle.
@@ -748,6 +752,7 @@ class server:
         #S The current actualy temperature of the heater. Uses status to 
         #S determine whether the heater is on or not.
         def cell_heater_temp(self):
+
                 #S Status for units, check if on
                 status = self.cell_heater_status()
                 self.logger.info('Cell heater in get temp is '+str(status['enabled']))
@@ -767,6 +772,7 @@ class server:
         
         #S Sets the temperature for the heater to aim for.       
         def cell_heater_set_temp(self, temp):
+                
                 #S Despite not asking for a return, we still get one. Used
                 #S to confirm that the set temperature recorded is that from the
                 #S heater itself.
@@ -779,6 +785,7 @@ class server:
         
         #S Query the set temperature.       
         def cell_heater_get_set_temp(self):
+
                 #S Actual query
                 setstr = self.cellheater_com.send('tset?')
                 #S Parse for number
@@ -1252,7 +1259,7 @@ class server:
 						  "and stabilize the optical bench. Please investigate immediately.\n\n"+
 						  "Love,\nMINERVA",level="serious")
 					self.lastemailed = datetime.datetime.utcnow()
-			elif specpres > 0.003:
+			elif specpres > 0.006:
 				self.logger.error("the spectrograph pressure is out of range")
 				self.logger.info("The pump pressure is " + str(pumppres) + " mbar")
                                 self.logger.info("The spectrograph pressure is " + str(specpres) + " mbar")
@@ -1282,7 +1289,7 @@ class server:
 							  "The pump valve is " + pumpvalvetxt + '\n\n'+
 							  "Love,\nMINERVA",level="serious")
 						self.lastemailed = datetime.datetime.utcnow()
-				elif pumppres != 'UNKNOWN' and pumppres < 0.003 and pumpon and (not ventvalveopen) and pumpvalveopen:
+				elif pumppres != 'UNKNOWN' and pumppres < 0.0103 and pumpon and (not ventvalveopen) and pumpvalveopen:
 					# 1) a power outage closed the pump valve and the leak rate 
 					# caused it to slowly come back up slowly (bad, but not terrible)
 					# diagnosis:
@@ -1345,7 +1352,7 @@ class server:
 							  "The pump valve is " + pumpvalvetxt + '\n\n'+
 							  "Love,\nMINERVA",level="critical")
 						self.lastemailed = datetime.datetime.utcnow()
-				elif pumppres != 'UNKNOWN' and pumppres > 0.003 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
+				elif pumppres != 'UNKNOWN' and pumppres > 0.0103 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
 					# 3) we intentionally vented the spectrograph (probably fine as this is intentional)
 					#    spec pressure > 3
 					#    pump pressure > 3
