@@ -30,6 +30,8 @@ class PT100:
             self.description = config['DESCRIPTION']
             self.mintemp = [float(i) for i in config['MINTEMP']]
             self.maxtemp = [float(i) for i in config['MAXTEMP']]
+            self.maxtimewithoutcom = [float(i) for i in config['MAXTIMEWITHOUTCOM']]
+            self.lastcom = np.array([datetime.datetime.utcnow() for i in range(len(config['MAXTIMEWITHOUTCOM']))])
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
             # reset the night at 10 am local                                                                                                 
             today = datetime.datetime.utcnow()
@@ -143,6 +145,8 @@ class PT100:
                     with open(filename,'a') as f:    
                         f.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(temp)+ ',' + self.description[ndx[raw[0]]] + '\n')
 
+                    if temp != None: self.lastcom[ndx[raw[0]]] = datetime.datetime.utcnow()
+
                     # watchdog: email if temperatures are out of range
                     if temp != None and (temp < self.mintemp[ndx[raw[0]]] or temp > self.maxtemp[ndx[raw[0]]]):
                         if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400.0:
@@ -159,6 +163,23 @@ class PT100:
                             
                         self.logger.error("The spectrograph " + self.description[ndx[raw[0]]] + " temperature (" + 
                                           str(temp) + " C) is out of range (" + str(self.mintemp[ndx[raw[0]]]) + "," + str(self.maxtemp[ndx[raw[0]]]) + ")")
+                
+                    # last communication with sensor exceeds maximum threshhold
+                    if self.maxtimewithoutcom[ndx[raw[0]]] != 0.0:
+                        if (datetime.datetime.utcnow() - self.lastcom[ndx[raw[0]]]).total_seconds()/60.0 > self.maxtimewithoutcom[ndx[raw[0]]]:
+                            if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400.0:
+                                mail.send('lost communication with ' + self.description[ndx[raw[0]]] + ' temperature sensor!',
+                                          "Dear Benevolent Humans,\n\n"+
+                                          "The " + self.description[ndx[raw[0]]] + " sensor has lost contact. " +
+                                          "Please check the 'Thermal Enclosure' computer and the HVAC (192.168.1.51) to make sure everything "+
+                                          "is functioning normally. You may need to restart the software. "+
+                                          "Also, make sure the user logged into thermal enclosure computer is 'temp'. "+
+                                          "The stability of the spectrograph is suspect until this is addressed.\n\n"
+                                          "Love,\nMINERVA",level="serious")
+                                self.lastemailed = datetime.datetime.utcnow()
+                            self.logger.error("The spectrograph " + self.description[ndx[raw[0]]] + " sensor has lost contact.")
+
+
                 # keep it alive
                 self.sock.send("34".decode('hex'))
                 time.sleep(2.0)
@@ -173,7 +194,7 @@ class PT100:
             
 if __name__ == "__main__":
 
-    configs = ['PT100A.ini','PT100B.ini','PT100C.ini','PT100D.ini']
+    configs = ['PT100A.ini','PT100B.ini','PT100C.ini','PT100D.ini','PT100R1.ini','PT100R2.ini','PT100R3.ini']
     pt100s = []
     threads = []
     n=0

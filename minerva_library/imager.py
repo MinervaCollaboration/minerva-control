@@ -5,8 +5,6 @@ import errno
 import logging
 import time
 import threading
-
-
 import pdu
 import pdu_thach
 import telcom_client
@@ -51,6 +49,8 @@ class imager:
                         # common to spectrograph detector and imaging camera
                         config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.ip = config['Setup']['SERVER_IP']
+			try: self.win10 = config['Setup']['WIN10']
+			except: self.win10 = False
 			self.port = int(config['Setup']['SERVER_PORT'])
 			self.logger_name = config['Setup']['LOGNAME']
 			self.setTemp = float(config['Setup']['SETTEMP'])
@@ -125,6 +125,7 @@ class imager:
 
 	#return a socket object connected to the camera server
 	def connect_server(self):
+
 		try:
 			s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			s.settimeout(3)
@@ -347,7 +348,6 @@ class imager:
 
 	def check_filters(self):
 		filter_names = self.get_filter_name().split()
-
 		if len(filter_names) != len(self.filters)+1:
 			return False
 		for i in range(len(self.filters)):
@@ -384,13 +384,18 @@ class imager:
 			self.logger.exception('Unknown error getting temperature')
 			return 'fail'
 
+	def isAOPresent(self):
+		cmd = 'isAOPresent None'
+		if (self.send(cmd,30)).split()[0] == 'success': return True
+		return False
+
 	def moveAO(self,north,east):
 		cmd = 'moveAO ' + str(north) + ',' + str(east)
 		if (self.send(cmd,30)).split()[0] == 'success': return True
 		return False
 
 	def homeAO(self):
-		cmd = 'homeAO'
+		cmd = 'homeAO None'
 		if (self.send(cmd,30)).split()[0] == 'success': return True
 		return False
 
@@ -438,6 +443,13 @@ class imager:
 		else:
 			self.logger.error('Failed to finish writing header')
 			return False
+
+	def getGuideStar(self):
+		response = self.send('get_guide_star none',30)
+		array = response.split()
+		time = datetime.datetime.strptime(array[1], '%Y-%m-%dT%H:%M:%S.%f')
+
+		return time, float(array[2]), float(array[3])
 
 	# returns file name of the image saved, return 'error' if error occurs
 	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False, piggyback=False):
@@ -493,7 +505,7 @@ class imager:
 
 		if self.expose(exptime,exptype,filt,guider=guider):
 			self.write_status()
-			time.sleep(exptime)
+			time.sleep(exptime+3.0)
 			if self.save_image(filename, guider=guider):
 				self.logger.info('Finish taking image: ' + filename)
 				self.nfailed = 0
@@ -592,7 +604,27 @@ class imager:
 		time.sleep(30)
 		return ret_val
 
+	def send_to_win10(self,cmd):
+		f = open(self.base_directory + '/credentials/authentication2.txt','r') # acquire password and username for the computer                      
+                username = f.readline().strip()
+                password = f.readline().strip()
+                f.close()
+
+                out = '' # for logging                                         
+                err = ''
+                cmdstr = "sshpass -p " + "'"+ password+"'" + " ssh " + username + "@" + self.ip + " '" + cmd + "'" # makes the command str                   
+                # example: sshpass -p "PASSWORD" ssh USER@IP 'schtasks /Run /TN "Start PWI"'                                                                 
+                os.system(cmdstr)
+                self.logger.info('cmd=' + cmd + ', out=' + out + ', err=' + err)
+                self.logger.info(cmdstr)
+
+                return True #NOTE THIS CODE DOES NOT HANDLE ERRORS (but its we also haven't had any so that's encouraging)                                   
+
+
         def send_to_computer(self, cmd):
+		if self.win10:
+			return self.send_to_win10(cmd)
+		
 		f = open(self.base_directory + '/credentials/authentication.txt','r')
 		username = f.readline().strip()
                 password = f.readline().strip()
@@ -735,7 +767,7 @@ if __name__ == '__main__':
 
 	if socket.gethostname() == 'Main':
         	base_directory = '/home/minerva/minerva-control'
-        	config_file = 'imager_t3.ini'
+        	config_file = 'imager_mred.ini'
         else:
                 base_directory = 'C:/minerva-control/'
                 config_file = 'imager_t' + socket.gethostname()[1] + '.ini'

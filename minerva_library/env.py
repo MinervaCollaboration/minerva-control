@@ -40,6 +40,7 @@ class site:
 			# touch a file in the current directory to enable cloud override
 			self.cloudOverride = False
 			self.sunOverride = False
+			self.timeoutOverride = False
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
@@ -93,7 +94,7 @@ class site:
 			'windSpeed'           : [0.0,30.0],
 			'windDirectionDegrees': [0.0,360.0],
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-			'sunAltitude'         : [-90,6],
+			'sunAltitude'         : [-90,15],
 			'MearthCloud'         : [-999, openCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
 			'HATCloud'            : [-999, openCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
 			'AuroraCloud'         : [-999, openCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
@@ -112,7 +113,7 @@ class site:
 			'windSpeed'           : [0.0,35.0],
 			'windDirectionDegrees': [0.0,360.0],
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
-			'sunAltitude'         : [-90,6],
+			'sunAltitude'         : [-90,15],
 			'MearthCloud'         : [-999, closeCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
 			'HATCloud'            : [-999, closeCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
 			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
@@ -173,6 +174,17 @@ class site:
 					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
 					weather['MINERVACloud'] = float(cloudstr[5])
 					if weather['MINERVACloud'] == 0.0: weather['MINERVACloud'] = 999
+				elif len(cloudstr) == 4:
+				        #S Get the date from the line by concatenating the first split, then add 7 hours to put in UTC.
+					weather['cloudDate'] = datetime.datetime.strptime(" ".join(cloudstr[0:2]),'%b-%d-%Y %H:%M:%S') + datetime.timedelta(hours=7)
+					#S Assign as specified.
+					# if the connection is lost, it returns 0
+					weather['MearthCloud'] = float(cloudstr[2])
+					if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
+					weather['AuroraCloud'] = float(cloudstr[3])
+					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
+					weather['HATCloud'] = 999
+					weather['MINERVACloud'] = 999					
 				else:
 					self.logger.error("Error reading the cloud page; line is: " + " ".join(cloudstr))
 
@@ -283,10 +295,9 @@ class site:
 			weatherLimits = copy.deepcopy(self.openLimits)
 
 		# change it during execution
-		if os.path.exists(self.base_directory + '/minerva_library/sunOverride.' + domeid + '.txt') or ignoreSun: self.sunOverride = True
-		else: self.sunOverride = False
-		if os.path.exists(self.base_directory + '/minerva_library/cloudOverride.' + domeid + '.txt'): self.cloudOverride = True
-		else: self.cloudOverride = False
+		self.sunOverride = os.path.exists(self.base_directory + '/minerva_library/sunOverride.' + domeid + '.txt') or ignoreSun
+		self.cloudOverride = os.path.exists(self.base_directory + '/minerva_library/cloudOverride.' + domeid + '.txt')
+		self.timeoutOverride = os.path.exists(self.base_directory + '/minerva_library/timeoutOverride.' + domeid + '.txt')
 
 		if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]
 		else: weatherLimits['sunAltitude'] = [-90,6]

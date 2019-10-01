@@ -194,7 +194,7 @@ def doSpectra(minerva, target, tele_list, test=False):
     # wait for all telescopes to put target on their fibers (or timeout)
     # needs time to reslew (because m3port_switch stops tracking), fine acquire, autofocus, guiding
     acquired = False
-    timeout = 300.0 
+    timeout = 600.0 
     elapsedTime = 0.0
     t0 = datetime.datetime.utcnow()
     while not acquired and elapsedTime < timeout:
@@ -297,7 +297,8 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0):
         # if there's a focus offset (FAU and Fiber have a calibrated offset), apply it
         if camera.fau.focusOffset != 0 and not telescope.abort:
             m3port = telescope.port['FAU']
-            telescope.focuserMoveAndWait(telescope.focus[m3port]+camera.fau.focusOffset, m3port)
+            try: telescope.focuserMoveAndWait(telescope.focus[m3port]+camera.fau.focusOffset, m3port)
+            except: minerva.logger.exception("focusing failed")
 
         # guide
         minerva.logger.info("beginning guiding")
@@ -309,7 +310,7 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0):
 
     except:
         minerva.logger.exception("pointing and guiding failed")
-        #mail.send("Pointing and guiding failed","",level="serious")
+        mail.send("Pointing and guiding failed","",level="serious")
 
 def stopFAU(minerva,tele_list):
     # set camera.fau.guiding == False to stop guiders

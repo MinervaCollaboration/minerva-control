@@ -20,10 +20,11 @@ import subprocess
 import ephem
 import utils
 import random
-try:
-        import pyfits
-except:
-        from astropy.io import fits as pyfits
+#try:
+#        import pyfits
+#except:
+from astropy.io import fits as pyfits
+
 from astropy import wcs
 import env
 
@@ -70,6 +71,7 @@ def elementTreeToObject(elementTreeNode):
 
 class CDK700:
 	def __init__(self, config, base='', red=False, south=False, thach=False, directory=None):
+
 		#S Set config file
 		self.config_file = config
 		#S Set base directory
@@ -77,6 +79,9 @@ class CDK700:
 		#S Get values from config_file
 		self.load_config()
                 self.thach = thach
+		self.focusMoving = False
+		self.rotatorMoving = False
+#		self.mountMoving = False
 
 		if directory == None:
                        if red: self.directory = 'directory_red.txt'
@@ -99,18 +104,38 @@ class CDK700:
 		# threading.Thread(target=self.write_status_thread).start()
 		
 		self.focus = {'0':'UNKNOWN'}
+
 		# initialize to the most recent best focus
-		for port in ['1','2']:
-			if os.path.isfile('focus.' + self.logger_name + '.port'+port+'.txt'):
-				f = open('focus.' + self.logger_name + '.port'+port+'.txt','r')
-				self.focus[port] = float(f.readline())
-				f.close()
-			else:
-				# if no recent best focus exists, initialize to 25000. (old: current value)
-				status = self.getStatus()
-				self.focus[port] = self.default_focus[port]  #focuserStatus.position
+		for port in ['1','2']: self.guessFocus(port)
+
+#			if os.path.isfile('focus.' + self.logger_name + '.port'+port+'.txt'):
+#				f = open('focus.' + self.logger_name + '.port'+port+'.txt','r')
+#				self.focus[port] = float(f.readline())
+#				f.close()
+#			else:
+#				# if no recent best focus exists, initialize to 25000. (old: current value)
+#				status = self.getStatus()
+#				self.focus[port] = self.default_focus[port]  #focuserStatus.position
 		self.abort = False		
 			
+	def guessFocus(self, m3port):
+		status = self.getStatus()
+
+		# best guess at focus                                                                                          
+		try: m1temp = float(status.temperature.primary)
+		except: m1temp = float(self.T0[m3port])
+		try: ambtemp = float(status.temperature.ambient)
+		except: ambtemp = m1temp - float(self.dT0[m3port])
+		try: gravity = math.sin(float(status.mount.alt_radian))
+		except: gravity = float(self.G0[m3port])
+		dt = m1temp-ambtemp
+		self.focus[m3port] = float(self.F0[m3port]) + \
+		    float(self.C0[m3port])*(m1temp-float(self.T0[m3port])) + \
+		    float(self.C1[m3port])*(dt-float(self.dT0[m3port])) + \
+		    float(self.C2[m3port])*(gravity-float(self.G0[m3port]))
+		self.logger.info('Setting nominal focus for port ' + m3port + ' at ' + str(self.focus[m3port]) + ' when T='\
+					      + str(m1temp) + ', dT=' + str(dt) + ', gravity=' + str(gravity))
+
 	#additional higher level routines
 	#tracking and detrotating should be on by default
 	#much worse to be off when it should be on than vice versa
@@ -121,6 +146,7 @@ class CDK700:
 
 		#if telescopeStatus.mount.encoders_have_been_set <> 'True':
 		#	self.logger.info('encoders not set (' + telescopeStatus.mount.encoders_have_been_set + '), telescope not initialized')
+		#       self.threadActive = False
 		#	return False
 		if telescopeStatus.mount.alt_enabled <> 'True':
 			self.logger.info('altitude motor not enabled (' + telescopeStatus.mount.alt_enabled + '), telescope not initialized')
@@ -143,7 +169,6 @@ class CDK700:
 		if telescopeStatus.focuser.connected <> 'True': 
 			self.logger.info('focuser not connected (' + telescopeStatus.focuser.connected + '), telescope not initialized')
 			return False
-
 
 		if tracking:
 			if telescopeStatus.mount.tracking <> 'True': 
@@ -168,6 +193,10 @@ class CDK700:
 	# by default, set tracking and derotating
 	# it's much worse to have it off when it should be on than vice versa
 	def initialize(self,tracking=True, derotate=True):
+
+#		while self.threadActive:
+#			time.sleep(0.1)
+#		self.threadActive = True
 
 		telescopeStatus = self.getStatus()
 
@@ -227,7 +256,7 @@ class CDK700:
 		return self.isInitialized(tracking=tracking,derotate=derotate)
 		
 	def load_config(self):
-		
+
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 			self.HOST = config['Setup']['HOST']
@@ -249,9 +278,18 @@ class CDK700:
 			except: self.minfocus = {'0':100,'1':100,'2':100}
 			try: self.maxfocus = config['MAXFOCUS']
 			except: self.minfocus = {'0':33000,'1':33000,'2':33000}
+			try: self.win10 = config['Setup']['WIN10']
+			except: self.win10 = False
 			self.rotatoroffset = config['ROTATOROFFSET']
 			self.default_focus = config['DEFAULT_FOCUS']
 			self.focus_offset = config['FOCUS_OFFSET']
+			self.F0 = config['F0']
+			self.C0 = config['C0']
+			self.T0 = config['T0']
+			self.C1 = config['C1']
+			self.dT0 = config['dT0']
+			self.C2 = config['C2']
+			self.G0 = config['G0']
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit() 
@@ -336,8 +374,6 @@ class CDK700:
 		with open(self.currentStatusFile,'w') as outfile:
 			json.dump(status,outfile)
 
-		ipdb.set_trace()
-
 		return status    
 
 	def getStatus(self):
@@ -412,8 +448,15 @@ class CDK700:
 		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="move", position=position)
 
 	def focuserMoveAndWait(self,position,m3port,timeout=300.0):
+
+#		# prevent thread clashes
+#		while self.focusMoving:
+#			time.slee(0.01)
+#		self.focusMoving = True
+
 		if not self.focuserMove(position,m3port):
 			self.logger.warning('Focuser on port ' + str(m3port) + ' could not move to requested position (' + str(position) + ')')
+#			self.focusMoving = False
 			return False
 
 		# wait for the focuser to start moving
@@ -433,9 +476,12 @@ class CDK700:
 
 		if abs(float(focuserStatus.position) - float(position)) > 10:
 			self.logger.warning('Focuser on port ' + str(m3port) + ' (' + focuserStatus.position + ') not at requested position (' + str(position) + ') after ' + str(elapsedTime) + ' seconds')
+#			self.focusMoving = False
 			return False
 
 		self.logger.info('Focuser completed move in ' + str(elapsedTime) + ' seconds')
+#		self.focusMoving = False
+
 		return True
 
 
@@ -460,25 +506,38 @@ class CDK700:
 		return self.pwiRequestAndParse(device="focuser", cmd="startautofocus")
 
 	def homeAllMechanisms(self):
+
+		self.homeAndPark()
+
+		# home both focusers and rotators
+                for m3port in ['1','2']:
+			self.focuserHomeNominal(m3port)
+			self.rotatorHome180(m3port)
+
+		return
+
+		# doesn't handle simultantous commands gracefully
 		threads= []
                 thread = threading.Thread(target = self.homeAndPark)
 		thread.name = self.id
 		thread.start()
                 threads.append(thread)
 
-                for m3port in ['1','2']:
-                        # home both rotators                                                                                                              
-                        thread = threading.Thread(target = self.rotatorHome180, args=(m3port))
-			thread.name = self.id
-                        thread.start()
-			threads.append(thread)
 
-                        # home both focusers
+                for m3port in ['1','2']:
                         thread = threading.Thread(target = self.focuserHomeNominal, args=(m3port))
 			thread.name = self.id
                         thread.start()
                         threads.append(thread)
-
+                for thread in threads:
+			thread.join()
+		
+		# home both rotators
+                for m3port in ['1','2']:
+                        thread = threading.Thread(target = self.rotatorHome180, args=(m3port))
+			thread.name = self.id
+                        thread.start()
+			threads.append(thread)
                 for thread in threads:
 			thread.join()
 		
@@ -487,7 +546,8 @@ class CDK700:
 	# home the focuser then return to nominal focus
 	def focuserHomeNominal(self, m3port):
 		self.focuserHomeAndWait(m3port)
-		self.focuserMove(self.focus[m3port],m3port)
+		self.logger.info('Moving focus to ' + str(self.focus[m3port]))
+		self.focuserMoveAndWait(self.focus[m3port],m3port)
 
 	# home the focuser
 	def focuserHome(self, m3port):
@@ -495,6 +555,10 @@ class CDK700:
 
 	# home the focuser and wait to completion
 	def focuserHomeAndWait(self, m3port, timeout=300.0):
+
+#		while self.focusMoving:                        
+#			time.sleep(0.1)
+#		self.focusMoving = True
 
 		# make sure it's not homing in another thread first
 		focuserStatus = self.getFocuserStatus(m3port)
@@ -513,6 +577,7 @@ class CDK700:
 			
 		if elapsedTime > timeout:
 			self.logger.error('Homing focuser ' + str(m3port) + ' failed')
+#			self.focusMoving = False
 			return False
 
 		self.logger.info('Homing focuser ' + str(m3port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
@@ -529,9 +594,11 @@ class CDK700:
 			
 		if abs(float(focuserStatus.position) - 1000) > 10:
 			self.logger.error('Homing focuser ' + str(m3port) + ' failed')
+#			self.focusMoving = False
 			return False
 
 		self.logger.info('Homing focuser ' + str(m3port) + ' complete')
+#		self.focusMoving = False
 		return True
 
 
@@ -560,6 +627,10 @@ class CDK700:
 
 	def rotatorHomeAndWait(self, m3port, timeout=400.0):
 
+#		while self.rotatorMoving:
+#			time.sleep(0.1)
+#		self.rotatorMoving = True
+
 		# make sure it's not homing in another thread first
 		rotatorStatus = self.getRotatorStatus(m3port)
 		if not rotatorStatus.finding_home == 'True': self.rotatorHome(m3port)
@@ -577,6 +648,7 @@ class CDK700:
 
 		if elapsedTime > timeout:
 			self.logger.error('Homing rotator ' + str(m3port) + ' failed')
+			self.rotatorMoving = False
 			return False
 
 		self.logger.info('Homing rotator ' + str(m3port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
@@ -592,19 +664,12 @@ class CDK700:
 			
 		if rotatorStatus.moving == 'True':
 			self.logger.error('Homing rotator ' + str(m3port) + ' failed')
+			self.rotatorMoving = False
 			return False
 
 		self.logger.info('Homing rotator ' + str(m3port) + ' complete')
+		self.rotatorMoving = False
 		return True
-
-
-			
-		if elapsedTime > timeout:
-			return False
-
-		return True
-
-
 
 	#S i think we should make targets classes for functions like this, not in telescope.
 	#S i did that in scheduler sim, but could be a bit of an overhaul here....
@@ -748,12 +813,27 @@ class CDK700:
 
 		return self.pwiRequestAndParse(device="mount", cmd="move", ra=raAppHours, dec=decAppDegs)
 
-	def mountGotoRaDecJ2000(self, ra2000Hours, dec2000Degs):
+	def mountGotoRaDecJ2000(self, ra2000Hours, dec2000Degs, timeout=30.0):
 		"""
 		Begin slewing the telescope to a particular J2000 RA and Dec.
 		ra2000Hours may be a number in decimal hours, or a string in "HH MM SS" format
 		dec2000Degs may be a number in decimal degrees, or a string in "DD MM SS" format
 		"""
+
+		# never send a move while it's already moving
+#		elapsedTime = 0.0
+#		start = datetime.datetime.utcnow()
+#		while self.mountMoving or elapsedTime > timeout:
+#			time.sleep(0.1)
+#			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
+#
+#		if self.mountMoving:
+#			self.logger.error('Mount moving for longer than timeout while another move was requested. Ignoring second move')
+#			return false
+#
+#		# this must be set to false after every move (in isMoving)
+#		self.mountMoving=True
+
 		return self.pwiRequestAndParse(device="mount", cmd="move", ra2000=ra2000Hours, dec2000=dec2000Degs)
 
 	def mountGotoAltAz(self, altDegs, azmDegs):
@@ -1171,6 +1251,8 @@ class CDK700:
 		x1, y1 = utils.findBrightest(datapath + filename)
 		if x1 == None or y1 == None: return False
 
+		print filename, x1, y1
+
 		# the longer I can slew, the more accurate the calculation
 		# calculate how far I can move before hitting the edge
 		# must assume random orientation
@@ -1192,6 +1274,9 @@ class CDK700:
 		x2, y2 = utils.findBrightest(datapath + filename)
 		if x2 == None or y2 == None: return False
 
+		print filename, x2, y2
+
+
 		rotatorStatus = self.getRotatorStatus(m3port)
 		rotpos = float(rotatorStatus.position)
 		parang = self.parangle(useCurrent=True)
@@ -1200,6 +1285,10 @@ class CDK700:
 		skypa = math.atan2(y2-y1,x2-x1)*180.0/math.pi
 		rotoff = (skypa - float(parang) + float(rotpos) + 360.0) % 360
 		
+		if x1 == x2 and y1 == y2:
+			self.logger.error("Same image! Do not trust! WTF?")
+			return -999
+
 		self.logger.info("Found stars at (" + str(x1) + "," + str(y1) + " and (" + str(x2) + "," + str(y2) + ")")
 		self.logger.info("Enter the sky position angle (" + str(skypa) + ") into the calibrate field")
 		self.logger.info("The field rotation offset is " + str(rotoff))
@@ -1249,7 +1338,7 @@ class CDK700:
 		self.logger.info('Waiting for telescope to finish slew; moving = ' + telescopeStatus.mount.moving + str(telescopeStatus.mount.moving == 'True') + str(elapsedTime < timeout) + str(tracking))
 		timeout = 60.0
 		while telescopeStatus.mount.moving == 'True' and elapsedTime < timeout and tracking:
-			time.sleep(0.1)
+			time.sleep(0.25)
 			elapsedTime = (datetime.datetime.utcnow() - start).total_seconds()
 			telescopeStatus = self.getStatus()
 			#? Has this condition ever be met? Why is this here?
@@ -1782,7 +1871,27 @@ class CDK700:
 	def reboot_telcom(self):
                 return self.send_to_computer("python C:/minerva-control/minerva_library/reboot.py")
 
+	def send_to_win10(self, cmd):
+		f = open(self.base_directory + '/credentials/authentication2.txt','r') # acquire password and username for the computer
+		username = f.readline().strip()
+		password = f.readline().strip()
+		f.close()
+
+		out = '' # for logging
+		err = ''
+		cmdstr = "sshpass -p "+"'"+ password+"'" + " ssh " + username + "@" + self.HOST + " '" + cmd + "'" # makes the command str
+		# example: sshpass -p "PASSWORD" ssh USER@IP 'schtasks /Run /TN "Start PWI"'
+		os.system(cmdstr)
+		self.logger.info('cmd=' + cmd + ', out=' + out + ', err=' + err)
+		self.logger.info(cmdstr)
+
+		return True #NOTE THIS CODE DOES NOT HANDLE ERRORS (but its we also haven't had any so that's encouraging)
+
         def send_to_computer(self, cmd):
+
+		if self.win10:
+			return self.send_to_win10(cmd)
+		
                 f = open(self.base_directory + '/credentials/authentication.txt','r')
                 username = f.readline().strip()
                 password = f.readline().strip()
@@ -1824,13 +1933,12 @@ if __name__ == "__main__":
 
 	if socket.gethostname() == 'Main':
 		base_directory = '/home/minerva/minerva-control'
-		config_file = 'telescope_3.ini'
+		config_file = 'telescope_mred.ini'
         else: 
 		base_directory = 'C:/minerva-control/'
 		config_file = 'telescope_' + socket.gethostname()[1] + '.ini'
 
 	telescope = CDK700(config_file, base_directory)
-	ipdb.set_trace()
 
 	while True:
 		print telescope.logger_name + ' test program'

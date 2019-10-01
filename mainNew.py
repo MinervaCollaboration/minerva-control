@@ -288,9 +288,15 @@ def omniObserve(minerva, states):
 
             # tell the dynamic scheduler the remaining time gap
             RV_target =  minerva.scheduler.choose_target(remaining_time=remaining_time,logger=minerva.logger, timeof=datetime.datetime.utcnow())
-            
+
             # Check if dynamic scheduler provided any targets
             if len(RV_target) > 0:
+                # hack for DT observations!!
+                if RV_target['name'] == 'HD131880':
+                    RV_target['i2'] = False
+                    RV_target['exptime'] = [600]
+                    RV_target['num'] = [99]
+
                 minerva.logger.info('Taking spectrum of ' + RV_target['name'])
     
                 # CALL RV observation
@@ -485,14 +491,14 @@ def observe():
                     else:
                         p_target['exp_starttime'] = p_target['starttime']
 
-                        # Add expected endtime by accounting for the number of exposures, exposure time, filters, and acquisition
-                        p_target['exp_endtime'] = p_target['exp_starttime'] + Acq_Exp_RdO(120.0, p_target, 7.0)
+                    # Add expected endtime by accounting for the number of exposures, exposure time, filters, and acquisition
+                    p_target['exp_endtime'] = p_target['exp_starttime'] + Acq_Exp_RdO(120.0, p_target, 7.0)
 
-                        if p_target['exp_endtime'] > p_target['endtime']:
-                            p_target['exp_endtime'] = p_target['endtime']
+                    if p_target['exp_endtime'] > p_target['endtime']:
+                        p_target['exp_endtime'] = p_target['endtime']
 
-                        if p_target['exp_endtime'] > minerva.site.NautTwilBegin(): # if the exp_endtime is later than sunrise
-                            p_target['exp_endtime'] = minerva.site.NautTwilBegin()
+                    if p_target['exp_endtime'] > minerva.site.NautTwilBegin(): # if the exp_endtime is later than sunrise
+                        p_target['exp_endtime'] = minerva.site.NautTwilBegin()
                          
                 else:
 
@@ -504,7 +510,6 @@ def observe():
                     else:
                         p_target['exp_starttime'] = p_target['starttime']
                         
-                                             
                     # After ascertaining expected starttime of this target, then determine expected endtime of this target
                     p_target['exp_endtime'] = p_target['exp_starttime'] + Acq_Exp_RdO(120.0, p_target, 7.0)
 

@@ -302,7 +302,6 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
     dome = utils.getDome(control,telid)
     control.logger.info("identified objects")
 
-    
     #S Define/make sure we have a target
     if target != None:
         af_target = copy.deepcopy(target)
@@ -343,7 +342,23 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                      'ra' : ra,
                      'dec' : dec
                      }
-        
+
+    # best guess at focus
+    telescope.guessFocus(m3port)
+
+#    try: m1temp = float(status.temperature.primary)
+#    except: m1temp = float(telescope.T0[m3port])
+#    try: ambtemp = float(status.temperature.ambient)
+#    except: ambtemp = m1temp - float(telescope.dT0[m3port])
+#    try: gravity = math.sin(float(status.mount.alt_radian))
+#    except: gravity = float(telescope.G0[m3port])
+#    dt = m1temp-ambtemp
+#    telescope.focus[m3port] = float(telescope.F0[m3port]) + \
+#        float(telescope.C0[m3port])*(m1temp-float(telescope.T0[m3port])) + \
+#        float(telescope.C1[m3port])*(dt-float(telescope.dT0[m3port])) + \
+#        float(telescope.C2[m3port])*(gravity-float(telescope.G0[m3port]))
+#    telescope.logger.info('Starting focus for port ' + m3port + ' at ' + str(telescope.focus[m3port]) + ' when T=' + str(m1temp) + ', dT=' + str(dt) + ', gravity=' + str(gravity)) 
+
     control.logger.info("setting platescale")
     #S set the platescale for the image
     if af_target['spectroscopy']:

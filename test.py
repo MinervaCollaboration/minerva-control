@@ -12,6 +12,10 @@ import numpy as np
 from minerva_library import rv_control
 from minerva_library import newauto
 from minerva_library import utils
+from minerva_library import mail
+import glob
+import subprocess
+import os
 
 def cleanUpNight(minerva):
 	minerva.endNight(num=1)
@@ -25,13 +29,81 @@ if __name__ == '__main__':
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+
+	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 1.0,  "i2": false}')
+#	utils.truncate_observable_window(minerva.site,target,timeof=datetime.datetime(2018,9,25,2,9,55),logger=minerva.logger)
+
+	minerva.cameras[0].fau.guiding = True
+#	minerva.takeSpectrum(target,tele_list=['T2'])
 #	ipdb.set_trace()
+	minerva.fauguide(target, 'T2')
+	ipdb.set_trace()
+
+	print minerva.cameras[0].getGuideStar()
+	minerva.takeFauImage(target,minerva.telescopes[0].id)
+	print minerva.cameras[0].getGuideStar()
+	ipdb.set_trace()
+
+
+
+#	pipe = subprocess.Popen(". %s; env" % '/home/minerva/.bashrc', stdout=subprocess.PIPE, shell=True)
+#	output = pipe.communicate()[0]
+#	env = dict((line.split("=", 1) for line in output.splitlines()))
+#	os.environ.update(env)
+
+	minerva.night='n20190920'
+
+	cmd = './minerva_library/runidl.sh /Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.fits'
+	process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+	print cmd
+	process.wait()
+	attachments = glob.glob('/Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.png')
+
+	print attachments
+	ipdb.set_trace()
+
+	hvactempname = ''
+	weatherplotname=''
+	Pointing_plot_name=''
+	fits_plot_name=''
+
+	attachments.extend([weatherplotname,Pointing_plot_name,fits_plot_name,hvactempname])
+
+
+
+	subject = 'Test'
+	body = ''
+	mail.send(subject,body,attachments=attachments,directory=minerva.directory)
+	
+        
+
+
+#	newauto.autofocus(minerva,'T4', dome_override=True)
+
+	ipdb.set_trace()
+
+
+#	minerva.telescopes[0].calibrateRotator(minerva.cameras[0])
+	minerva.telescopes[1].calibrateRotator(minerva.cameras[1])
+#	minerva.telescopes[2].calibrateRotator(minerva.cameras[2])
+#	minerva.telescopes[3].calibrateRotator(minerva.cameras[3])
+
 #	newauto.autofocus(minerva,'T2',simulate=True)
 	
 	
 #	minerva.telescopes[3].recoverFocuser(29000,'2')
 #	ipdb.set_trace()
 
+
+#	minerva.endNight(minerva.telescopes[0],kiwispec='True')
+#	minerva.endNight(minerva.telescopes[1],kiwispec='True')
+#	minerva.endNight(minerva.telescopes[2],kiwispec='True')
+#	minerva.endNight(minerva.telescopes[3],kiwispec='True')
+
+	minerva.endNight(minerva.telescopes[0])
+
+
+	ipdb.set_trace()
 
 	
 	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0}')

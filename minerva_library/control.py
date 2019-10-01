@@ -101,9 +101,10 @@ class control:
 				except:
 					self.logger.exception("Failed to initialize Aqawan " +str(i+1))
 			# initialize the 4 telescopes
-#			self.logger.error("***T4 is disabled***")
+#			self.logger.error("***T3 disabled***")
 			telescopes = [1,2,3,4]
-			telescopes = [1,2,3]
+			self.logger.error("***only using T2***")
+			telescopes = [2]
 			for i in telescopes:
 				try: 
 					self.cameras.append(imager.imager('imager_t' + str(i) + '.ini',self.base_directory))
@@ -688,6 +689,19 @@ class control:
 		star.compute(epoch=ephem.now())
 		return self.rads_to_hours(star.ra), self.rads_to_degs(star.dec)
 
+	def takeFauImageFast():
+
+		d = cameras.camera.img
+		th = threshold_pyguide(d, level = 4)
+
+		if np.max(d*th) == 0.0:
+			return np.zeros((1,3))
+    
+		imtofeed = np.array(np.round((d*th)/np.max(d*th)*255), dtype='uint8')
+		cc = centroid_all_blobs(imtofeed)
+
+		return cc
+
 	# this should be replaced with SExtractor
 	def getstars(self,imageName):
     
@@ -776,9 +790,7 @@ class control:
 
 		return filename
 
-	# Assumes brightest star is our target star!
-	# *** will have exceptions that likely need to be handled on a case by case basis ***
-	def fauguide(self, target, telid, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False, ao=False):
+	def fauguide(self,target,telid,guiding=True,xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False, ao=False):
 
 		telescope = utils.getTelescope(self,telid)
 		camera = utils.getCamera(self,telid)
@@ -786,6 +798,226 @@ class control:
 		m3port = telescope.port['FAU']
 
 		camera.fau.acquired = False
+
+		# try out the tip/tilt guiding...
+		ao = camera.isAOPresent()
+
+		# center the AO unit
+		if ao: camera.homeAO()
+
+		if xfiber <> None:
+			camera.fau.xfiber = xfiber
+		if yfiber <> None: 
+			camera.fau.yfiber = yfiber
+
+		p=pid.PID(P=np.array([camera.fau.KPx, camera.fau.KPy]),
+			  I=np.array([camera.fau.KIx, camera.fau.KIy]),
+			  D=np.array([camera.fau.KDx, camera.fau.KDy]),
+			  Integrator_max = camera.fau.Imax,
+			  Deadband = camera.fau.Dband,
+			  Correction_max = camera.fau.Corr_max)
+		p.setPoint((camera.fau.xfiber, camera.fau.yfiber))
+		
+		pfast=pid.PID(P=np.array([camera.fau.fKPx, camera.fau.fKPy]),
+			      I=np.array([camera.fau.fKIx, camera.fau.fKIy]),
+			      D=np.array([camera.fau.fKDx, camera.fau.fKDy]),
+			      Integrator_max = camera.fau.fImax,
+			      Deadband = camera.fau.fDband,
+			      Correction_max = camera.fau.fCorr_max)
+		pfast.setPoint((camera.fau.xfiber, camera.fau.yfiber))
+
+		tvals=np.array([])
+		xvals=np.array([])
+		yvals=np.array([])
+		npts=10000
+		error = np.zeros((npts, 2))
+		curpos_old = np.array([-1.0, -1])
+		converged=False
+		starttime2= time.time()
+		lasttimestamp = -1
+                
+                #MAIN LOOP
+		i=0
+		while camera.fau.guiding and not telescope.abort:
+			self.logger.info("entering guiding loop")
+			if i>npts:
+				break
+
+			#t0,xstar,ystar = camera.getGuideStar()
+			t0 = datetime.datetime.utcnow()
+			xstar = ystar = np.nan
+			while (np.isnan(xstar) or np.isnan(ystar)) and not telescope.abort:
+				self.logger.info("beginning image")
+				
+				# take an image, don't wait for it to write to disk
+				imaging_thread = threading.Thread(target=self.takeFauImage,args=(target,telid,))
+				imaging_thread.start()
+
+				time.sleep(target['fauexptime'])
+
+				# imager_server fights when trying to do it asynchronously
+				#imaging_thread.join()
+
+				# update when we have a new image
+				guidetime,xstar,ystar = camera.getGuideStar()
+				while (guidetime-t0).total_seconds() < 0.001:
+					time.sleep(0.001)
+				t0 = guidetime
+
+				print guidetime, xstar, ystar, np.isnan(xstar), np.isnan(ystar), telescope.abort
+
+
+			if True:
+
+				self.logger.info(telid + ": Using the star at (x,y)=(" + str(xstar) + "," + str(ystar) +  ")")
+
+				# include an arbitrary offset from the nominal position (experimental)
+				offset_file = self.base_directory + telid + '_fiber_offset.txt'
+				
+				if os.path.exists(offset_file):
+					with open(offset_file) as fh:
+						entries = fh.readline().split()
+						xoffset = float(entries[0])
+						yoffset = float(entries[1])
+						self.logger.info(telid + ": offset file found, applying offset to fiber position (" + str(xoffset) + "," + str(yoffset) + ")")
+				else:
+					xoffset = 0.0
+					yoffset = 0.0
+
+				p.setPoint((camera.fau.xfiber+xoffset,camera.fau.yfiber+yoffset))
+				pfast.setPoint((camera.fau.xfiber+xoffset,camera.fau.yfiber+yoffset))
+
+				curpos = np.array([xstar,ystar])
+				tvals = np.append(tvals,i)
+				xvals = np.append(xvals, curpos[0])
+				yvals = np.append(yvals, curpos[1])
+				
+				# make sure it's actually converging
+				if not camera.fau.acquired:
+					body = 'Dear benevolent humans,\n\n'\
+					    'My acquisition is not converging. The rotator position may need to be recalibrated for ' + telid + '. \n\n'\
+					    'Love,\nMINERVA'
+					if len(xvals) > 1 and len(yvals) > 1:
+						if abs(camera.fau.xfiber+xoffset-curpos[0]) > 20:
+							# if it was better before, send an email -- it's running away!
+							if abs(xvals[-2] - (camera.fau.xfiber + xoffset)) < abs(xvals[-1] - (camera.fau.xfiber + xoffset)):
+								mail.send('Acquisition not converging for ' + telid,body,level='serious',directory=self.directory)
+								self.logger.info(telid + ": Acquisition not converging, check rotator calibration")
+						if abs(camera.fau.yfiber+yoffset-curpos[1]) > 20:
+							if abs(yvals[-2] - (camera.fau.yfiber + yoffset)) < abs(yvals[-1] - (camera.fau.yfiber + yoffset)):
+								mail.send('Acquisition not converging for ' + telid,body,level='serious',directory=self.directory)
+								self.logger.info(telid + ": Acquisition not converging, check rotator calibration")
+
+					# TODO:
+					# if we see this often, we probably want to automatically recalibrate the rotator!
+
+				filterx=camera.fau.filterdata(xvals, N=camera.fau.smoothing)
+				filtery=camera.fau.filterdata(yvals, N=camera.fau.smoothing)
+				filtercurpos=np.array([filterx, filtery])
+				separation = camera.fau.dist(camera.fau.xfiber+xoffset-curpos[0], camera.fau.yfiber+yoffset-curpos[1])*camera.fau.platescale
+				self.logger.info(telid + ": Target is at (" + str(curpos[0]) + ',' + str(curpos[1]) + "), " + str(separation) + '" away from the fiber (' + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ") -- tolerance is " + str(camera.fau.acquisition_tolerance) + '"')
+ 				if separation < camera.fau.acquisition_tolerance:
+					self.logger.info(telid + ": Target acquired")
+					camera.fau.acquired = True
+					if acquireonly:
+						# tell the calling function it has successfully acquired
+						return True
+
+				if separation < camera.fau.bp:
+                                        #note units are arc-seconds here in the "if"
+					updateval = p.update(filtercurpos)
+					self.logger.info(telid + ": Using slow loop")
+					fast = False
+				else:
+					self.logger.info(telid + ": Using fast loop")
+					updateval = pfast.update(filtercurpos)
+					fast = True
+
+				# position angle on the sky
+				# PA = parallactic angle - mechanical rotator position + field rotation offset
+				offset = float(telescope.rotatoroffset[telescope.port['FAU']])
+				if artificial:
+					PA = float(telescope.getRotatorStatus(m3port).position) - offset
+				else:
+					parangle = telescope.parangle(useCurrent=True)
+					PA = parangle - float(telescope.getRotatorStatus(m3port).position) + offset
+				self.logger.info(telid + ': PA = '+str(PA))
+
+
+				# Rotate the PID value by the negative of the rotation angle
+				updateval= np.dot(camera.fau.rotmatrix(-PA), updateval)
+				error[i,:] = np.array(p.error)
+                
+				# Slew the telescope
+				telupdateval = updateval*camera.fau.platescale
+
+				if guiding == True:
+					telescopeStatus = telescope.getStatus()
+					dec = utils.ten(telescopeStatus.mount.dec_2000)
+					if artificial:
+						telescope.mountOffsetAltAzFixed(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
+					else:
+						# if we're using the AO unit and the object is already acquired, send commands to the tip/tilt
+						if ao and camera.fau.acquired: camera.moveAO(updateval[0],updateval[1]) # in pixel units
+						else: telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
+						# otherwise, send commands to the mount
+
+#					if fast:
+#						time.sleep(5)
+#					else:
+#						time.sleep(1)
+
+				self.logger.debug(telid + ": PID LOOP: " + 
+						  str(camera.fau.xfiber)+","+
+						  str(camera.fau.yfiber)+","+
+						  str(curpos[0])+","+
+						  str(curpos[1])+","+
+						  str(updateval[0])+","+
+						  str(updateval[1])+","+
+						  str(telupdateval[0])+","+
+						  str(telupdateval[1])+","+
+						  str(camera.fau.rotangle)+","+
+						  str(guiding))
+
+				self.logger.debug(telid + ": Curpos " + str(curpos[0])+"   "+str(curpos[1]))
+				self.logger.debug(telid + ": distance from target: " +str(round(camera.fau.dist(camera.fau.xfiber+xoffset-curpos[0], camera.fau.yfiber+yoffset-curpos[1]),2)))
+				self.logger.debug(telid + ": Updatevalue: " + str(updateval[0])+" "+str(updateval[1]))
+				self.logger.debug(telid + ": Commanding update: " + str(telupdateval[0])+" "+str(telupdateval[1]))
+				if i >50:
+					meanx = np.mean((xvals)[50:])
+					meany = np.mean((yvals)[50:])
+					stdx  = np.std( (xvals)[50:])
+					stdy  = np.std( (yvals)[50:])
+
+					self.logger.debug(telid + ": Mean x position  " + str(meanx))
+					self.logger.debug(telid + ": Std x position  " + str(stdx))
+					self.logger.debug(telid + ": Mean y position  " + str(meany))
+					self.logger.debug(telid + ": Std y position  " + str(stdy))
+				else:
+					self.logger.debug(telid + ": Building up statistics")
+
+			i=i+1
+
+		# The target is no longer acquired
+		camera.fau.acquired = False
+		return True
+
+
+
+
+	# Assumes brightest star is our target star!
+	# *** will have exceptions that likely need to be handled on a case by case basis ***
+	def fauguide_old(self, target, telid, guiding=True, xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False, ao=False):
+
+		telescope = utils.getTelescope(self,telid)
+		camera = utils.getCamera(self,telid)
+		dome = utils.getDome(self,telid)
+		m3port = telescope.port['FAU']
+
+		camera.fau.acquired = False
+
+		# try out the tip/tilt guiding...
+		ao = camera.isAOPresent()
 
 		# center the AO unit
 		if ao: camera.homeAO()
@@ -1159,6 +1391,9 @@ class control:
         #S A function to put moving the i2stage in it's own thread, which will check status of the stage,
 	#S run trouble shooting, and ultimately handle the timeout.
         def ctrl_i2stage_move(self,locationstr = 'out', position=None):
+		self.logger.error("***i2 stage disabled***")
+		return
+		
                 #S Sends command to begin i2stage movement, whcih will start
                 #S a thread in the spectrograph server to move the stage to the
                 #S corresponding location string.
@@ -2026,7 +2261,12 @@ class control:
 		# add either the keywords specific to the spectrograph or imager
 		if 'spectroscopy' in target.keys():
 			if target['spectroscopy']:
-				f = self.addSpectrographKeys(f,target=target)
+				if self.red:
+					#TODO: add MRED spectrograph keys
+					#f = self.addMredSpectrographKeys(f,target=target)
+					pass				
+				else:
+					f = self.addSpectrographKeys(f,target=target)
 			else: f = self.addImagerKeys(tele_list, f)
 		else: f = self.addImagerKeys(tele_list, f)
 
@@ -2715,7 +2955,7 @@ class control:
 				os.remove(self.base_directory + '/minerva_library/astrohaven1.request.txt')
 		elif self.south:
 			pass
-		else:	
+		else:
 			if os.path.exists(self.base_directory + '/minerva_library/aqawan1.request.txt'): 
 				os.remove(self.base_directory + '/minerva_library/aqawan1.request.txt')
 			if os.path.exists(self.base_directory + '/minerva_library/aqawan2.request.txt'): 
@@ -2784,12 +3024,15 @@ class control:
 		filenames = glob.glob(dataPath + '/*.fits*')
 		objects = {}
 		for filename in filenames:
+                     try:
 			obj = filename.split('.')[objndx]
 			if not kiwispec and obj <> 'Bias' and obj <> 'Dark':
 				obj += ' ' + filename.split('.')[3]
 			if obj not in objects.keys():
 				objects[obj] = 1
 			else: objects[obj] += 1
+                     except:
+                        ipdb.set_trace()
 
 		# scrape the logs to summarize the weather and errors
 		errors = {}
@@ -2945,12 +3188,30 @@ class control:
 		    "Love,\n" + \
 		    "MINERVA"
 
-		weatherplotname = plotweather(self,night=night)
-		
+#		ipdb.set_trace()
+
+		try: weatherplotname = plotweather(self,night=night)
+		except: weatherplotname = ''
+
+
+		# run read_temps/run_yesterdays_temps.sh
+		# attach /home/minerva/minerva-control/log/nYYYYMMDD/nYYYYMMDD.hvac.png
+		process = subprocess.Popen(self.base_directory + '/minerva_library/read_temps/run_yesterdays_temps.sh', shell=True, stdout=subprocess.PIPE)
+		process.wait()
+		hvactempname = '/home/minerva/minerva-control/log/' + self.night + '/' + self.night + '.hvac.png'
+		if not os.path.isfile(hvactempname): hvactempname = ''
+
+
+		cmd = self.base_directory + '/minerva_library/runidl.sh /Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.fits'
+		process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+		process.wait()
+		attachments = glob.glob('/Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.png')
+		attachments.extend([weatherplotname,Pointing_plot_name,fits_plot_name,hvactempname])
+
 		# email observing report
 		if email: 
 			subject = telescope.id + ' done observing'
-			mail.send(subject,body,attachments=[weatherplotname,Pointing_plot_name,fits_plot_name],directory=self.directory)
+			mail.send(subject,body,attachments=[weatherplotname,Pointing_plot_name,fits_plot_name,hvactempname],directory=self.directory)
 
 		print body
 
@@ -3306,6 +3567,7 @@ class control:
 		for telescope in self.telescopes:
 			# home the telescope
 			thread = threading.Thread(target = telescope.homeAllMechanisms)
+			thread.name = telescope.id
 			thread.start()
 			threads.append(thread)
 			
