@@ -55,8 +55,8 @@ def robust_std(x):
     y = x.flatten()
     n = len(y)
     y.sort()
-    ind_qt1 = round((n+1)/4.)
-    ind_qt3 = round((n+1)*3/4.)
+    ind_qt1 = int(round((n+1)/4.))
+    ind_qt3 = int(round((n+1)*3/4.))
     IQR = y[ind_qt3]- y[ind_qt1]
     lowFense = y[ind_qt1] - 1.5*IQR
     highFense = y[ind_qt3] + 1.5*IQR
