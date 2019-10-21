@@ -546,7 +546,6 @@ class server:
                         self.logger.error("ERROR: did not connect to the Iodine stage.")
                         return 'fail'
 
-                return 'fail'
                 # home the stage then move to the nominal (in) position
                 self.logger.info("Iodine stage connected; homing")
                 self.i2stage_home()
