@@ -203,7 +203,9 @@ class server:
 			acquisition_offset_x = float(param[1])
 			acquisition_offset_y = float(param[2])
                         offset = (acquisition_offset_x,acquisition_offset_y)
-
+		except:
+			return 'fail'
+		
                 if self.zwodirect:
                         self.logger.info("Exposing through python")
                         self.guider.expose(exptime, offset=offset)
