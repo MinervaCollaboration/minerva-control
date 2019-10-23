@@ -350,7 +350,7 @@ class server:
 		self.logger.info('saving image to:' + self.file_name)
 
                 try:
-                        shutil.copy("C:/IMAGES/I","C:/minerva/data/n20151211/I10.fits")
+                        #shutil.copy("C:/IMAGES/I","C:/minerva/data/n20151211/I10.fits")
                         shutil.move("C:/IMAGES/I",self.file_name)
                         return 'success'
 		except: return 'fail'
@@ -1252,7 +1252,7 @@ class server:
 						  "and stabilize the optical bench. Please investigate immediately.\n\n"+
 						  "Love,\nMINERVA",level="serious")
 					self.lastemailed = datetime.datetime.utcnow()
-			elif specpres > 0.003:
+			elif specpres > 0.006:
 				self.logger.error("the spectrograph pressure is out of range")
 				self.logger.info("The pump pressure is " + str(pumppres) + " mbar")
                                 self.logger.info("The spectrograph pressure is " + str(specpres) + " mbar")
@@ -1264,7 +1264,7 @@ class server:
 				if pumppres != 'UNKNOWN' and pumppres < specpres and pumpon and (not ventvalveopen) and pumpvalveopen:
 					# 0) pumping down after venting
 					# diagnosis:
-					#    spec pressure > 0.003
+					#    spec pressure > 0.006
 					#    pump pressure < spec pressure
 					# action:
 					# email in case of misdiagnosis
@@ -1282,7 +1282,7 @@ class server:
 							  "The pump valve is " + pumpvalvetxt + '\n\n'+
 							  "Love,\nMINERVA",level="serious")
 						self.lastemailed = datetime.datetime.utcnow()
-				elif pumppres != 'UNKNOWN' and pumppres < 0.003 and pumpon and (not ventvalveopen) and pumpvalveopen:
+				elif pumppres != 'UNKNOWN' and pumppres < 0.006 and pumpon and (not ventvalveopen) and pumpvalveopen:
 					# 1) a power outage closed the pump valve and the leak rate 
 					# caused it to slowly come back up slowly (bad, but not terrible)
 					# diagnosis:
@@ -1345,7 +1345,7 @@ class server:
 							  "The pump valve is " + pumpvalvetxt + '\n\n'+
 							  "Love,\nMINERVA",level="critical")
 						self.lastemailed = datetime.datetime.utcnow()
-				elif pumppres != 'UNKNOWN' and pumppres > 0.003 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
+				elif pumppres != 'UNKNOWN' and pumppres > 0.006 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
 					# 3) we intentionally vented the spectrograph (probably fine as this is intentional)
 					#    spec pressure > 3
 					#    pump pressure > 3
