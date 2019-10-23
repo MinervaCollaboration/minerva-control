@@ -197,10 +197,16 @@ class server:
                 return 'success ' + timestr + ' '+str(x)+' '+str(y)
 
 	def exposeGuider(self,param):
-                        
+		try:
+			param = param.split()
+			exptime = float(param[0])
+			acquisition_offset_x = float(param[1])
+			acquisition_offset_y = float(param[2])
+                        offset = (acquisition_offset_x,acquisition_offset_y)
+
                 if self.zwodirect:
                         self.logger.info("Exposing through python")
-                        self.guider.expose(float(param))
+                        self.guider.expose(exptime, offset=offset)
                         #except: return 'fail'
                         return 'success'
                 else:

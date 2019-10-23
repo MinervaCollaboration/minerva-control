@@ -400,7 +400,7 @@ class imager:
 		return False
 
 	#start exposure
-	def expose(self, exptime=1, exptype=0, filterInd=None,guider=False):
+	def expose(self, exptime=1, exptype=0, filterInd=None,guider=False, offset=(0.0,0.0)):
 		self.logger.info('Starting exposure')
 		cmd = 'expose'
 		if guider: cmd += 'Guider'
@@ -408,6 +408,9 @@ class imager:
 
 		if not guider:
 			cmd += ' ' + str(exptype) + ' ' + str(filterInd)
+		else:
+			cmd += " " + str(offset[0]) + ' ' + str(offset[1])
+			
 
 		self.logger.info("sending command:" + cmd)
 		if (self.send(cmd,30)).split()[0] == 'success': return True
@@ -452,7 +455,7 @@ class imager:
 		return time, float(array[2]), float(array[3])
 
 	# returns file name of the image saved, return 'error' if error occurs
-	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False, piggyback=False):
+	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False, piggyback=False, offset=(0.0,0.0)):
 #		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
 		ndx = self.get_index()
@@ -503,7 +506,7 @@ class imager:
 		if filterInd != None: filt = filt = self.filters[filterInd]
 		else: filt = None
 
-		if self.expose(exptime,exptype,filt,guider=guider):
+		if self.expose(exptime,exptype,filt,guider=guider,offset=offset):
 			self.write_status()
 			time.sleep(exptime+3.0)
 			if self.save_image(filename, guider=guider):
@@ -542,7 +545,6 @@ class imager:
 
 	# this requires winexe on linux and a registry key on each Windows (7?) machine (apply keys.reg in dependencies folder):
 	def recover_server(self):
-
 		self.nserver_failed += 1
 
 		# if it's failed more than 3 times, something is seriously wrong -- give up

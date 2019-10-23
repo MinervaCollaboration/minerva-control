@@ -93,6 +93,8 @@ def mkdict(name=None, bstar=False, includeInactive=False):
         target['guide'] = False
         target['cycleFilter'] = True
         target['positionAngle'] = 0.0
+        target['acquisition_offset_north'] = float(targetlist['acquisition_offset_north'][i])
+        target['acquisition_offset_east'] = float(targetlist['acquisition_offset_east'][i])
         target['pmra'] = float(targetlist['pmra'][i])
         target['pmdec'] = float(targetlist['pmdec'][i])
         target['parallax'] = float(targetlist['parallax'][i])
@@ -128,8 +130,8 @@ if __name__ == '__main__':
 
     bstar = False
 #    print target2json('HD191408A')
-    ipdb.set_trace()
-
 
     targetlist = rdlist(bstar=bstar)
     print targetlist['name']
+    ipdb.set_trace()
+    

@@ -44,7 +44,7 @@ def PhotCalib(minerva, CalibInfo, telid, checkiftime=True):
     waittime = (biastime - datetime.datetime.utcnow()).total_seconds()
     if waittime > 0 and checkiftime:
         # Take biases and darks (skip if we don't have time before twilight)
-        minerva.logger.info(telescope_name + 'Waiting until darker before biases/darks (' + str(waittime) + ' seconds)')
+        minerva.logger.info('Waiting until darker before biases/darks (' + str(waittime) + ' seconds)')
         time.sleep(waittime)
         #S Re-initialize, and turn tracking on.
         minerva.doBias(CalibInfo['nbias'],telid)
@@ -131,6 +131,8 @@ def get_States(minerva, tel_phot_targets):
 
             if tel_phot_targets[telescope.id] != None: # there actually is a photometric target for this telescope
 
+                minerva.logger.info('here825')
+
                 Teles_target_info[telescope.id] = {}
             
                 Teles_starts[telescope.id] = []
@@ -152,7 +154,7 @@ def get_States(minerva, tel_phot_targets):
                 all_starttimes += Teles_starts[telescope.id]
                 # Both all_starttimes and phot_teles are now lists that correspond to ALL (no matter the telescope) exp_starttimes                
             
-            
+        minerva.logger.info('here85')
         fields = []
         for title in my_field_names:
             if type(Teles_target_info[onePhot_tele][title][0])==list:
@@ -170,8 +172,9 @@ def get_States(minerva, tel_phot_targets):
         phot_teles = np.array(phot_teles) # for indexing multiple indices
         for s_time_ind in xrange(len(all_starttimes)):
             dup_inds = np.where( np.array(all_starttimes) == all_starttimes[s_time_ind] )[0]
-
-            
+ 
+            minerva.logger.info('here875')
+           
             if s_time_ind == dup_inds[0]: # if an exp_starttime has a multiplicity of 1, then go. if an exp_starttime has a multiplicity > 1 but this is the first time is has occurred in the FOR loop, then go.
                 single_fields = []
                 for field_ind in xrange(len(fields)):
@@ -295,6 +298,10 @@ def omniObserve(minerva, states):
                 if RV_target['name'] == 'HD131880':
                     RV_target['i2'] = False
                     RV_target['exptime'] = [600]
+                    RV_target['num'] = [99]
+                if RV_target['name'] == 'HD1298':
+                    RV_target['i2'] = False
+                    RV_target['exptime'] = [1800]
                     RV_target['num'] = [99]
 
                 minerva.logger.info('Taking spectrum of ' + RV_target['name'])
@@ -430,8 +437,10 @@ def observe():
         with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
             fh.write(str(datetime.datetime.utcnow()))
 
+
         with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
             fh.write(str(datetime.datetime.utcnow()))
+
 
         if CalibInfo != None and CalibEndInfo != None:
             if datetime.datetime.utcnow() < minerva.site.NautTwilEnd():
@@ -442,6 +451,7 @@ def observe():
                 threads.append(thread)
      
         # End FOR loop
+
                
     tel_p_targets = {}
     for telescope in minerva.telescopes:
@@ -458,12 +468,14 @@ def observe():
                     if target <> -1:  # only works for Python 2
                         # truncate the start and end times so it's observable: elevation (above ~20 degrees) and airmass (X < 3 or 2)
                         target = utils.truncate_observable_window(minerva.site, target)
+
                              
                         # The target dictionary's start and end times should be in datetime.datetime format now
                         if target['starttime'] < target['endtime']:
                             p_targets.append( target )
                             # starttime and endtime should only represent when the object is observable
                              
+
                 tel_p_targets[telescope.id] = p_targets
               
         except IOError: # there is no photometry target file
@@ -472,7 +484,6 @@ def observe():
             tel_p_targets[telescope.id] =  None
                
 # Even if there is a photometry schedule for a telescope, we may not want (or be able) to use that telescope so I don't include such a telescope in the dictionary
-
             
     # Calculate the duration times between photometry targets
     # Calculate the expected start and end times of the photometric observations
@@ -484,7 +495,9 @@ def observe():
                 p_target = tel_p_targets[telescope.id][ind_target]  # without copy.copy, this ind_target dictionary will change whenever the p_target variable changes.  This only happens with one variable coupling at a time
                     
                 if ind_target == 0:
-                    
+
+                    minerva.logger.info('here 6')
+
                     if p_target['starttime'] < minerva.site.NautTwilEnd(): # staying safe, but should not be necessary
                         p_target['exp_starttime'] = minerva.site.NautTwilEnd()
                               
@@ -501,6 +514,8 @@ def observe():
                         p_target['exp_endtime'] = minerva.site.NautTwilBegin()
                          
                 else:
+
+                    minerva.logger.info('here 7')
 
                     # check previous expected endtime, if that overlaps with the current starttime then create expected starttime in target's dictionary
                     if p_target['starttime'] <= tel_p_targets[telescope.id][ind_target-1]['exp_endtime']:
@@ -524,14 +539,18 @@ def observe():
 
                     
     # Get the states of change
+    minerva.logger.info('here 8')
     chrono_states = get_States(minerva, tel_p_targets)
+    minerva.logger.info('here 9')
 
     
     # Wait for the sky flats to finish
     for p in np.arange(len(threads)):
         threads[p].join()
         
+    minerva.logger.info('here 10')
     omniObserve(minerva, chrono_states)
+    minerva.logger.info('here 11')
     
     for tele in minerva.telescopes: minerva.endNight(tele,kiwispec=True)
 

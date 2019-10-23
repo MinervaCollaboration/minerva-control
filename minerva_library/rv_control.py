@@ -143,78 +143,82 @@ def doSpectra(minerva, target, tele_list, test=False):
                       "Love,\nMINERVA",level='serious')
             # should kill the errant thread, otherwise all hell breaks loose
 
-    # take the backlit images
-    minerva.logger.info("Locating Fiber")
-    backlight(minerva)
+    max_obs_before_reacquire = 10
 
-    # find the fiber position from the backlit images
-    for telid in tele_list:
-
-        telescope = utils.getTelescope(minerva,telid)
-        camera = utils.getCamera(minerva,telid)
-        
-        if 'backlight' not in camera.guider_file_name:
-            minerva.logger.error(telid + ": backlight image not taken; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
-            mail.send(telid + " could not identify fiber position",
-                      "Dear Benevolent Humans,\n\n"+
-                      telid + " failed to take the backlight image and is relying on the default fiber position in the config file. This is likely to significantly impact throughput.\n\n" + 
-                      "Love,\nMINERVA",level='serious')
-        else:
-            xfiber, yfiber = find_fiber(telescope.datadir + minerva.night + '/' + camera.guider_file_name, camera, control=minerva)
-            if xfiber <> None:
-                minerva.logger.info(telid + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + camera.guider_file_name)
-                camera.fau.xfiber = xfiber
-                camera.fau.yfiber = yfiber
-            else:
-                minerva.logger.error(telid + ": failed to find fiber in image " + camera.guider_file_name + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
-                mail.send(telid + " could not identify fiber position",
-                          "Dear Benevolent Humans,\n\n"+
-                          telid + " failed to idenitfy the fiber position and is relying on the default fiber position in the config file. This is likely to significantly impact throughput.\n\n" + 
-                          "Love,\nMINERVA",level='serious')
-
-        camera.fau.guiding=True
-
-    # switch all ports back to the FAU asynchronously
-    minerva.m3port_switch_list('FAU',tele_list)
-    
-    # acquire the target, run autofocus, then start guiding
-    minerva.logger.info("Beginning acquisition, autofocus, and guiding")
-    threads = []
-    for telid in tele_list:
-        telescope = utils.getTelescope(minerva,telid)
-
-        # set the timeout to be the end of exposure
-        timeout = max([target['exptime'],300])
-        kwargs = {'timeout':timeout}
-        thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,telid,),kwargs=kwargs)
-        thread.name = telid
-        thread.start()
-        threads.append(thread)
-        
-    # wait for all telescopes to put target on their fibers (or timeout)
-    # needs time to reslew (because m3port_switch stops tracking), fine acquire, autofocus, guiding
-    acquired = False
-    timeout = 600.0 
-    elapsedTime = 0.0
-    t0 = datetime.datetime.utcnow()
-    while not acquired and elapsedTime < timeout:
-        acquired = True
-        for i in range(len(tele_list)):
-            camera = utils.getCamera(minerva,tele_list[i])
-            minerva.logger.info(tele_list[i] + ": acquired = " + str(camera.fau.acquired))
-            if not camera.fau.acquired:
-                minerva.logger.info(tele_list[i] + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
-                acquired = False
-        time.sleep(1.0)
-        elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
-
-    # what's the right thing to do in a timeout?
-    # Try again?
-    # Go on anyway? (as long as one telescope succeeded?)
-    # We'll try going on anyway for now...
-        
     # begin exposure(s)
     for i in range(target['num'][0]):
+
+        if (i % max_obs_before_reacquire) == 0:
+            # take the backlit images
+            minerva.logger.info("Locating Fiber")
+            backlight(minerva)
+
+            # find the fiber position from the backlit images
+            for telid in tele_list:
+
+                telescope = utils.getTelescope(minerva,telid)
+                camera = utils.getCamera(minerva,telid)
+        
+                if 'backlight' not in camera.guider_file_name:
+                    minerva.logger.error(telid + ": backlight image not taken; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+                    mail.send(telid + " could not identify fiber position",
+                              "Dear Benevolent Humans,\n\n"+
+                              telid + " failed to take the backlight image and is relying on the default fiber position in the config file. This is likely to significantly impact throughput.\n\n" + 
+                              "Love,\nMINERVA",level='serious')
+                else:
+                    xfiber, yfiber = find_fiber(telescope.datadir + minerva.night + '/' + camera.guider_file_name, camera, control=minerva)
+                    if xfiber <> None:
+                        minerva.logger.info(telid + ": Fiber located at (x,y) = (" + str(xfiber) + "," + str(yfiber) + ") in image " + camera.guider_file_name)
+                        camera.fau.xfiber = xfiber
+                        camera.fau.yfiber = yfiber
+                    else:
+                        minerva.logger.error(telid + ": failed to find fiber in image " + camera.guider_file_name + "; using default of (x,y) = (" + str(camera.fau.xfiber) + "," + str(camera.fau.yfiber) + ")")
+                        mail.send(telid + " could not identify fiber position",
+                                  "Dear Benevolent Humans,\n\n"+
+                                  telid + " failed to idenitfy the fiber position and is relying on the default fiber position in the config file. This is likely to significantly impact throughput.\n\n" + 
+                                  "Love,\nMINERVA",level='serious')
+
+                camera.fau.guiding=True
+
+            # switch all ports back to the FAU asynchronously
+            minerva.m3port_switch_list('FAU',tele_list)
+    
+            # acquire the target, run autofocus, then start guiding
+            minerva.logger.info("Beginning acquisition, autofocus, and guiding")
+            threads = []
+            for telid in tele_list:
+                telescope = utils.getTelescope(minerva,telid)
+
+                # set the timeout to be the end of exposure
+                timeout = max([target['exptime'],300])
+                kwargs = {'timeout':timeout}
+                thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,telid,),kwargs=kwargs)
+                thread.name = telid
+                thread.start()
+                threads.append(thread)
+        
+            # wait for all telescopes to put target on their fibers (or timeout)
+            # needs time to reslew (because m3port_switch stops tracking), fine acquire, autofocus, guiding
+            acquired = False
+            timeout = 600.0 
+            elapsedTime = 0.0
+            t0 = datetime.datetime.utcnow()
+            while not acquired and elapsedTime < timeout:
+                acquired = True
+                for i in range(len(tele_list)):
+                    camera = utils.getCamera(minerva,tele_list[i])
+                    minerva.logger.info(tele_list[i] + ": acquired = " + str(camera.fau.acquired))
+                    if not camera.fau.acquired:
+                        minerva.logger.info(tele_list[i] + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
+                        acquired = False
+                time.sleep(1.0)
+                elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+
+        # what's the right thing to do in a timeout?
+        # Try again?
+        # Go on anyway? (as long as one telescope succeeded?)
+        # We'll try going on anyway for now...
+        
         # make sure we're not past the end time
         if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
             minerva.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')

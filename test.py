@@ -17,11 +17,10 @@ import glob
 import subprocess
 import os
 
-def cleanUpNight(minerva):
-	minerva.endNight(num=1)
-	minerva.endNight(num=2)
-	minerva.endNight(num=3)
-	minerva.endNight(num=4)
+def cleanUpNight(minerva, night=None):
+
+	for telescope in minerva.telescopes:
+		minerva.endNight(telescope, night=night)
 
 if __name__ == '__main__':
 
@@ -30,8 +29,19 @@ if __name__ == '__main__':
 	minerva = control.control('control.ini',base_directory)
 
 
-	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 1.0,  "i2": false}')
+#	cleanUpNight(minerva)
+
+	
+
+	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 1.0,  "i2": false, "acquistition_offset_north":10, "acquisition_offset_east":7}')
 #	utils.truncate_observable_window(minerva.site,target,timeof=datetime.datetime(2018,9,25,2,9,55),logger=minerva.logger)
+
+
+	minerva.takeFauImage(target,minerva.telescopes[0].id)
+	
+	ipdb.set_trace()
+
+	ipdb.set_trace()
 
 	minerva.cameras[0].fau.guiding = True
 #	minerva.takeSpectrum(target,tele_list=['T2'])
@@ -51,7 +61,6 @@ if __name__ == '__main__':
 #	env = dict((line.split("=", 1) for line in output.splitlines()))
 #	os.environ.update(env)
 
-	minerva.night='n20190920'
 
 	cmd = './minerva_library/runidl.sh /Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.fits'
 	process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)

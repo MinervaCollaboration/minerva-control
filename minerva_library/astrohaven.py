@@ -29,7 +29,7 @@ class astrohaven:
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.create_objects()
                 self.status = {'Shutter1':'UNKNOWN','Shutter2':'UNKNOWN'}
-                self.status = self.get_status()
+#                self.status = self.get_status()
 				
 		self.initialized = False
 		self.lock = threading.Lock()
@@ -161,6 +161,7 @@ class astrohaven:
                 return self.status
             
             self.ser.open()
+	    ipdb.set_trace()
             while self.ser.inWaiting() == 0: time.sleep(0.6)
             while self.ser.inWaiting() > 0: status = self.ser.read(1)
             self.ser.close()

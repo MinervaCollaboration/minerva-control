@@ -47,7 +47,7 @@ class zwo:
         def getGuideStar(self):
                 return (self.guideimagelastupdate, self.guidestarx, self.guidestary)
 
-        def expose(self, exptime): 
+        def expose(self, exptime,offset=(0.0,0.0)): 
                 self.camera.set_control_value(asi.ASI_EXPOSURE,int(round(exptime*1e6)))                
                 self.img = self.camera.capture()
                    
@@ -72,10 +72,17 @@ class zwo:
                         self.guideimagelastupdate = datetime.datetime.utcnow()
 
                 else:
-                        # use the brightest star as the guide star      
+                        # find the brightest star
                         brightestndx = np.argmax(stars[:,2])
-                        self.guidestarx = stars[brightestndx][0]
-                        self.guidestary = stars[brightestndx][1]
+			
+			# find the closest star to the the offset position
+			dx = stars[:,0] - (stars[brightestndx][0] + offset[0]) 
+			dy = stars[:,1] - (stars[brightestndx][1] + offset[1]) 
+			dist = np.sqrt(dx^2 + dy^2)
+                        ndx = np.argmin(dist)
+
+                        self.guidestarx = stars[ndx][0]
+                        self.guidestary = stars[ndx][1]
                         self.guideimagelastupdate = datetime.datetime.utcnow()
 
                         

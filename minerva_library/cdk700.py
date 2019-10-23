@@ -984,7 +984,7 @@ class CDK700:
 	'''
 	def makePointingModel(self, minerva, npoints=100, maxmag=4.0, 
 			      fau=True, brightstar=True, randomgrid=False, grid=False, 
-			      nalt=5, naz=20, exptime=5.0, filterName='V', shuffle=True, 
+			      nalt=5, naz=20, exptime=1.0, filterName='V', shuffle=True, 
 			      minalt=-999, maxalt=80.0,minaz=0.0,maxaz=360.0):
 		
 		# can't set defaults using self...
@@ -1706,7 +1706,7 @@ class CDK700:
 			self.park()
 			return
 
-		parkAlt = 45.0
+		parkAlt = 25.0
 		parkAz = 0.0 
 
 		self.logger.info('Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')

@@ -54,16 +54,32 @@ class PT100:
         resistance = calib*(m[3]-m[2])/(m[1]-m[0])/1000000.0
         return resistance
 
+    def send_lost_com_email(self, description):
+        if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400.0:
+            mail.send('lost communication with ' + description + ' temperature sensor!',
+                      "Dear Benevolent Humans,\n\n"+
+                      "The " + description + " sensor has lost contact. " +
+                      "Please check the 'Thermal Enclosure' computer and the HVAC (192.168.1.51) to make sure everything "+
+                      "is functioning normally. You may need to restart the software. "+
+                      "Also, make sure the user logged into thermal enclosure computer is 'temp'. "+
+                      "The stability of the spectrograph is suspect until this is addressed.\n\n"
+                      "Love,\nMINERVA",level="serious")
+            self.lastemailed = datetime.datetime.utcnow()
+
     def logtemp_robust(self):
         while True:
             try: self.logtemp()
             except: self.logger.exception("logtemp failed; retrying")
+
             try: self.sock.close()
             except: pass
             time.sleep(1.0)
             self.load_config()
 
     def logtemp(self):
+
+        if (datetime.datetime.utcnow() - min(self.lastcom)).total_seconds()/60.0 > min(self.maxtimewithoutcom):
+            self.send_lost_com_email(self.logger_name)
         
         self.sock.settimeout(10.0)
         self.sock.gettimeout()
@@ -168,15 +184,7 @@ class PT100:
                     if self.maxtimewithoutcom[ndx[raw[0]]] != 0.0:
                         if (datetime.datetime.utcnow() - self.lastcom[ndx[raw[0]]]).total_seconds()/60.0 > self.maxtimewithoutcom[ndx[raw[0]]]:
                             if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400.0:
-                                mail.send('lost communication with ' + self.description[ndx[raw[0]]] + ' temperature sensor!',
-                                          "Dear Benevolent Humans,\n\n"+
-                                          "The " + self.description[ndx[raw[0]]] + " sensor has lost contact. " +
-                                          "Please check the 'Thermal Enclosure' computer and the HVAC (192.168.1.51) to make sure everything "+
-                                          "is functioning normally. You may need to restart the software. "+
-                                          "Also, make sure the user logged into thermal enclosure computer is 'temp'. "+
-                                          "The stability of the spectrograph is suspect until this is addressed.\n\n"
-                                          "Love,\nMINERVA",level="serious")
-                                self.lastemailed = datetime.datetime.utcnow()
+                                self.send_lost_com_email(self.description[ndx[raw[0]]])
                             self.logger.error("The spectrograph " + self.description[ndx[raw[0]]] + " sensor has lost contact.")
 
 

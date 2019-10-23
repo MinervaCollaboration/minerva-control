@@ -103,8 +103,8 @@ class control:
 			# initialize the 4 telescopes
 #			self.logger.error("***T3 disabled***")
 			telescopes = [1,2,3,4]
-			self.logger.error("***only using T2***")
-			telescopes = [2]
+#			self.logger.error("***only using T2***")
+#			telescopes = [2]
 			for i in telescopes:
 				try: 
 					self.cameras.append(imager.imager('imager_t' + str(i) + '.ini',self.base_directory))
@@ -790,7 +790,7 @@ class control:
 
 		return filename
 
-	def fauguide(self,target,telid,guiding=True,xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False, ao=False):
+	def fauguide(self,target,telid,guiding=True,xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False, ao=False, maxfail=5):
 
 		telescope = utils.getTelescope(self,telid)
 		camera = utils.getCamera(self,telid)
@@ -846,26 +846,43 @@ class control:
 			#t0,xstar,ystar = camera.getGuideStar()
 			t0 = datetime.datetime.utcnow()
 			xstar = ystar = np.nan
+			nfailed = 0
 			while (np.isnan(xstar) or np.isnan(ystar)) and not telescope.abort:
+
+				if nfailed > maxfail:
+					return False
+
 				self.logger.info("beginning image")
 				
-				# take an image, don't wait for it to write to disk
-				imaging_thread = threading.Thread(target=self.takeFauImage,args=(target,telid,))
-				imaging_thread.start()
+#				# take an image, don't wait for it to write to disk
+#				imaging_thread = threading.Thread(target=self.takeFauImage,args=(target,telid,))
+#				imaging_thread.start()
+#
+#				time.sleep(target['fauexptime'])
+#
+#				# imager_server fights when trying to do it asynchronously
+#				imaging_thread.join()
+#
+#
+#
+#				# update when we have a new image
+#				guidetime,xstar,ystar = camera.getGuideStar()
+#				while (guidetime-t0).total_seconds() < 0.001:
+#					time.sleep(0.001)
+#					guidetime,xstar,ystar = camera.getGuideStar()
+#				# some sort of race condition?
+#				time.sleep(0.5)
+#				guidetime,xstar,ystar = camera.getGuideStar()
+#				t0 = guidetime
+				
 
-				time.sleep(target['fauexptime'])
-
-				# imager_server fights when trying to do it asynchronously
-				#imaging_thread.join()
-
-				# update when we have a new image
+				self.takeFauImage(target,telid)
 				guidetime,xstar,ystar = camera.getGuideStar()
-				while (guidetime-t0).total_seconds() < 0.001:
-					time.sleep(0.001)
-				t0 = guidetime
+
+
 
 				print guidetime, xstar, ystar, np.isnan(xstar), np.isnan(ystar), telescope.abort
-
+				nfailed += 1
 
 			if True:
 
@@ -959,7 +976,10 @@ class control:
 					else:
 						# if we're using the AO unit and the object is already acquired, send commands to the tip/tilt
 						if ao and camera.fau.acquired: camera.moveAO(updateval[0],updateval[1]) # in pixel units
-						else: telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
+						else: 
+							telescope.mountOffsetRaDec(-telupdateval[0]/math.cos(dec*math.pi/180.0),-telupdateval[1])
+							time.sleep(0.1)
+							telescope.inPosition()
 						# otherwise, send commands to the mount
 
 #					if fast:
@@ -1391,9 +1411,6 @@ class control:
         #S A function to put moving the i2stage in it's own thread, which will check status of the stage,
 	#S run trouble shooting, and ultimately handle the timeout.
         def ctrl_i2stage_move(self,locationstr = 'out', position=None):
-		self.logger.error("***i2 stage disabled***")
-		return
-		
                 #S Sends command to begin i2stage movement, whcih will start
                 #S a thread in the spectrograph server to move the stage to the
                 #S corresponding location string.
@@ -1777,18 +1794,38 @@ class control:
 		camera.logger.info('starting the FAU imaging thread')
 
 		#start imaging process in a different thread
-		kwargs = {'exptime':target['fauexptime'],'objname':target['name'],'fau':True}
+		# translate offset from north/east (arcsec) to x y (pixels)
+		if target['acquisition_offset_north'] != 0.0 and target['acquisition_offset_east'] != 0.0:
+			telescope = utils.getTelescope(self,telid)
+
+			rotoffset = float(telescope.rotatoroffset[telescope.port['FAU']])
+			parangle = telescope.parangle(useCurrent=True)
+			PA = parangle - float(telescope.getRotatorStatus(m3port).position) + rotoffset
+
+			dx = camera.fau.platescale*(target['acquisition_offset_north']*math.cos(-PA) - target['acquisition_offset_east']*math.sin(-PA))
+			dy = camera.fau.platescale*(target['acquisition_offset_north']*math.sin(-PA) - target['acquisition_offset_east']*math.cos(-PA))
+
+			self.logger.info("Offset guiding. Target star is offset from brighest by (" + str(dx) + "," + str(dy) + ") pixels")
+
+			offset = (dx,dy)
+		else: offset = (0.0,0.0)
+
+		kwargs = {'exptime':target['fauexptime'],'objname':target['name'],'fau':True, 'offset':offset}
 		imaging_thread = threading.Thread(target = camera.take_image, kwargs = kwargs)
 		imaging_thread.name = camera.telid
 		imaging_thread.start()
+		dateobs = datetime.datetime.utcnow()
 		
 		# Prepare header while waiting for imager to finish taking image
 		try:
 			f = self.getHdr(target, [telid], dome, fau=True)
+			# add the EXPTIME and DATE-OBS keywords
+			f['DATE-OBS'] = (dateobs.strftime('%Y-%m-%dT%H:%M:%S.%f'),'YYYY-MM-DDThh:mm:ss.sss observation start, UTC')
+			f['EXPTIME'] = (target['fauexptime'],'Exposure time in seconds')
 		except:
 			self.logger.exception('error getting header keywords')
 			ipdb.set_trace()
-
+			
 		header = json.dumps(f)
 
 		camera.logger.info('waiting for imaging thread')
@@ -2967,7 +3004,7 @@ class control:
 		#S IF YOU WANT TO ENTER A PAST NIGHT:
 		#S make night='nYYYYMMDD' for the specified date.
 		if night == None:
-			night = self.site.night
+			night = self.night
 
 		if kiwispec: 
 			dataPath = '/Data/kiwispec/' + night + '/'
@@ -2999,9 +3036,12 @@ class control:
 		# copy schedule to data directory
 		schedulename = self.base_directory + "/schedule/" + night + "." + telescope.id + ".txt"
 		scheduleDest = dataPath + night + '.' + telescope.id + '.txt'
-		self.logger.info("Copying schedule file from " + schedulename + " to " + dataPath)
-		try: shutil.copyfile(schedulename, scheduleDest)
-		except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + scheduleDest)
+		if os.path.exists(schedulename):
+			self.logger.info("Copying schedule file from " + schedulename + " to " + dataPath)
+			try: shutil.copyfile(schedulename, scheduleDest)
+			except: self.logger.exception("Could not copy schedule file from " + schedulename + " to " + scheduleDest)
+		else:
+			self.logger.info("No schedule for this telescope; skipping copy")
 
 		# copy server logs to data directory
 		logs = glob.glob('/Data/serverlogs/*/' + night + '/*.log')
@@ -3054,7 +3094,6 @@ class control:
 			#        'date':[],
 			#        'sunAltitude':[],
 			}
-#		ipdb.set_trace()
 
 		# these messages contain variables; trim them down so they can be consolidated
 		toospecific = [('The camera was unable to reach its setpoint','in the elapsed time'),
@@ -3198,22 +3237,27 @@ class control:
 		# attach /home/minerva/minerva-control/log/nYYYYMMDD/nYYYYMMDD.hvac.png
 		process = subprocess.Popen(self.base_directory + '/minerva_library/read_temps/run_yesterdays_temps.sh', shell=True, stdout=subprocess.PIPE)
 		process.wait()
-		hvactempname = '/home/minerva/minerva-control/log/' + self.night + '/' + self.night + '.hvac.png'
+		hvactempname = '/home/minerva/minerva-control/log/' + night + '/' + night + '.hvac.png'
 		if not os.path.isfile(hvactempname): hvactempname = ''
 
 
-		cmd = self.base_directory + '/minerva_library/runidl.sh /Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.fits'
+		cmd = self.base_directory + '/minerva_library/runidl.sh "/Data/kiwispec/' + night + '/' + night + '.H*.????.fits"'
+		print cmd
 		process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
 		process.wait()
-		attachments = glob.glob('/Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.png')
+		filepath = '/Data/kiwispec/' + night + '/' + night + '.H*.????.png'
+		attachments = glob.glob(filepath)
+		print filepath
+		print attachments
 		attachments.extend([weatherplotname,Pointing_plot_name,fits_plot_name,hvactempname])
+		print attachments
 
 		# email observing report
 		if email: 
 			subject = telescope.id + ' done observing'
-			mail.send(subject,body,attachments=[weatherplotname,Pointing_plot_name,fits_plot_name,hvactempname],directory=self.directory)
+			mail.send(subject,body,attachments=attachments,directory=self.directory)
 
-		print body
+#		print body
 
 
 	def parseTarget(self,line):
@@ -3256,6 +3300,7 @@ class control:
 		camera.cool()
 
 		CalibInfo,CalibEndInfo = self.loadCalibInfo(telescope.id)
+		self.logger.info("done loading calib info")
 		# Take biases and darks
 		# wait until it's darker to take biases/darks
 		readtime = 10.0
@@ -3267,9 +3312,13 @@ class control:
 		#try: self.pdus[2].monitor.off()
 		#except: self.logger.exception("Turning off monitor in aqawan 2 failed")
 
+
+
+		self.logger.info("calculating calibration overheads")
 		bias_seconds = CalibInfo['nbias']*readtime+CalibInfo['ndark']*sum(CalibInfo['darkexptime']) + CalibInfo['ndark']*readtime*len(CalibInfo['darkexptime']) + 600.0
 		biastime = self.site.sunset() - datetime.timedelta(seconds=bias_seconds)
 		waittime = (biastime - datetime.datetime.utcnow()).total_seconds()
+		self.logger.info("done calculating calibration overheads")
 		
 		if waittime > 0:
 			# Take biases and darks (skip if we don't have time before twilight)
@@ -3373,19 +3422,8 @@ class control:
 				self.logger.info('Waiting for dome to close')
 				time.sleep(60)
 
-#########################################				
-			print "**********************************************"
-			print CalibInfo
-			print "**********************************************"
-########################################
 			self.doBias(CalibEndInfo['nbiasEnd'],telescope.id)
-			print "**********************************************"
-			print CalibInfo
-			print "**********************************************"
 			self.doDark(CalibEndInfo['ndarkEnd'], CalibInfo['darkexptime'],telescope.id)
-			print "**********************************************"
-			print CalibInfo
-			print "**********************************************"
 		
 		self.endNight(telescope, kiwispec=False)
 
