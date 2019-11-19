@@ -123,6 +123,8 @@ def doSpectra(minerva, target, tele_list, test=False):
         thread.start()
         threads.append(thread)
 
+    minerva.logger.info("got here")
+
     # wait for all telescopes to get to the target
     # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
     t0 = datetime.datetime.utcnow()
@@ -131,6 +133,8 @@ def doSpectra(minerva, target, tele_list, test=False):
         elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
         minerva.logger.info("Waiting for all telescopes to slew (elapsed time = " + str(elapsedTime) + ")")
         thread.join(slewTimeout - elapsedTime)
+
+    minerva.logger.info("got here 2")
 
     # check if the thread timed out
     for t in range(len(tele_list)):
@@ -143,12 +147,16 @@ def doSpectra(minerva, target, tele_list, test=False):
                       "Love,\nMINERVA",level='serious')
             # should kill the errant thread, otherwise all hell breaks loose
 
-    max_obs_before_reacquire = 10
+    max_obs_before_reacquire = 5
 
     # begin exposure(s)
     for i in range(target['num'][0]):
 
+        minerva.logger.info('checking max obs')
         if (i % max_obs_before_reacquire) == 0:
+
+            minerva.logger.info('done checking max obs')
+
             # take the backlit images
             minerva.logger.info("Locating Fiber")
             backlight(minerva)

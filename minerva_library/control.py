@@ -81,7 +81,7 @@ class control:
 		self.thermalenclosureemailsent = False
 
 		if self.red:
-#			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory)
+			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory, red=True)
 			self.domes.append(astrohaven.astrohaven('astrohaven_red.ini',self.base_directory))
 			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory, red=True))
 			self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
@@ -103,8 +103,8 @@ class control:
 			# initialize the 4 telescopes
 #			self.logger.error("***T3 disabled***")
 			telescopes = [1,2,3,4]
-#			self.logger.error("***only using T2***")
-#			telescopes = [2]
+#			self.logger.error("***only using T1***")
+#			telescopes = [1]
 			for i in telescopes:
 				try: 
 					self.cameras.append(imager.imager('imager_t' + str(i) + '.ini',self.base_directory))
@@ -1795,16 +1795,22 @@ class control:
 
 		#start imaging process in a different thread
 		# translate offset from north/east (arcsec) to x y (pixels)
-		if target['acquisition_offset_north'] != 0.0 and target['acquisition_offset_east'] != 0.0:
-			telescope = utils.getTelescope(self,telid)
+		try: north = target['acquisition_offset_north']
+		except: north = 0.0
+		try: east = target['acquisition_offset_east']
+		except: east = 0.0
+		
+		if north != 0.0 and east != 0.0:
 
-			rotoffset = float(telescope.rotatoroffset[telescope.port['FAU']])
+			telescope = utils.getTelescope(self,telid)
+			m3port = telescope.port['FAU']
+			rotoffset = float(telescope.rotatoroffset[m3port])
 			parangle = telescope.parangle(useCurrent=True)
 			PA = parangle - float(telescope.getRotatorStatus(m3port).position) + rotoffset
-
-			dx = camera.fau.platescale*(target['acquisition_offset_north']*math.cos(-PA) - target['acquisition_offset_east']*math.sin(-PA))
-			dy = camera.fau.platescale*(target['acquisition_offset_north']*math.sin(-PA) - target['acquisition_offset_east']*math.cos(-PA))
-
+			PARad = PA*math.pi/180.0
+			dy = (north*math.cos(-PARad) - east*math.sin(-PARad))/camera.fau.platescale # pixels
+			dx = (north*math.sin(-PARad) + east*math.cos(-PARad))/camera.fau.platescale # pixels
+			self.logger.info("Offset guiding. Requested offset was " + str(north) + '" North and ' + str(east) + '" East. The PA is ' + str(PA) + " degrees")
 			self.logger.info("Offset guiding. Target star is offset from brighest by (" + str(dx) + "," + str(dy) + ") pixels")
 
 			offset = (dx,dy)
