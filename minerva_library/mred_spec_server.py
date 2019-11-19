@@ -8,7 +8,6 @@ import atexit, win32api
 import utils
 import math
 import ao
-import zwo
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
@@ -20,8 +19,6 @@ class server:
 		self.base_directory = base
 		self.load_config()
 
-
-                if self.zwodirect: self.guider = zwo.zwo('',self.base_directory)
 
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
@@ -55,12 +52,9 @@ class server:
 			self.data_path_base = config['DATA_PATH']
 			self.logger_name = config['LOGNAME']
 			self.header_buffer = ''
-                        try: self.zwodirect = config['ZWODIRECT']
-                        except: self.zwodirect = False
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
-
 
                 today = datetime.datetime.utcnow()
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
@@ -114,11 +108,6 @@ class server:
 			return 'success '+ str(self.cam.Temperature)
 		except:
 			return 'fail'
-
-	def isAOPresent(self):
-                if 'ao' in dir(self): return 'success'
-                return 'fail'
-        
 #==========command functions==============#
 #methods directly called by client
 
@@ -189,33 +178,12 @@ class server:
 		except:
 			return 'fail'
 
-        def getGuideStar(self):
-                time,x,y = self.guider.getGuideStar()
-                timestr = time.strftime('%Y-%m-%dT%H:%M:%S.%f')
-                print 'success ' + timestr + ' '+str(x)+' '+str(y)
-
-                return 'success ' + timestr + ' '+str(x)+' '+str(y)
-
 	def exposeGuider(self,param):
 		try:
-			param = param.split()
-			exptime = float(param[0])
-			acquisition_offset_x = float(param[1])
-			acquisition_offset_y = float(param[2])
-                        offset = (acquisition_offset_x,acquisition_offset_y)
+			self.cam.GuiderExpose(float(param))
+			return 'success'
 		except:
 			return 'fail'
-		
-                if self.zwodirect:
-                        self.logger.info("Exposing through python")
-                        self.guider.expose(exptime, offset=offset)
-                        #except: return 'fail'
-                        return 'success'
-                else:
-                        self.logger.info("Exposing through Maxim")
-                        try: self.cam.GuiderExpose(float(param))
-                        except: return 'fail'
-                        return 'success'
 
 	def expose(self,param):
 		try:
@@ -249,21 +217,15 @@ class server:
 		try:
                         if guider:
                                 self.logger.info('Saving guider image')
+                                time.sleep(0.2) # wait for the image to start
+                                while self.cam.GuiderRunning:
+                                        time.sleep(0.1)
+                                self.logger.info('saving image to:' + file_name)
                                 self.guider_file_name = self.data_path + '\\' + file_name
-
-                                if self.zwodirect:
-                                        self.guider.save_image(self.guider_file_name)
-                                        return 'success'
-                                else:
-                                        time.sleep(0.3) # wait for the image to start
-                                        while self.cam.GuiderRunning:
-                                                time.sleep(0.1)
-                                        time.sleep(0.3)
-                                        self.logger.info('saving image to:' + file_name)
-                                        self.maxim.CurrentDocument.SaveFile(self.guider_file_name,3, False, 1)
-                                        return 'success'
+                                self.maxim.CurrentDocument.SaveFile(self.guider_file_name,3, False, 1)
+				return 'success'
                         else:
-                                time.sleep(0.3) # wait for the image to start
+                                time.sleep(0.2) # wait for the image to start
                 		print self.cam.ImageReady, self.cam.CameraStatus
                                 t0 = datetime.datetime.utcnow()
                                 timeElapsed = 0.0
@@ -465,8 +427,6 @@ class server:
 			self.logger.info('command received: ' + command)
 		if len(tokens) != 2:
 			response = 'fail'
-		elif tokens[0] == 'get_guide_star':
-			response = self.getGuideStar()
 		elif tokens[0] == 'get_filter_name':
 			response = self.get_filter_name(tokens[1])
 		elif tokens[0] == 'exposeGuider':
@@ -502,8 +462,6 @@ class server:
 		elif tokens[0] == 'isSuperSaturated':
 			guider = (tokens[1] == 'guider')
 			response = self.isSuperSaturated(guider=guider)
-                elif tokens[0] == 'isAOPresent':
-                        response = self.isAOPresent() 
 		elif tokens[0] == 'moveAO':
 			array = tokens[1].split(',')
 			response = self.ao.move(array[0],array[1])
@@ -546,9 +504,7 @@ class server:
 		except:
 			self.logger.exception("Error connecting to server")
 			raise
-		#s.listen(True)
-                s.listen(4)
-
+		s.listen(True)
 		while True:
 			print 'listening to incoming connection on port ' + str(self.port)
 			conn, addr = s.accept()
@@ -563,12 +519,12 @@ class server:
 		self.run_server()
 
 if __name__ == '__main__':
-    if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC' or socket.gethostname() == 'minerva19-01':
+    if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC':
         config_file = 'imager_server_red.ini'
     elif socket.gethostname() == "TacherControl":
         config_file = "imager_server_thach.ini"
     else:
-	config_file = 'imager_server.ini'
+		config_file = 'imager_server.ini'
 
     base_directory = 'C:\minerva-control'
 

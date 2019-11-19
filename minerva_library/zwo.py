@@ -62,6 +62,8 @@ class zwo:
 
                 imtofeed = np.array(np.round((d*th)/np.max(d*th)*255), dtype='uint8')
                 stars = centroid_all_blobs(imtofeed)
+
+                print stars
         
                 if len(stars) < 1:
                         # no stars in the image
@@ -76,7 +78,7 @@ class zwo:
 			# find the closest star to the the offset position
 			dx = stars[:,0] - (stars[brightestndx][0] + offset[0]) 
 			dy = stars[:,1] - (stars[brightestndx][1] + offset[1]) 
-			dist = np.sqrt(dx*dx + dy*dy)
+			dist = np.linalg.norm((dx,dy))
                         ndx = np.argmin(dist)
 
                         self.guidestarx = stars[ndx][0]
