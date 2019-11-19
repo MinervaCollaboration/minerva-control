@@ -21,12 +21,11 @@ import utils
 # spectrograph control class, control all spectrograph hardware
 class spectrograph:
 
-	def __init__(self,config, base ='', red=False):
+	def __init__(self,config, base =''):
 
 		self.lock = threading.Lock()
 		self.config_file = config
 		self.base_directory = base
-		self.red = red
 		self.load_config()
 		self.logger = utils.setup_logger(self.base_directory,self.night(),self.logger_name)
 		self.create_class_objects()
@@ -76,15 +75,11 @@ class spectrograph:
 		return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 
 	def create_class_objects(self):
-		if self.red:
-			self.benchpdu = pdu.pdu('apc_mredbench.ini', self.base_directory)
-			self.calpdu = pdu.pdu('apc_mred_cal.ini', self.base_directory)
-		else:
-			#TODO Should we have this here? It makes sense to give it the time
-			#TODO to warm and settle.
-			self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
-			self.cell_heater_on()
-			#self.connect_si_imager()
+                #TODO Should we have this here? It makes sense to give it the time
+                #TODO to warm and settle.
+		self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
+                self.cell_heater_on()
+#		self.connect_si_imager()
                 
                 
 		
@@ -463,7 +458,7 @@ class spectrograph:
 		if ndx == -1:
 			self.logger.error("Error getting the filename index")
 			self.recover()
-			return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter, red=red)
+			return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter)
 
 		self.file_name = self.night() + "." + objname + "." + str(ndx).zfill(4) + ".fits"
 		self.logger.info('Start taking image: ' + self.file_name)
@@ -482,21 +477,16 @@ class spectrograph:
 
                 self.set_file_name(self.file_name)
 		
-		if self.red:
-			if self.send('expose ' + str(exptime) + ' 1 None',10) == 'success': return True
-			else: return False
-		else:
-
-			if self.expose_with_timeout(exptime=exptime, expmeter=expmeter):
-				self.logger.info('Finished taking image: ' + self.file_name)
-				self.nfailed = 0 # success; reset the failed counter
-				return
-			else: 
-				self.logger.error('Failed to save image: ' + self.file_name)
-				self.file_name = ''
-				self.recover()
-				# self.si_recover()
-				return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter) 
+		if self.expose_with_timeout(exptime=exptime, expmeter=expmeter):
+			self.logger.info('Finished taking image: ' + self.file_name)
+			self.nfailed = 0 # success; reset the failed counter
+			return
+		else: 
+        		self.logger.error('Failed to save image: ' + self.file_name)
+			self.file_name = ''
+			self.recover()
+			# self.si_recover()
+			return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter) 
 
         ###
         # IODINE CELL HEATER FUNCTIONS

@@ -22,6 +22,7 @@ class imager:
 
 	def __init__(self,config, base ='', thach=False):
 
+		self.mailsent = False
 		self.lock = threading.Lock()
 		self.config_file = config
 		self.base_directory = base
@@ -35,7 +36,6 @@ class imager:
 		self.initialize()
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
-		self.mailsent = False
 		# threading.Thread(target=self.write_status_thread).start()
 
 	def initialize(self):

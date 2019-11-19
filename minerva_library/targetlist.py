@@ -7,16 +7,21 @@ import ipdb
 import copy
 import datetime
 
-def downloadList(bstar=False):
+def downloadList(bstar=False, red=False):
     filename = 'MINERVA target list'
+
     if bstar:
         sheetname = 'B stars'
         csvname = 'bstar.csv'
+        key = '1w7RwP8P2hMYtM3MGusw8k7gXdCHzanRZZpvnWQtGkas'
+    elif red:
+        sheetname = 'targets'
+        csvname = 'redtargets.csv'
+        key = '1CKvq5Sa9k04BWKWl3tTHpioWVSxcBVhgwxzdPyRVj3I'
     else:
         sheetname = 'targets'
         csvname = 'targets.csv'
-
-    key = '1w7RwP8P2hMYtM3MGusw8k7gXdCHzanRZZpvnWQtGkas'
+        key = '1w7RwP8P2hMYtM3MGusw8k7gXdCHzanRZZpvnWQtGkas'
 
     # authenticate with JSON credentials
     json_key = json.load(open('/home/minerva/minerva-control/credentials/MINERVA_Key.json'))
@@ -38,16 +43,18 @@ def downloadList(bstar=False):
             writer.writerows(sheet.get_all_values())
     
 
-def rdlist(bstar=False, update=True):
+def rdlist(bstar=False, update=True, red=False):
 
     if update:
         try:
-            downloadList(bstar=bstar)
+            downloadList(bstar=bstar, red=red)
         except:
             print "unable to download target file, using old file"
 
     if bstar:
         csvname = 'bstar.csv'
+    elif red:
+        csvname = 'redtargets.csv'
     else:
         csvname = 'targets.csv'
 
@@ -129,9 +136,10 @@ def target2json(target):
 if __name__ == '__main__':
 
     bstar = False
+    red = False
 #    print target2json('HD191408A')
 
-    targetlist = rdlist(bstar=bstar)
+    targetlist = rdlist(bstar=bstar, red=red)
     print targetlist['name']
     ipdb.set_trace()
     

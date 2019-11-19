@@ -24,9 +24,11 @@ def SetupTech(minerva, telescope, camera):
     if not telescope.initialize(tracking=False, derotate=False):
         telescope.recover(tracking=False, derotate=False)
 
+    #minerva.logger.error("**** homing disabled****")
     telescope.homeAndPark()
 
     # wait for the camera to cool down
+    #minerva.logger.error("**** cooling disabled****")
     camera.cool()
    
     return
@@ -349,13 +351,13 @@ def omniObserve(minerva, states):
     return
 
 
-def observe():
+def observe(red=False, south=False):
 
-    try: utils.killmain()
+    try: utils.killmain(red=red, south=south)
     except: pass
 
     base_directory = '/home/minerva/minerva-control'
-    minerva = control.control('control.ini',base_directory)
+    minerva = control.control('control.ini',base_directory, red=red, south=south)
 
     threads = []
 
@@ -556,8 +558,13 @@ def observe():
 
 if __name__ == '__main__':  # do a bunch of threading stuff
 
+    parser = argparse.ArgumentParser(description='Observe with MINERVA')
+    parser.add_argument('--red'  , dest='red'  , action='store_true', default=False, help='run with MINERVA red configuration')
+    parser.add_argument('--south', dest='south', action='store_true', default=False, help='run with MINERVA Australis configuration')
+    opt = parser.parse_args()
+
     try:
-        observe()
+        observe(red=opt.red, south=opt.south)
     except Exception as e:
         #minerva.logger.exception(str(e.message) )
         body = "Dear benevolent humans,\n\n" + \

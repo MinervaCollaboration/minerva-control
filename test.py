@@ -33,13 +33,17 @@ if __name__ == '__main__':
 
 	
 
-	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 1.0,  "i2": false, "acquistition_offset_north":10, "acquisition_offset_east":7}')
+	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 1.0,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
 #	utils.truncate_observable_window(minerva.site,target,timeof=datetime.datetime(2018,9,25,2,9,55),logger=minerva.logger)
 
+	ipdb.set_trace()
+	minerva.telescopes[0].calibrateRotator(minerva.cameras[0])
 
 	minerva.takeFauImage(target,minerva.telescopes[0].id)
+	minerva.takeFauImage(target,minerva.telescopes[1].id)
+	minerva.takeFauImage(target,minerva.telescopes[2].id)
+	minerva.takeFauImage(target,minerva.telescopes[3].id)
 	
-	ipdb.set_trace()
 
 	ipdb.set_trace()
 

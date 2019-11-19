@@ -1189,7 +1189,7 @@ class CDK700:
 			ydiff = ycenter-y
 			xsi = cd[0,0]*xdiff + cd[0,1]*ydiff
 			eta = cd[1,0]*xdiff + cd[1,1]*ydiff
-			latitude = atan(math.pi/180.0/sqrt(xsi^2+eta^2) # theta in WCSXY2SPH 
+			latitude = atan(math.pi/180.0/sqrt(xsi*xsi+eta*eta) # theta in WCSXY2SPH 
 			longitude = atan(xsi,-eta) # phi in WCSXY2SPH
 			
 
@@ -1290,6 +1290,8 @@ class CDK700:
 			return -999
 
 		self.logger.info("Found stars at (" + str(x1) + "," + str(y1) + " and (" + str(x2) + "," + str(y2) + ")")
+		self.logger.info("The Rotator position is " + str(rotpos) + ' degrees')
+		self.logger.info("The parallactic angle is " + str(parang) + ' degrees')
 		self.logger.info("Enter the sky position angle (" + str(skypa) + ") into the calibrate field")
 		self.logger.info("The field rotation offset is " + str(rotoff))
 
