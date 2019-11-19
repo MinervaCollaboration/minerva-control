@@ -8,6 +8,7 @@ import atexit, win32api
 import utils
 import math
 import ao
+import pdu
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
@@ -33,6 +34,7 @@ class server:
 		self.connect_camera()
 		self.file_name = ''
 		self.guider_file_name = ''
+                self.calpdu = pdu.pdu('apc_mred_cal.ini', self.base_directory)
 
 #		if socket.gethostname() == 't2-PC':
 #			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
@@ -56,10 +58,10 @@ class server:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
 
-                today = datetime.datetime.utcnow()
-                if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
-                        today = today + datetime.timedelta(days=1)
-                self.night = 'n' + today.strftime('%Y%m%d')
+		today = datetime.datetime.utcnow()
+		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+			today = today + datetime.timedelta(days=1)
+		self.night = 'n' + today.strftime('%Y%m%d')
 
 	def get_index(self,param):
 		files = glob.glob(self.data_path + "/*.fits*")
@@ -199,6 +201,14 @@ class server:
 			return 'success'
 		except:
 			return 'fail'
+
+        def set_file_name(self,param):
+                if len(param.split()) != 1:
+			self.logger.error('parameter mismatch')
+			return 'fail'
+		self.logger.info('setting name to:' + param)
+		self.file_name = self.data_path + '\\' + param                
+                return 'success'
 
 	def save_image(self,param):
 
@@ -417,6 +427,37 @@ class server:
 		except:
                         self.logger.exception('disconnect failed')
 			return 'fail'
+
+        def backlight_on(self):
+                self.calpdu.laser.on()
+                
+		# failsafe so backlight doesn't stay on
+		# backlight creates heat that disrupts the thermal stability of the spectrograph!!
+		backlight_failsafe_thread = threading.Thread(target = self.backlight_failsafe)
+		backlight_failsafe_thread.name = 'Kiwispec'
+		backlight_failsafe_thread.start()
+                return 'success'
+
+                
+        def backlight_off(self):
+                self.calpdu.laser.off()
+		return 'success'
+
+	# a failsafe so the backlight doesn't stay on
+	# called by backlight_on in a separate thread
+	def backlight_failsafe(self, timeout=60):
+		t0 = datetime.datetime.utcnow()
+		timeElapsed = 0
+		while timeElapsed < timeout:
+			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()
+			if (datetime.datetime.utcnow() - self.backlightonrequest).total_seconds() > timeout:
+				self.logger.error("encountered failsafe; turning off the backlight")
+				self.backlight_off()
+				return
+			time.sleep(1)
+
+ 	
+
 #==================server functions===================#
 #used to process communication between camera client and server==#
 
@@ -445,6 +486,8 @@ class server:
 			response = self.get_index(tokens[1])
 		elif tokens[0] == 'set_binning':
 			response = self.set_binning(tokens[1])
+		elif tokens[0] == 'set_file_name':
+			response = self.set_file_name(tokens[1])
 		elif tokens[0] == 'set_size':
 			response = self.set_size(tokens[1])
 		elif tokens[0] == 'write_header':
@@ -480,6 +523,10 @@ class server:
 			response = self.get_temperature()
 		elif tokens[0] == 'quit_maxim':
 			response = self.quit_maxim()
+                elif tokens[0] == 'backlight_on':
+                        response = self.backlight_on()
+                elif tokens[0] == 'backlight_off':
+                        response = self.backlight_off()
 		else:
 			self.logger.info('command not recognized: (' + tokens[0] +')')
 			response = 'fail'
@@ -519,13 +566,7 @@ class server:
 		self.run_server()
 
 if __name__ == '__main__':
-    if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC':
-        config_file = 'imager_server_red.ini'
-    elif socket.gethostname() == "TacherControl":
-        config_file = "imager_server_thach.ini"
-    else:
-		config_file = 'imager_server.ini'
-
+    config_file = 'spectrograph_mred_server.ini'
     base_directory = 'C:\minerva-control'
 
     test_server = server(config_file,base_directory)

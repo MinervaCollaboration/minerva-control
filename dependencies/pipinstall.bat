@@ -18,6 +18,8 @@ pip install oauth2client
 pip install gspread
 pip install unicodecsv
 pip install filelock
+pip install pywin32
+scipy-0.11.0-win32-superpack-python2.7.exe
 cd pywinauto-0.4.2
 python setup.py install
 cd ..
