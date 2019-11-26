@@ -277,7 +277,7 @@ def autofocus_step(control,telescope,newfocus,af_target):
         telescope.logger.exception('Failed to save image')
         return median,stddev,numstar,imnum
     
-    datapath = '/Data/t' + telescope.num + '/' + control.site.night + '/'
+    datapath = '/Data/' + telescope.id.lower() + '/' + control.site.night + '/'
     catalog = '.'.join(imagename.split('.')[0:-2]) + '.cat'
     
     #S Sextract this guy, put in a try just in case. Defaults should

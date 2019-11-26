@@ -72,9 +72,9 @@ def rdlist(bstar=False, update=True, red=False):
 
 
 # make a list of target dictionaries for each (active) target based on the target spreadsheet
-def mkdict(name=None, bstar=False, includeInactive=False):
+def mkdict(name=None, bstar=False, includeInactive=False,red=False):
 
-    targetlist = rdlist(bstar=bstar)
+    targetlist = rdlist(bstar=bstar,red=red)
 
     targets = []
     for i in range(len(targetlist['name'])):
@@ -83,7 +83,9 @@ def mkdict(name=None, bstar=False, includeInactive=False):
         try:
             target['ra'] = float(targetlist['ra'][i])
         except:
+            print targetlist['ra'][i]
             ipdb.set_trace()
+
         target['dec'] = float(targetlist['dec'][i])
         target['starttime'] = datetime.datetime(2015,01,01,00,00,00)
         target['endtime'] = datetime.datetime(2115,01,01,00,00,00)
@@ -111,7 +113,7 @@ def mkdict(name=None, bstar=False, includeInactive=False):
         target['comment'] = targetlist['comment'][i]
         target['observed'] = 0
         target['bstar'] = bstar
-        try: target['maxobs'] = float(targetlist['maxobs'])
+        try: target['maxobs'] = float(targetlist['maxobs'][i])
         except: target['maxobs'] = 2
 
 #        target['last_observed'] = 0

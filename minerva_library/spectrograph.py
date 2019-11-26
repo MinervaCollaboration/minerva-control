@@ -483,8 +483,16 @@ class spectrograph:
                 self.set_file_name(self.file_name)
 		
 		if self.red:
-			if self.send('expose ' + str(exptime) + ' 1 None',10) == 'success': return True
-			else: return False
+			if self.send('expose ' + str(exptime) + ' 1 None',10) <> 'success': return False
+			time.sleep(exptime+3.0)
+
+			filename = self.file_name
+
+			if self.save_image(filename):
+                                self.logger.info('Finish taking image: ' + filename)
+                                return filename
+                        else:
+                                self.logger.error('Failed to save image: ' + filename)
 		else:
 
 			if self.expose_with_timeout(exptime=exptime, expmeter=expmeter):

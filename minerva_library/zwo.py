@@ -6,6 +6,7 @@ import datetime
 from get_all_centroids import *
 #import pyfits as fits
 import datetime
+import socket
 
 class zwo:
 
@@ -25,8 +26,12 @@ class zwo:
 		# set gain for maximum dynamic range
 		self.camera.set_control_value(asi.ASI_GAIN, 0)
 
-                self.xsize=1936
-                self.ysize=1216
+		if socket.gethostname() == 'minerva19-01': 
+			self.xsize = 3096
+			self.ysize = 2080
+		else: 
+			self.xsize=1936
+			self.ysize=1216
                 self.guideimagelastupdate = datetime.datetime.utcnow()
                 self.guidestarx = np.nan
                 self.guidestary = np.nan
