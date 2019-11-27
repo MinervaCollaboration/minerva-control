@@ -8,7 +8,8 @@ import atexit, win32api
 import utils
 import math
 import ao
-import pdu
+import pdu, com, mail, ascomcam
+import pythoncom
 
 # full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
 
@@ -27,7 +28,7 @@ class server:
                         today = today + datetime.timedelta(days=1)
 		night = 'n' + today.strftime('%Y%m%d')
 
-		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
+		self.logger = utils.setup_logger(self.base_directory,self.night(),self.logger_name)
 		self.set_data_path()
 		self.cam = None
                 self.maxim = None
@@ -35,6 +36,16 @@ class server:
 		self.file_name = ''
 		self.guider_file_name = ''
                 self.calpdu = pdu.pdu('apc_mred_cal.ini', self.base_directory)
+                #self.benchpdu = pdu.pdu('apc_mred_bench.ini', self.base_directory)
+                self.gaugeController = com.com('gaugeControllerRed',self.base_directory,self.night())
+                self.chiller = com.com('chillerRed',self.base_directory,self.night())
+                self.atm_pressure_gauge = com.com('atmPressureGauge',self.base_directory,self.night())
+                self.nspecfail = 0
+                self.lastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+                self.backlightonrequest = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+                self.heneonrequest = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+                self.logger_lock = threading.Lock()
+                self.log_exposure_meter = True
 
 #		if socket.gethostname() == 't2-PC':
 #			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
@@ -61,7 +72,6 @@ class server:
 		today = datetime.datetime.utcnow()
 		if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
 			today = today + datetime.timedelta(days=1)
-		self.night = 'n' + today.strftime('%Y%m%d')
 
 	def get_index(self,param):
 		files = glob.glob(self.data_path + "/*.fits*")
@@ -200,6 +210,7 @@ class server:
 				self.cam.Expose(exptime,exptype,int(filter_num))
 			return 'success'
 		except:
+                        self.logger.error("Failed to expose")
 			return 'fail'
 
         def set_file_name(self,param):
@@ -315,7 +326,7 @@ class server:
 		return 'success'
 
 	def set_data_path(self):
-		self.data_path = self.data_path_base + '\\' + self.night
+		self.data_path = self.data_path_base + '\\' + self.night()
 		if not os.path.exists(self.data_path):
 			os.makedirs(self.data_path)
 		return 'success'
@@ -429,12 +440,14 @@ class server:
 			return 'fail'
 
         def backlight_on(self):
+                self.backlightonrequest = datetime.datetime.utcnow()
                 self.calpdu.laser.on()
+                time.sleep(0.5)
                 
 		# failsafe so backlight doesn't stay on
 		# backlight creates heat that disrupts the thermal stability of the spectrograph!!
 		backlight_failsafe_thread = threading.Thread(target = self.backlight_failsafe)
-		backlight_failsafe_thread.name = 'Kiwispec'
+		backlight_failsafe_thread.name = 'MRED'
 		backlight_failsafe_thread.start()
                 return 'success'
 
@@ -455,8 +468,372 @@ class server:
 				self.backlight_off()
 				return
 			time.sleep(1)
+			
+        def hene_on(self):
+                self.heneonrequest = datetime.datetime.utcnow()
+                self.calpdu.henelamp.on()
+                time.sleep(0.5)
+                
+		# failsafe so hene doesn't stay on
+		hene_failsafe_thread = threading.Thread(target = self.hene_failsafe)
+		hene_failsafe_thread.name = 'MRED'
+		hene_failsafe_thread.start()
+                return 'success'
 
- 	
+                
+        def hene_off(self):
+                self.calpdu.henelamp.off()
+		return 'success'
+
+	# a failsafe so the hene doesn't stay on
+	# called by hene_on in a separate thread
+	def hene_failsafe(self, timeout=60):
+		t0 = datetime.datetime.utcnow()
+		timeElapsed = 0
+		while timeElapsed < timeout:
+			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()
+			if (datetime.datetime.utcnow() - self.heneonrequest).total_seconds() > timeout:
+				self.logger.error("encountered failsafe; turning off the hene lamp")
+				self.hene_off()
+				return
+			time.sleep(1)
+ 	def get_spec_pressure(self):
+                response = str(self.gaugeController.send('#  RDCG2'))
+
+                if '*' in response:
+                        try:
+                                pressure = float(response.split()[1])
+                        except:
+                                self.logger.exception("Unexpected response: " + response)
+                                return 'fail'
+                        return 'success ' + str(pressure)
+                return 'fail'
+
+        def get_pump_pressure(self):
+                response = str(self.gaugeController.send('#  RDCG1'))
+                
+                if '*' in response:
+                        try:
+                                pressure = float(response.split()[1])
+                        except:
+                                self.logger.exception("Unexpected response: " + response)
+                                return 'fail'
+                        return 'success ' + str(pressure)
+                return 'fail'
+
+                #S going to log the pressures of the chamber and the pump
+        def log_pressures(self):
+		
+                while True:
+                        path = self.base_directory + "/log/" + self.night() + "/"
+                        if not os.path.exists(path): os.mkdir(path)
+                        
+			# get the pressure in the spectrograph
+                        with open(path + 'spec_pressure.log','a') as fh:
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+                                response = self.get_spec_pressure()
+                                if response <> 'fail':
+                                        specpres = float(response.split()[1])
+                                        fh.write('%s,%s\n'%(now,specpres))
+					self.nfailspec = 0 
+				else:
+					specpres = 'UNKNOWN'
+					self.nfailspec += 1
+
+			# get the pressure in the lines before the spectrograph
+                        with open(path + 'pump_pressure.log','a') as fh:
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+                                response = self.get_pump_pressure()
+                                if response <> 'fail':
+                                        pumppres = float(response.split()[1])
+                                        fh.write('%s,%s\n'%(now,pumppres))
+					self.nfailpump = 0 
+				else: 
+					pumppres = 'UNKNOWN'
+					self.nfailpump += 1
+
+			# get the status of each port
+        		try:
+                                ventvalveopen = self.benchpdu.ventvalve.status()
+        			if ventvalveopen: ventvalvetxt = "open"
+                		else: ventvalvetxt = "closed"
+                        except:
+                                ventvalveopen = "unknown"
+        			ventvalvetxt = "unknown"
+                		
+                        try:
+        			pumpvalveopen = self.benchpdu.pumpvalve.status()
+                		if pumpvalveopen: pumpvalvetxt = "open"
+                        	else: pumpvalvetxt = "closed"
+                        except:
+                                pumpvalveopen = "unknown"
+        			pumpvalvetxt = "unknown"
+
+                        try:        
+                                pumpon = self.controlroompdu.pump.status()
+                		if pumpon: pumptxt = 'on'
+        			else: pumptxt = 'off'
+                        except:
+                                pumpon = "unknown"
+                                pumptxt = 'unknown'
+
+                        try:
+        			compressoron = self.controlroompdu.compressor.status()
+                		if compressoron: compressortxt = 'on'
+                        	else: compressortxt = 'off'
+                        except:
+                                compressoron = "unknown"
+                                compressortxt = "unknown"
+
+			# Catch potential failure modes
+			# spectrograph pressure gauge failed
+			if specpres == 'UNKNOWN':
+				self.logger.error('The spectograph gauge has failed to read ' + str(self.nfailspec) + ' consecutive times')
+				if self.nfailspec > 3 and (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
+					mail.send("Spectrograph pressure gauge failed?",
+						  "Dear Benevolent Humans,\n\n"+
+						  "The spectrograph pressure gauge has failed to return a value 3\n"+
+						  "consecutive times. Please investigate.\n\n"
+						  "Love,\nMINERVA",level="serious")
+					self.lastemailed = datetime.datetime.utcnow()
+			elif not compressoron:
+				self.logger.error('The air compressor is off.')
+				if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
+					mail.send("Air compressor failed?",
+						  "Dear Benevolent Humans,\n\n"+
+						  "The air compressor is off. It is required to control the vacuum valves " + 
+						  "and stabilize the optical bench. Please investigate immediately.\n\n"+
+						  "Love,\nMINERVA",level="serious")
+					self.lastemailed = datetime.datetime.utcnow()
+			elif specpres > 0.06:
+				self.logger.error("the spectrograph pressure is out of range")
+				self.logger.info("The pump pressure is " + str(pumppres) + " mbar")
+                                self.logger.info("The spectrograph pressure is " + str(specpres) + " mbar")
+				self.logger.info("The compressor is " + compressortxt)
+				self.logger.info("The vacuum pump is " + pumptxt)
+				self.logger.info("The vent valve is " + ventvalvetxt)
+				self.logger.info("The pump valve is " + pumpvalvetxt)
+
+				if pumppres != 'UNKNOWN' and pumppres < specpres and pumpon and (not ventvalveopen) and pumpvalveopen:
+					# 0) pumping down after venting
+					# diagnosis:
+					#    spec pressure > 0.06
+					#    pump pressure < spec pressure
+					# action:
+					# email in case of misdiagnosis
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
+						mail.send("Spectrograph pressure out of range!",
+							  "Dear Benevolent Humans,\n\n"+
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range. " +
+							  "I believe I am just pumping down after being vented and no action is required. "+
+							  "If that is not the case, this should be investigated immediately.\n\n"
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
+							  "The compressor is " + compressortxt + '\n'+
+							  "The vacuum pump is " + pumptxt + '\n'+
+							  "The vent valve is " + ventvalvetxt + '\n'+
+							  "The pump valve is " + pumpvalvetxt + '\n\n'+
+							  "Love,\nMINERVA",level="serious")
+						self.lastemailed = datetime.datetime.utcnow()
+				elif pumppres != 'UNKNOWN' and pumppres < 0.06 and pumpon and (not ventvalveopen) and pumpvalveopen:
+					# 1) a power outage closed the pump valve and the leak rate 
+					# caused it to slowly come back up slowly (bad, but not terrible)
+					# diagnosis:
+					#    spec pressure > 3
+					#    pump pressure < 3
+					#    pump on
+					#    vent valve closed (off)
+					#    pump valve open (on)
+					# action:
+					# email only asking user to open the pump valve after confirmation of situation (serious)
+					# too risky to automate
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
+						mail.send("Spectrograph pressure out of range!",
+							  "Dear Benevolent Humans,\n\n"+
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range. " +
+							  "While this could be a catastrophic and unplanned venting that could " + 
+							  "damage the spectrograph and should be investigated immediately, this " +
+							  "is usually caused by a power outage that closed the pump valve.\n\n."
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
+							  "The compressor is " + compressortxt + '\n'+
+							  "The vacuum pump is " + pumptxt + '\n'+
+							  "The vent valve is " + ventvalvetxt + '\n'+
+							  "The pump valve is " + pumpvalvetxt + '\n\n'+
+							  "Please\n\n" +
+							  "1) log on to 192.168.1.40\n"	
+							  "2) Confirm the pump is on\n"+
+							  "3) log on to 192.168.1.40\n"
+							  "4) Check to make sure the vent valve is closed (off)\n"+
+							  "5) Open the pump valve by turning it on.\n\n" +
+							  "The spectrograph pressure is currently unstable and our RV precision will suffer until this is addressed.\n\n"
+							  "Love,\nMINERVA",level="serious")
+						self.lastemailed = datetime.datetime.utcnow()
+				elif (pumppres != 'UNKOWN') and (pumppres > 3) and pumpvalveopen:
+					# 2) the pump failed and it's venting through the pump (very bad)
+					#    spec pressure > 3
+					#    pump pressure > 3
+					#    pump valve open (on)
+					#    pump on (probably, but not necessarily)
+					#    vent valve closed (probably, but not necessarily)
+					# action:
+					# Close pump valve immediately
+					# Turn off pump?
+					# Email asking user to investigate (critical)
+					try: self.benchpdu.pumpvalve.off()
+                                        except: pass
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
+						mail.send("Spectrograph vacuum failure!!!",
+							  "Dear Benevolent Humans,\n\n"+
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range " +
+							  "and the pump valve is open. This probably means THE PUMP HAS FAILED " + 
+							  "CATASTROPHICALLY AND DAMAGE TO THE SPECTOGRAPH COULD OCCUR! " + 
+							  "I have closed the pump valve, but this should be investigated in " + 
+							  "person and remotely as soon as possible.\n\n"
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
+							  "The compressor is " + compressortxt + '\n'+
+							  "The vacuum pump is " + pumptxt + '\n'+
+							  "The vent valve is " + ventvalvetxt + '\n'+
+							  "The pump valve is " + pumpvalvetxt + '\n\n'+
+							  "Love,\nMINERVA",level="critical")
+						self.lastemailed = datetime.datetime.utcnow()
+				elif pumppres != 'UNKNOWN' and pumppres > 0.06 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
+					# 3) we intentionally vented the spectrograph (probably fine as this is intentional)
+					#    spec pressure > 3
+					#    pump pressure > 3
+					#    pump off
+					#    vent valve open
+					#    pump valve closed
+					# action:
+					# Email just in case venting was not intentional (serious)
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:
+						mail.send("Spectrograph intentionally venting?",
+							  "Dear Benevolent Humans,\n\n"+
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range, " +
+							  "but the vent valve is open, the pump is off, and the pump valve is closed, "+
+							  "which means the spectrograph is likely being vented intentionally. "+
+							  "If that is not the case, immediate investigation is required.\n\n"
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
+							  "The compressor is " + compressortxt + '\n'+
+							  "The vacuum pump is " + pumptxt + '\n'+
+							  "The vent valve is " + ventvalvetxt + '\n'+
+							  "The pump valve is " + pumpvalvetxt + '\n\n'+
+							  "Love,\nMINERVA",level="serious")
+						self.lastemailed = datetime.datetime.utcnow()
+				else:
+					# 4) unknown failure (gauge failure?)
+					#    spec pressure > 3
+					#    any other configuration
+					# action:
+					# close pump valve
+					# close vent valve
+					# turn off pump?
+					# email asking user to investigate (critical)
+					#self.benchpdu.pumpvalve.off()
+					#self.benchpdu.ventvalve.off()
+					if (datetime.datetime.utcnow() - self.lastemailed).total_seconds() > 86400:				
+						mail.send("Spectrograph pressure in unknown state!!!",
+							  "Dear Benevolent Humans,\n\n"+
+							  "The spectrograph pressure (" + str(specpres) + " mbar) is out of range, " +
+							  "and I'm not sure what's going on. It could be a catastrophic problem. "+
+							  "You need to investigate immediately. SERIOUS DAMAGE IS POSSIBLE.\n\n"
+							  "The pump pressure is " + str(pumppres) + " mbar\n"+
+							  "The spectrograph pressure is " + str(specpres) + " mbar\n"+
+							  "The compressor is " + compressortxt + '\n'+
+							  "The vacuum pump is " + pumptxt + '\n'+
+							  "The vent valve is " + ventvalvetxt + '\n'+
+							  "The pump valve is " + pumpvalvetxt + '\n\n'+
+							  "Love,\nMINERVA",level="critical")
+						self.lastemailed = datetime.datetime.utcnow()
+
+                        time.sleep(0.5)
+	def update_logpaths(self,path):
+		self.logger.info('Updating log paths!')
+		
+		if not os.path.exists(path): os.mkdir(path)
+		
+		fmt = "%(asctime)s [%(filename)s:%(lineno)s,%(thread)d - %(funcName)s()] %(levelname)s: %(message)s"
+		datefmt = "%Y-%m-%dT%H:%M:%S"
+		formatter = logging.Formatter(fmt,datefmt=datefmt)
+		formatter.converter = time.gmtime
+		
+                self.logger_lock.acquire()
+
+		for fh in self.logger.handlers: self.logger.removeHandler(fh)
+		fh = logging.FileHandler(path + '/' + self.logger_name + '.log', mode='a')
+                fh.setFormatter(formatter)
+		self.logger.addHandler(fh)
+
+                self.logger_lock.release()
+
+	def logpath_watch(self):
+                lastnight = ''
+                #S update the logger, similar to in domeControl
+		while True:
+                        t0 = datetime.datetime.utcnow()
+			
+                        # roll over the logs to a new day                                                                                                                   
+                        thisnight = datetime.datetime.strftime(t0,'n%Y%m%d')
+                        if thisnight != lastnight:
+                                self.update_logpaths(self.base_directory + '/log/' + thisnight)
+                                lastnight = thisnight
+                                
+                        #S sleep until tomorrow
+                        tomorrow = datetime.datetime.replace(t0 + datetime.timedelta(days=1),hour=0,minute=0,second=0)
+                        tomorrow_wait = (tomorrow - t0).total_seconds()
+                        sleep_time = max(1.,0.99*tomorrow_wait)
+                        self.logger.info('Waiting %.2f to update log paths'%(sleep_time))
+                        time.sleep(sleep_time)
+
+        #S Power on the exposure meter and make continuous
+        #S readings that are logged. A maxsafecount variable is
+        #S defined here that will act as a catch if there
+        #S is an overexposure hopefully before any damage is done.         
+        def logexpmeter(self, exptime=10):
+
+                pythoncom.CoInitialize()
+                atik = ascomcam.ascomcam('atik.ini', self.base_directory, driver="ASCOM.AtikCameras.Camera")
+                atik.initialize()
+                atik.setROI(x1=550,x2=750,y1=450,y2=650)
+                
+                #S Loop for catching exposures.
+                while self.log_exposure_meter:
+
+                        path = "C:/minerva/data/" + self.night() + "/expmeter/"
+                        if not os.path.exists(path): os.mkdir(path)
+
+                        files = glob.glob(path + self.night() + '.expmeter.?????.fits') 
+                        index = str(len(files)+1).zfill(5)
+
+                        filename = path + self.night() + '.expmeter.' + index + '.fits'
+                        atik.expose(exptime)
+                        atik.save_image(filename)
+                        
+                        #with open(path + "expmeter.dat", "a") as fh:
+                        #       fh.write(datetime.datetime.strftime(datetime.datetime.utcnow(),'%Y-%m-%d %H:%M:%S.%f') + "," + str(reading) + "\n")
+                        #self.expmeter_com.logger.info("The exposure meter reading is: " + str(reading))
+
+                
+        def get_expmeter_total(self):
+                #S put this in a try in case we aren't logging the exposure meter
+                #S because we initialize the self.expmeter_total in 
+                try:
+                        total = self.expmeter_total
+                        return 'success ' + str(total)
+                except:
+                        self.logger.error('No expmeter_total being tracked')
+                        return 'fail'
+
+        def reset_expmeter_total(self):
+                try:
+                        self.expmeter_total = 0
+                        return 'success'
+                except:
+                        self.logger.exception('Failed to reset the expmeter total')
+                        return 'fail'
+         
 
 #==================server functions===================#
 #used to process communication between camera client and server==#
@@ -527,7 +904,15 @@ class server:
                         response = self.backlight_on()
                 elif tokens[0] == 'backlight_off':
                         response = self.backlight_off()
-		else:
+                elif tokens[0] == 'hene_on':
+                        response = self.backlight_on()
+                elif tokens[0] == 'hene_off':
+                        response = self.backlight_off()
+                elif tokens[0] == 'get_pump_pressure':
+                        response = self.get_pump_pressure()
+                elif tokens[0] == 'get_spec_pressure':
+                        response = self.get_pump_pressure()
+                else:
 			self.logger.info('command not recognized: (' + tokens[0] +')')
 			response = 'fail'
 		try:
@@ -565,9 +950,125 @@ class server:
 		s.close()
 		self.run_server()
 
-if __name__ == '__main__':
-    config_file = 'spectrograph_mred_server.ini'
-    base_directory = 'C:\minerva-control'
+        def get_chiller_temp(self):
+                try:
+                        temp = float(self.chiller.send('TEMP?'))
+                except:
+                        self.logger.exception("Unexpected response: " + response)
+                        return 'fail'
+                return 'success ' + str(temp)
+        def get_chiller_settemp(self):
+                try:
+                        temp = float(self.chiller.send('SETTEMP?'))
+                except:
+                        self.logger.exception("Unexpected response: " + temp)
+                        return 'fail'
+                return 'success ' + str(temp)
+        def get_chiller_pumptemp(self):
+                try:
+                        temp = float(self.chiller.send('PUMPTEMP?'))
+                except:
+                        self.logger.exception("Unexpected response: " + temp)
+                        return 'fail'
+                return 'success ' + str(temp)
 
-    test_server = server(config_file,base_directory)
-    test_server.run_server()
+	def logchiller(self):
+                while True:
+                        t0 = datetime.datetime.utcnow()
+                        path = self.base_directory + "/log/" + self.night() + "/"
+                        if not os.path.exists(path): os.mkdir(path)
+                        
+			# get the pressure in the spectrograph
+                        with open(path + 'chiller_temps.log','a') as fh:
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+                                response = self.get_chiller_temp()
+                                if response <> 'fail': temp = str(response.split()[1])
+                                else: temp = 'UNKNOWN'
+                                        
+                                response = self.get_chiller_settemp()
+                                if response <> 'fail': settemp = str(response.split()[1])
+                                else: settemp = 'UNKNOWN'
+
+                                response = self.get_chiller_pumptemp()
+                                if response <> 'fail': pumptemp = str(response.split()[1])
+                                else: pumptemp = 'UNKNOWN'
+                                fh.write('%s,%s,%s,%s\n'%(now,temp, settemp, pumptemp))
+                        sleeptime = 5.0 - (datetime.datetime.utcnow() - t0).total_seconds()
+                        if sleeptime > 0.0: time.sleep(sleeptime)
+                return
+
+        def get_atmreading(self):
+                self.atm_pressure_gauge.open()
+                for i in range(14):
+                        line = self.atm_pressure_gauge.ser.readline()
+                self.atm_pressure_gauge.close()
+                try:
+                        pressure = float(line[0:7])
+                        temp = float(line[8:13])
+                        alt = float(line[14:19])
+                        return 'success ' + str(pressure) + ' ' + str(temp) + ' ' + str(alt)
+                except:
+                        self.logger.exception("Unexpected response: " + line)
+                        return 'fail'
+                
+        def log_atmpressure(self):
+                while True:
+                        t0 = datetime.datetime.utcnow()
+                        path = self.base_directory + "/log/" + self.night() + "/"
+                        if not os.path.exists(path): os.mkdir(path)
+
+                        with open(path + 'atm_reading.log','a') as fh:
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+                                response = self.get_atmreading()
+                                if response <> 'fail':
+                                        pressure = str(response.split()[1])
+                                        temp = str(response.split()[2])
+                                        alt = str(response.split()[3])
+                                else:
+                                        pressure = 'UNKNOWN'
+                                        temp = 'UNKNOWN'
+                                        alt = 'UNKNOWN'
+
+                                fh.write('%s,%s,%s,%s\n'%(now,pressure, temp, alt))
+                        sleeptime = 10.0 - (datetime.datetime.utcnow() - t0).total_seconds()
+                        if sleeptime > 0.0: time.sleep(sleeptime)
+                return
+
+        def fiber_switch(self,pos):
+                return
+                self.fiberSwitch(p)
+
+        def night(self):
+		return 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+
+if __name__ == '__main__':
+        config_file = 'spectrograph_mred_server.ini'
+        base_directory = 'C:\minerva-control'
+
+        test_server = server(config_file,base_directory)
+        #test_server.log_atmpressure()
+
+        # make sure it didn't die with the backlight on
+        test_server.backlight_off()
+
+        logpath_thread = threading.Thread(target=test_server.logpath_watch)
+        logpath_thread.name = 'MRED'
+        logpath_thread.start()
+
+        pressure_thread = threading.Thread(target=test_server.log_pressures)
+        pressure_thread.name = 'MRED'
+        pressure_thread.start()
+
+        expmeter_thread = threading.Thread(target=test_server.logexpmeter)
+        expmeter_thread.name = 'MRED'
+        #expmeter_thread.start()
+
+        chiller_thread = threading.Thread(target=test_server.logchiller)
+        chiller_thread.name = 'MRED'
+        chiller_thread.start()
+        
+        atmpressure_thread = threading.Thread(target=test_server.log_atmpressure)
+        atmpressure_thread.name = 'MRED'
+        atmpressure_thread.start()
+
+        test_server.run_server()
