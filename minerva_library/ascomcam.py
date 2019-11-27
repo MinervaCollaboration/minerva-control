@@ -86,7 +86,7 @@ class ascomcam:
 
                 return True
 
-        def setBin(self,xbin,ybin=None):
+        def set_bin(self,xbin,ybin=None):
                 if ybin==None: ybin=xbin
 
                 # if asymmetric binning requested, make sure we can do that

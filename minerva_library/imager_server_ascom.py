@@ -126,7 +126,7 @@ class server:
         
                 try:
                         self.camera.initialize()        
-                        self.guider.initialize()        
+                        #self.guider.initialize()        
                         self.fw.initialize()
                         return 'sucess'
                 except:
