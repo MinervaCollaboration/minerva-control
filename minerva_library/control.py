@@ -792,7 +792,7 @@ class control:
 
 		return filename
 
-	def fauguide(self,target,telid,guiding=True,xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False, ao=False, maxfail=5):
+	def fauguide(self,target,telid,guiding=True,xfiber=None, yfiber=None, acquireonly=False, skiponfail=False, artificial=False, ao=False, maxfail=5, simulate=False):
 
 		telescope = utils.getTelescope(self,telid)
 		camera = utils.getCamera(self,telid)
@@ -877,11 +877,24 @@ class control:
 #				guidetime,xstar,ystar = camera.getGuideStar()
 #				t0 = guidetime
 				
+#				# if it's been acquired, switch to a subframe around the region
+#				if camera.fau.acquired:
+#					subframesize = int(round(1.5*tolerance/self.guider.platescale))
+#					if (subframesize % 2) == 1: subframesize +=1 # make sure it's even
+#					x1 = int(round(camera.fau.xfiber + offset[0] - subframesize))
+#					x2 = int(round(camera.fau.xfiber + offset[0] + subframesize))
+#					y1 = int(round(camera.fau.yfiber + offset[1] - subframesize))
+#					y2 = int(round(camera.fau.yfiber + offset[1] + subframesize))
+#					camera.set_roi(x1,x2,y1,y2,fau=True)
+#				else: camera.set_roi(fullFrame=True,fau=True)
 
-				self.takeFauImage(target,telid)
+				if simulate: 
+					xstar = int(round(camera.fau.xfiber + offset[0] + np.random.uniform(low=-1.0,high=1.0)))
+					ystar = int(round(camera.fau.yfiber + offset[1] + np.random.uniform(low=-1.0,high=1.0)))
+					camera.simulate_star_image([xstar],[ystar],[1e6],1.5,noise=10.0,fau=True)
+				else:
+					self.takeFauImage(target,telid)
 				guidetime,xstar,ystar = camera.getGuideStar()
-
-
 
 				print guidetime, xstar, ystar, np.isnan(xstar), np.isnan(ystar), telescope.abort
 				nfailed += 1
@@ -1024,8 +1037,42 @@ class control:
 		camera.fau.acquired = False
 		return True
 
+	'''
+	rasters the position of the fiber in a spiral from the nominal position 
+	while guiding
+	stepsize = size of each step, in pixels, 
+	boxsize = size of the box, in steps
+	dwelltime = the time to stay at each position
+	'''
+	def raster(self, telid, stepsize=1.0, maxx=10.0,maxy=10.0, dwelltime=120.0):
 
+		telescope = utils.getTelescope(self,telid)
+		offset_file = self.base_directory + '/' + telid + '_fiber_offset.txt'
+		x = y = 0.0
+                dx = 0.0*stepsize
+                dy = -1.0*stepsize
 
+                for i in range(int(math.ceil(max(maxx/stepsize*2.0+1,maxy/stepsize*2.0+1)**2))):
+                        if (-maxx <= x <= maxx) and (-maxy <= y <= maxy):
+
+				# update the offset file
+                                self.logger.info("setting guide offset to (" + str(x) + ',' + str(y) + ')')
+				with open(offset_file,'w') as f: f.write(str(x) + ' ' + str(y) + '\n')
+				
+				# wait here
+				time.sleep(dwelltime)
+				
+			# the magic that makes it spiral
+			if x==y or (x < 0 and x == -y) or (x > 0 and x ==stepsize-y):
+				dx,dy=-dy,dx
+
+			# define the next step
+			x,y=x+dx,y+dy
+
+                        if telescope.abort: break
+
+		# reset to no offset
+		with open(offset_file,'w') as f: f.write('0 0\n')
 
 	# Assumes brightest star is our target star!
 	# *** will have exceptions that likely need to be handled on a case by case basis ***
@@ -1136,7 +1183,7 @@ class control:
 				self.logger.info(telid + ": Found " + str(len(stars)) + " stars, using the star at (x,y)=(" + str(stars[ndx][0]) + "," + str(stars[ndx][1]) + ")")
 
 				# include an arbitrary offset from the nominal position (experimental)
-				offset_file = self.base_directory + telid + '_fiber_offset.txt'
+				offset_file = self.base_directory + '/' + telid + '_fiber_offset.txt'
 				
 				if os.path.exists(offset_file):
 					with open(offset_file) as fh:

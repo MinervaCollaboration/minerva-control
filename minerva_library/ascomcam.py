@@ -37,7 +37,11 @@ class ascomcam:
                 self.camera.connected = True
                 return self.camera.connected
 
-        def cool(self, temp=None, wait=False, settleTime=1200.0, oscillationTime=120.0, maxdiff = 1.0):
+
+	def get_temperature(self):
+		return self.camera.CCDTemperature
+
+	def cool(self, temp=None, wait=False, settleTime=1200.0, oscillationTime=120.0, maxdiff = 1.0):
                 if not self.camera.CanSetCCDTemperature:
                         self.logger.error("Camera cannot cool")
                         return False
@@ -95,8 +99,9 @@ class ascomcam:
                 self.camera.BinY = ybin
                 self.xbin = xbin
                 self.ybin = ybin
+		return True
 
-        def setROI(self, x1=None, x2=None, y1=None, y2=None, fullFrame=False):
+        def set_roi(self, x1=None, x2=None, y1=None, y2=None, fullFrame=False):
 
                 if fullFrame:
                         x1 = 1
@@ -119,7 +124,8 @@ class ascomcam:
                 if y2 != None: self.camera.NumY = y2-y1
                 else: y2 = self.camera.StartY+y1
                 self.y2 = y2
-                
+                return True
+
         def save_image(self,filename, timeout=10, hdr=None, overwrite=False):
 
                 t0 = datetime.datetime.utcnow()
