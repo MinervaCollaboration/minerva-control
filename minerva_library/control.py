@@ -88,6 +88,8 @@ class control:
 #			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mred.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mredrack.ini',self.base_directory))
+		        #S make the scheduler, which has the target list as an attribute
+			self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory,red=True)
 			print 'done connecting to everything'
 		elif self.south:
 			pass
@@ -1517,8 +1519,9 @@ class control:
                 #S Some logic to see what type of spectrum we'll be taking.
 
 		#S Turn on the Iodine cell heater 
-		self.spectrograph.cell_heater_set_temp(self.spectrograph.i2settemp)
-		self.spectrograph.cell_heater_on()
+		if not self.red:
+			self.spectrograph.cell_heater_set_temp(self.spectrograph.i2settemp)
+			self.spectrograph.cell_heater_on()
 
                 #S Decided it would be best to include a saftey to make sure the lamps
                 #S were turned on.
@@ -1576,9 +1579,10 @@ class control:
 		elif (objname == 'slitflat'):
                         #S Move the LED in place with the Iodine stage
 			kwargs['locationstr'] = 'flat'
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "Kiwispec"
-                        i2stage_move_thread.start()
+			if not self.red:
+				i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+				i2stage_move_thread.name = "Kiwispec"
+				i2stage_move_thread.start()
 
                         # Configure the lamps
 #			self.logger.warning("*** Slit flat LED disabled ***")
@@ -1600,17 +1604,21 @@ class control:
 #                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
 #                        else:
 #                                time.sleep(0)
-                        self.logger.info('Waiting on i2stage_move_thread')
-                        i2stage_move_thread.join()
+
+			if not self.red:
+				self.logger.info('Waiting on i2stage_move_thread')
+				i2stage_move_thread.join()
                 elif 'fiberflat' in target['name']:
                         #S Move the I2 stage out of the way of the slit.
 			if target['i2']:
 				kwargs['locationstr'] = 'in'
 			else:
 				kwargs['locationstr'] = 'out'
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "Kiwispec"
-                        i2stage_move_thread.start()
+			if not self.red:
+				i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+				i2stage_move_thread.name = "Kiwispec"
+				i2stage_move_thread.start()
+				
 
                         #Configure the lamps
 #                        self.spectrograph.thar_turn_off()
@@ -1631,8 +1639,9 @@ class control:
 #                                print 'Sleeping for '+str(warm_time) + ' for '+objname+' lamp.'
 #                        else:
 #                                time.sleep(0)
-                        self.logger.info('Waiting on i2stage_move_thread')
-                        i2stage_move_thread.join()
+			if not self.red:
+				self.logger.info('Waiting on i2stage_move_thread')
+				i2stage_move_thread.join()
 
                 #S Conditions for both bias and dark.
                 elif (objname == 'bias') or (objname == 'dark'):
@@ -1647,57 +1656,58 @@ class control:
                         #S Not sure if we need to move it out necessarily, but I think
                         #S this is better than having it randomly in 'flat' or 'in',
                         #S and will at least make things orderly.
-			kwargs['locationstr'] = 'in'
-                        i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "Kiwispec"
-                        i2stage_move_thread.start()
-                        #TODO Calibration shutter closed
-                        self.logger.info('Waiting on i2stage_move_thread')
-                        i2stage_move_thread.join()
+			if not self.red:
+				kwargs['locationstr'] = 'in'
+				i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+				i2stage_move_thread.name = "Kiwispec"
+				i2stage_move_thread.start()
+				#TODO Calibration shutter closed
+				self.logger.info('Waiting on i2stage_move_thread')
+				i2stage_move_thread.join()
 
                 #S Let's do some science!
                 #S The cell heater should be turned on before starting this, to give
                 #S it time to warm up. It should really be turned on at the beginning
                 #S of the night, but just a reminder.
                 else:
-
-			
-                        #S Move the iodine either in or out, as requested
-			if 'i2manualpos' in target.keys():
-				kwargs['position'] = target['i2manualpos']
-			elif target['i2']:
-				kwargs['locationstr'] = 'in'
-			else:
-				kwargs['locationstr'] = 'out'
-			i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "Kiwispec"
-			i2stage_move_thread.start()
-				
                         #Configure the lamps
 #                        self.spectrograph.thar_turn_off()
 #                        self.spectrograph.flat_turn_off()
                         self.spectrograph.led_turn_off()
 
-                        #S This loop is a hold for the cell heater to be within a set tolerance
-                        #S for the iodine stage's temperature. The least sigfig returned from the
-                        #S heater is actually tenths, so this may be a little tight of a restriction.
-                        #TODO revise tolerance of heater temp?
-			start = datetime.datetime.utcnow()
-			elapsedTime = 0.0
-			timeout = 10
-			i2temp = self.spectrograph.cell_heater_temp()
-			
-			if not i2temp: ipdb.set_trace()
 
-			while (abs(self.spectrograph.i2settemp - i2temp) > self.spectrograph.i2temptol) and elapsedTime<timeout:
-                                #S Give it some time to get there.
-				self.logger.info("Waiting for the Iodine cell temperature (" + str(i2temp) + ") to reach its setpoint (" + str(self.spectrograph.i2settemp) + ")")
-                                time.sleep(1)
+			if not self.red:
+				#S Move the iodine either in or out, as requested
+				if 'i2manualpos' in target.keys():
+					kwargs['position'] = target['i2manualpos']
+				elif target['i2']:
+					kwargs['locationstr'] = 'in'
+				else:
+					kwargs['locationstr'] = 'out'
+				i2stage_move_thread = threading.Thread(target = self.ctrl_i2stage_move,kwargs=kwargs)
+				i2stage_move_thread.name = "Kiwispec"
+				i2stage_move_thread.start()
+				
+                                #S This loop is a hold for the cell heater to be within a set tolerance
+				#S for the iodine stage's temperature. The least sigfig returned from the
+                                #S heater is actually tenths, so this may be a little tight of a restriction.
+				#TODO revise tolerance of heater temp?
+				start = datetime.datetime.utcnow()
+				elapsedTime = 0.0
+				timeout = 10
 				i2temp = self.spectrograph.cell_heater_temp()
-				elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
+			
+				if not i2temp: ipdb.set_trace()
+
+				while (abs(self.spectrograph.i2settemp - i2temp) > self.spectrograph.i2temptol) and elapsedTime<timeout:
+					#S Give it some time to get there.
+					self.logger.info("Waiting for the Iodine cell temperature (" + str(i2temp) + ") to reach its setpoint (" + str(self.spectrograph.i2settemp) + ")")
+					time.sleep(1)
+					i2temp = self.spectrograph.cell_heater_temp()
+					elapsedTime = (datetime.datetime.utcnow()-start).total_seconds()
                         
-                        self.logger.info('Waiting on i2stage_move_thread')
-			i2stage_move_thread.join()                      
+				self.logger.info('Waiting on i2stage_move_thread')
+				i2stage_move_thread.join()                      
 
                 self.logger.info('Equipment check passed, continuing with '+objname+' exposure.')
                 return
@@ -1737,7 +1747,8 @@ class control:
 
 		tstart = datetime.datetime.utcnow()
 		imaging_thread = threading.Thread(target = self.spectrograph.take_image, kwargs=kwargs)
-		imaging_thread.name = "Kiwispec"
+		if self.red: imaging_thread.name = "MRED"
+		else: imaging_thread.name = "Kiwispec"
 		imaging_thread.start()
 
 		alltels = []
@@ -1746,7 +1757,7 @@ class control:
 
 		f = self.getHdr(target,alltels,None)
 		for dome in self.domes:
-			f = self.addAqawanKeys(dome, f)
+			f = self.addDomeKeys(dome, f)
 
 		header = json.dumps(f)
 		
@@ -1759,15 +1770,17 @@ class control:
 		if self.spectrograph.write_header(header):
 			self.spectrograph.logger.info('Finished writing spectrograph header')
 
-			# rewrite the image to make it standard
-			self.spectrograph.logger.info("Standardizing the FITS image")
-			night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
-			dataPath = '/Data/kiwispec/' + night + '/'
+			
+			if not self.red:
+				# rewrite the image to make it standard
+				self.spectrograph.logger.info("Standardizing the FITS image")
+				night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+				dataPath = '/Data/kiwispec/' + night + '/'
 
-#			fix_fits(os.path.join(dataPath,self.spectrograph.file_name))
-			fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
-			fix_fits_thread.name = 'Kiwispec'
-			fix_fits_thread.start()
+				#fix_fits(os.path.join(dataPath,self.spectrograph.file_name))
+				fix_fits_thread = threading.Thread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
+				fix_fits_thread.name = 'Kiwispec'
+				fix_fits_thread.start()
 			
 			# tell the scheduler if we successfully observed a B star
 			try:
@@ -2095,6 +2108,18 @@ class control:
 		
 		return f
 
+	def addDomeKeys(self,dome,f):
+		if 'astrohaven' in dome.id:
+			return self.addAstrohavenKeys(dome, f)
+		else:
+			return self.addAqawanKeys(dome, f)
+		
+
+	def addAstrohavenKeys(self, dome, f):
+		domeopen = dome.isOpen()
+		f['DOMEOPEN'] = (domeopen,"Astrohaven open")
+		return f
+
 	def addAqawanKeys(self,dome,f):
 		
 		try:
@@ -2313,24 +2338,17 @@ class control:
 			else: f = self.addImagerKeys(tele_list, f)
 		else: f = self.addImagerKeys(tele_list, f)
 
-		if fau: self.addImagerKeys(tele_list,f,fau=True)
+		if fau: f = self.addImagerKeys(tele_list,f,fau=True)
 
 		# telescope Specific
 		f = self.addTelescopeKeys(target, tele_list, f)
 
 		# enclosure Specific
-		if dome != None:
-			if 'astrohaven' in dome.id:
-				f = self.addAstrohavenKeys(f)
-			else:
-				f = self.addAqawanKeys(dome, f)
+		if dome != None: f = self.addDomeKeys(dome,f)
 
 		# add the header keys from the weather station
 		f = self.addWeatherKeys(f)
 
-		return f
-
-	def addAstrohavenKeys(self, f):
 		return f
 
 	def addImagerKeys(self, tele_list, f, fau=False):
@@ -2993,17 +3011,6 @@ class control:
 
 	def endNight(self, telescope, email=True, night=None, kiwispec=True):
 
-		if self.red:
-			if os.path.exists(self.base_directory + '/minerva_library/astrohaven1.request.txt'): 
-				os.remove(self.base_directory + '/minerva_library/astrohaven1.request.txt')
-		elif self.south:
-			pass
-		else:
-			if os.path.exists(self.base_directory + '/minerva_library/aqawan1.request.txt'): 
-				os.remove(self.base_directory + '/minerva_library/aqawan1.request.txt')
-			if os.path.exists(self.base_directory + '/minerva_library/aqawan2.request.txt'): 
-				os.remove(self.base_directory + '/minerva_library/aqawan2.request.txt')
-					
 		#S This implementation should allow you to specify a night you want to 'clean-up',
 		#S or just run end night on the current night. I'm not sure how it will act
 		#S if you endnight on an already 'ended' night though.
@@ -3012,12 +3019,32 @@ class control:
 		if night == None:
 			night = self.night
 
-		if kiwispec: 
-			dataPath = '/Data/kiwispec/' + night + '/'
-			objndx = 1
-		else: 
-			dataPath = telescope.datadir + night + '/'
-			objndx = 2
+		if self.red:
+			if os.path.exists(self.base_directory + '/minerva_library/astrohaven1.request.txt'): 
+				os.remove(self.base_directory + '/minerva_library/astrohaven1.request.txt')
+
+			if kiwispec: 
+				dataPath = '/Data/mredspec/' + night + '/'
+				objndx = 1
+			else: 
+				dataPath = telescope.datadir + night + '/'
+				objndx = 2
+
+
+		elif self.south:
+			pass
+		else:
+			if os.path.exists(self.base_directory + '/minerva_library/aqawan1.request.txt'): 
+				os.remove(self.base_directory + '/minerva_library/aqawan1.request.txt')
+			if os.path.exists(self.base_directory + '/minerva_library/aqawan2.request.txt'): 
+				os.remove(self.base_directory + '/minerva_library/aqawan2.request.txt')
+
+			if kiwispec: 
+				dataPath = '/Data/kiwispec/' + night + '/'
+				objndx = 1
+			else: 
+				dataPath = telescope.datadir + night + '/'
+				objndx = 2
 
 		if not os.path.exists(dataPath): os.mkdir(dataPath)
 

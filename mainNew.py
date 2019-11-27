@@ -14,6 +14,7 @@ import datetime
 import threading
 import time, json, copy, ipdb
 import numpy as np
+import argparse
 #================#
 
 #  At 4:00 run this script.
@@ -399,7 +400,8 @@ def observe(red=False, south=False):
         # by default, checkiftime = True. This is just here as a reminder
         kwargs ={'checkiftime': True}
         thread = threading.Thread( target = minerva.specCalib_catch, args=(),kwargs=kwargs ) 
-        thread.name = 'Kiwispec'
+        if minerva.red: thread.name = 'MRED'
+        else: thread.name = 'Kiwispec'
         thread.start()
         threads.append(thread)
 
@@ -436,13 +438,8 @@ def observe(red=False, south=False):
         sunfile = minerva.base_directory + '/minerva_library/sunOverride.' + dome.id + '.txt'
         if os.path.exists(sunfile): os.remove(sunfile)
 
-        with open(minerva.base_directory + '/minerva_library/aqawan1.request.txt','w') as fh:
+        with open(minerva.base_directory + '/minerva_library/' + dome.id + '.request.txt','w') as fh:
             fh.write(str(datetime.datetime.utcnow()))
-
-
-        with open(minerva.base_directory + '/minerva_library/aqawan2.request.txt','w') as fh:
-            fh.write(str(datetime.datetime.utcnow()))
-
 
         if CalibInfo != None and CalibEndInfo != None:
             if datetime.datetime.utcnow() < minerva.site.NautTwilEnd():
@@ -573,4 +570,6 @@ if __name__ == '__main__':  # do a bunch of threading stuff
             "Check control.log for additional information. Please investigate, consider adding additional error handling, and restart mainNew.py.\n\n" + \
             "Love,\n" + \
             "MINERVA"
-        mail.send("mainNew.py Crashed",body,level='serious',directory='directory.txt')
+        if opt.red: directory = 'directory_red.txt'
+        else: directory = 'directory.txt'
+        mail.send("mainNew.py Crashed",body,level='serious',directory=directory)

@@ -29,16 +29,19 @@ import utils, env
 ###
 
 class scheduler:
-    def __init__(self,config_file,base_directory='.'):
+    def __init__(self,config_file,base_directory='.',red=False,south=False):
         #S want to get the site from the control class, makes easy computing
         #S LST and such
         self.base_directory = base_directory
         self.config_file = config_file
+        self.red = red
+        self.south = south
         self.dt_fmt = '%Y%m%dT%H:%M:%S'
         # load the config file
         self.load_config()
         # make the observer which will be used in calculations and what not
         self.obs = ephem.Observer()
+
         self.obs.lat = ephem.degrees(str(self.site.latitude)) # N
         self.obs.lon = ephem.degrees(str(self.site.longitude)) # E
         self.obs.horizon = ephem.degrees(str(self.sun_horizon))
@@ -48,17 +51,17 @@ class scheduler:
         self.sun.compute(self.obs)
         self.moon = ephem.Moon()
         self.moon.compute(self.obs)
-        self.obspath = self.base_directory + '/schedule/rvobshistory/'
+        if self.red: self.obspath = self.base_directory + '/schedule/rvobshistoryred/'
+        else: self.obspath = self.base_directory + '/schedule/rvobshistory/'
 
         # TODO: incorporate this into the observing script and initialize to False
-        self.bstarobserved = False
+        if self.red: self.bstarobserved=True
+        else: self.bstarobserved = False
         
         # get the target list
         self.update_list()
 
         self.make_fixedBodies()
-
-        self.site = env.site('site_mtHopkins.ini',self.base_directory)
 
     def load_config(self):
         try:
@@ -111,7 +114,7 @@ class scheduler:
     def update_list(self,bstar=False,includeInactive=False):
         #S need to update list potentially
         try:
-            self.target_list = targetlist.mkdict(includeInactive=includeInactive) + targetlist.mkdict(bstar=True,includeInactive=includeInactive)
+            self.target_list = targetlist.mkdict(includeInactive=includeInactive,red=self.red) + targetlist.mkdict(bstar=True,includeInactive=includeInactive)
         except:
             #S Placeholder for logger
             pass
