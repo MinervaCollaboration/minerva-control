@@ -30,8 +30,8 @@ class ascomcam:
         def initialize(self):
                 self.connect()
                 self.cool()
-                self.setROI(fullFrame=True)
-                self.setBin(1)
+                self.set_roi(fullFrame=True)
+                self.set_bin(1)
 
 	def connect(self):
                 self.camera.connected = True
