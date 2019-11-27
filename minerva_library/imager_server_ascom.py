@@ -3,14 +3,14 @@ from scp import SCPClient
 from win32com.client import Dispatch
 from scipy import stats
 import numpy as np
-import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, pyfits, subprocess, collections
+import os,sys,glob, socket, logging, datetime, ipdb, time, json, threading, subprocess, collections
 import atexit, win32api
 import utils
 import math
 import ao
 import zwo
-
-# full API at http://www.cyanogen.com/help/maximdl/MaxIm-DL.htm#Scripting.html
+import ascomcam, ascomfw
+from astropy.io import fits
 
 class server:
 
@@ -19,9 +19,6 @@ class server:
 		self.config_file = config
 		self.base_directory = base
 		self.load_config()
-
-
-                if self.zwodirect: self.guider = zwo.zwo('',self.base_directory)
 
 		# reset the night at 10 am local
 		today = datetime.datetime.utcnow()
@@ -32,9 +29,9 @@ class server:
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.set_data_path()
 
-                self.camera = ascomcam.ascomcam(driver='ASCOM.SDK2.Camera')
+                self.camera = ascomcam.ascomcam('',base=self.base_directory,driver='ASCOM.SDK2.Camera')
                 self.guider = zwo.zwo('',self.base_directory)
-                self.fw = ascomfw.ascomfw(driver='ASCOM.Apogee.FilterWheel')
+                self.fw = ascomfw.ascomfw('',base=self.base_directory,driver='ASCOM.Apogee.FilterWheel')
 
 		self.connect_camera()
 		self.file_name = ''
@@ -42,10 +39,7 @@ class server:
 
 #		if socket.gethostname() == 't2-PC':
 #			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
-		#XXX These do not work
-		#S Setup shut down procedures
-		#win32api.SetConsoleCtrlHandler(self.safe_close,True)
-		#atexit.register(self.safe_close,'signal_arguement')
+
 
 #==============utility functions=================#
 #these methods are not directly called by client
@@ -58,8 +52,6 @@ class server:
 			self.data_path_base = config['DATA_PATH']
 			self.logger_name = config['LOGNAME']
 			self.header_buffer = ''
-                        try: self.zwodirect = config['ZWODIRECT']
-                        except: self.zwodirect = False
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
 			sys.exit()
@@ -136,12 +128,13 @@ class server:
                         self.camera.initialize()        
                         self.guider.initialize()        
                         self.fw.initialize()
+                        return 'sucess'
                 except:
                         self.logger.exception("Failed to connect to the camera")
 			return 'fail'
 
 	#set binning
-	def set_binning(self,param,guider=False):
+	def set_bin(self,param,guider=False):
                 if guider: camera = self.guider
                 else: camera = self.camera
 
@@ -150,7 +143,7 @@ class server:
 			return 'fail'
 		try:
 			self.logger.info('Setting binning to ' + param[0] + ',' + param[1] )
-			camera.setBin(int(param[0]),int(param[1]))
+			camera.set_bin(int(param[0]),int(param[1]))
 			return 'success'
 		except:
 			self.logger.error('Setting binning to ' + param[0] + ',' + param[1] + ' failed')
@@ -188,129 +181,65 @@ class server:
         def getGuideStar(self):
                 time,x,y = self.guider.getGuideStar()
                 timestr = time.strftime('%Y-%m-%dT%H:%M:%S.%f')
-                print 'success ' + timestr + ' '+str(x)+' '+str(y)
-
                 return 'success ' + timestr + ' '+str(x)+' '+str(y)
 
-	def exposeGuider(self,param):
+	def expose(self,param, guider=False):
+                if guider: camera=self.guider
+                else: camera = self.camera
+                
 		try:
 			param = param.split()
 			exptime = float(param[0])
-			acquisition_offset_x = float(param[1])
-			acquisition_offset_y = float(param[2])
-                        offset = (acquisition_offset_x,acquisition_offset_y)
-		except:
-			return 'fail'
-		
-                if self.zwodirect:
-                        self.logger.info("Exposing through python")
-                        self.guider.expose(exptime, offset=offset)
-                        #except: return 'fail'
-                        return 'success'
-                else:
-                        self.logger.info("Exposing through Maxim")
-                        try: self.cam.GuiderExpose(float(param))
-                        except: return 'fail'
-                        return 'success'
-
-	def expose(self,param):
-		try:
-			param = param.split()
-			exptime = float(param[0])
-			exptype = int(param[1])
+			openshutter = (param[1] == 1)
 			filter_num = param[2]
 
-			if filter_num == 'None':
-				self.cam.Expose(exptime,exptype)
-			else:
-				self.cam.Expose(exptime,exptype,int(filter_num))
+			if filter_num != None:
+                                self.fw.move_and_wait(position=int(filter_num))
+
+			camera.expose(exptime,openshutter=openshutter)
 			return 'success'
 		except:
 			return 'fail'
 
-	def save_image(self,param):
+	def save_image(self,param, guider=False):
+                if guider: camera=self.guider
+                else: camera = self.camera
 
-                if len(param.split()) == 2:
-                        file_name = param.split()[0]
-                        guider = True
-                elif len(param.split()) == 1:
-                        file_name = param.split()[0]
-			if file_name == 'guider':
-				self.logger.error("empty filename")
-				return 'fail'
-                        guider = False
-                else:
-			self.logger.error('parameter mismatch')
-			return 'fail'
-		try:
-                        if guider:
-                                self.logger.info('Saving guider image')
-                                self.guider_file_name = self.data_path + '\\' + file_name
+                try:
+                        filename = self.data_path + param.split()[0]
+                        camera.filename=filename
+                        camera.save_image(filename)
+                        return 'success'
+                except:         
+                        return 'fail'
 
-                                if self.zwodirect:
-                                        self.guider.save_image(self.guider_file_name)
-                                        return 'success'
-                                else:
-                                        time.sleep(0.3) # wait for the image to start
-                                        while self.cam.GuiderRunning:
-                                                time.sleep(0.1)
-                                        time.sleep(0.3)
-                                        self.logger.info('saving image to:' + file_name)
-                                        self.maxim.CurrentDocument.SaveFile(self.guider_file_name,3, False, 1)
-                                        return 'success'
-                        else:
-                                time.sleep(0.3) # wait for the image to start
-                		print self.cam.ImageReady, self.cam.CameraStatus
-                                t0 = datetime.datetime.utcnow()
-                                timeElapsed = 0.0
-                                timeout = 30
-        			while ((not self.cam.ImageReady) or (self.cam.CameraStatus <> 2)) and (timeElapsed < timeout):
-                			time.sleep(0.1)
-                			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()
-                		print self.cam.ImageReady, self.cam.CameraStatus
-                                self.logger.info('saving image to:' + file_name)
-        			self.file_name = self.data_path + '\\' + file_name
-                                try:
-                                        if self.cam.SaveImage(self.file_name):
-                				return 'success'
-                                        self.logger.error("Error saving image")
-                                	return 'fail'
-                                except:
-                                        self.logger.exception("Error saving image")
-                                        return 'fail'
-                except:
-                        self.logger.exception("Error saving image")
-			return 'fail'
 
-	def write_header(self,param):
+	def write_header(self,param, guider=False):
 
-		self.header_buffer = self.header_buffer + param
+                if guider: camera=self.guider
+                else: camera=self.camera
+		camera.header_buffer += param
 		return 'success'
 
-	def write_header_done(self,param):
-
-		# the last 7 characters may or may not indicate this is a guider image
-		if param[-7:] == ' guider':
-			guider = True
-			param = param[0:-7]
-                else: guider = False
-
+	def write_header_done(self,param, guider=False):
+                if guider: camera=self.guider
+                else: camera=self.camera
+                
 		try:
-			if guider: filename=self.guider_file_name
-			else: filename=self.file_name
+			filename=camera.filename
 			self.logger.info("Writing header for " + filename)
 		except:
 			self.logger.error("file name not defined; saving failed earlier")
-			self.header_buffer = ''
+			camera.header_buffer = ''
 			return 'fail'
 
-		header_info = self.header_buffer + param
-		self.header_buffer = ''
+		header_info = camera.header_buffer + param
+		camera.header_buffer = ''
 
 		try:
 			# check to see if the image exists
 			if os.path.isfile(filename):
-				f = pyfits.open(filename, mode='update')
+                                f = fits.open(filename, 'update')
 			else:
 				self.logger.error("FITS file (" + filename + ") not found")
 				return 'fail'
@@ -373,18 +302,18 @@ class server:
 
 	def getMean(self,guider=False):
 		try:
-			if guider: mean = pyfits.getdata(self.file_name,0).mean()
-			else: mean = pyfits.getdata(self.guider_file_name,0).mean()
+			if guider: mean = fits.getdata(self.file_name,0).mean()
+			else: mean = fits.getdata(self.guider_file_name,0).mean()
 			mean = str(mean)
-			res = 'success ' + mean
+			return 'success ' + mean
 		except:
-			res = 'fail'
-		return res
+			return 'fail'
 
 	def getMode(self,guider=False):
+                
 		try:
-			if guider: image = pyfits.getdata(self.guider_file_name,0)
-			else: image = pyfits.getdata(self.file_name,0)
+			if guider: image = fits.getdata(self.guider_file_name,0)
+			else: image = fits.getdata(self.file_name,0)
 			# mode is slow; take the central 100x100 region
 			# (or the size of the image, which ever is smaller)
 			nx = len(image)
@@ -431,14 +360,6 @@ class server:
 		except:
 			return 'fail'
 
-        def quit_maxim(self):
-                try:
-                        self.cam = None
-                        self.maxim = None
-                        return 'success'
-                except:
-                        self.logger.exception("quitting maxim failed")
-                        return 'fail'
 
 	def disconnect_camera(self):
 		try:
