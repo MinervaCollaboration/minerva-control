@@ -248,7 +248,7 @@ def doSpectra(minerva, target, tele_list, test=False):
     stopFAU(minerva,tele_list)
 
     # make sure all threads are done
-    exposureTimeout = target['exptime'] + 600.0
+    exposureTimeout = target['exptime'][0] + 600.0
     for t in range(len(tele_list)):
         telescope = utils.getTelescope(minerva,tele_list[t])
         telescope.abort=True

@@ -116,8 +116,8 @@ class server:
 			return 'fail'
 
 	def isAOPresent(self):
-                if 'ao' in dir(self): return 'success'
-                return 'fail'
+                if 'ao' in dir(self): return 'success True'
+                return 'success False'
         
 #==========command functions==============#
 #methods directly called by client
