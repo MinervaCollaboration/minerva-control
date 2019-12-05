@@ -37,8 +37,8 @@ class server:
 		self.file_name = ''
 		self.guider_file_name = ''
 
-		if socket.gethostname() == 'mienrva19-01':
-			self.ao = ao.ao('ao-mred.ini')
+		if socket.gethostname() == 'minerva19-01':
+			self.ao = ao.ao('ao_mred.ini')
 #		elif socket.gethostname() == 't2-PC':
 #			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
 
@@ -509,7 +509,7 @@ class server:
                         response = self.isAOPresent() 
 		elif tokens[0] == 'moveAO':
 			array = tokens[1].split(',')
-			response = self.ao.move(array[0],array[1])
+			response = self.ao.move(float(array[0]),float(array[1]))
 		elif tokens[0] == 'homeAO':
 			response = self.ao.home()
 		elif tokens[0] == 'remove':
