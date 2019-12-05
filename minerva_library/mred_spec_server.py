@@ -1061,7 +1061,7 @@ if __name__ == '__main__':
 
         expmeter_thread = threading.Thread(target=test_server.logexpmeter)
         expmeter_thread.name = 'MRED'
-        #expmeter_thread.start()
+        expmeter_thread.start()
 
         chiller_thread = threading.Thread(target=test_server.logchiller)
         chiller_thread.name = 'MRED'
