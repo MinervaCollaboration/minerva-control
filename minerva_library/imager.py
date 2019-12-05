@@ -386,7 +386,9 @@ class imager:
 
 	def isAOPresent(self):
 		cmd = 'isAOPresent None'
-		if (self.send(cmd,30)).split()[1] == 'True': return True
+		try:
+			if (self.send(cmd,30)).split()[1] == 'True': return True
+		except: return False
 		return False
 
 	def moveAO(self,north,east):

@@ -904,7 +904,7 @@ class control:
 				self.logger.info(telid + ": Using the star at (x,y)=(" + str(xstar) + "," + str(ystar) +  ")")
 
 				# include an arbitrary offset from the nominal position (experimental)
-				offset_file = self.base_directory + telid + '_fiber_offset.txt'
+				offset_file = self.base_directory + '/' + telid + '_fiber_offset.txt'
 				
 				if os.path.exists(offset_file):
 					with open(offset_file) as fh:

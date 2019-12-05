@@ -37,8 +37,11 @@ class server:
 		self.file_name = ''
 		self.guider_file_name = ''
 
-#		if socket.gethostname() == 't2-PC':
+		if socket.gethostname() == 'mienrva19-01':
+			self.ao = ao.ao('ao-mred.ini')
+#		elif socket.gethostname() == 't2-PC':
 #			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
+
 		#XXX These do not work
 		#S Setup shut down procedures
 		#win32api.SetConsoleCtrlHandler(self.safe_close,True)
