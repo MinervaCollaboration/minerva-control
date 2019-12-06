@@ -332,8 +332,8 @@ class server:
 
 	def isSuperSaturated(self, guider=False):
 		try:
-			if guider: image = pyfits.getdata(self.guider_file_name,0)
-			else: image = pyfits.getdata(self.file_name,0)
+			if guider: image = fits.getdata(self.guider_file_name,0)
+			else: image = fits.getdata(self.file_name,0)
 			# mode is slow; take the central 100x100 region
 			# (or the size of the image, which ever is smaller)
 			nx = len(image)
