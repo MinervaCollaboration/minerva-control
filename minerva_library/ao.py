@@ -76,7 +76,10 @@ class ao:
                 response = self.ser.read(self.ser.inWaiting())
                 time.sleep(0.001)
 
-            if response == "K": return "success " + response
+            if response == "K":
+		self.North = 0
+		self.East = 0
+		return "success " + response
             return "failed " + response
         return "failed; serial connection not open"
 
@@ -101,6 +104,8 @@ class ao:
 
         self.North += slxNorth
         self.East += slxEast
+	self.logger.info(str(slxNorth))
+	self.logger.info(str(slxEast))
 
         if self.North > self.ymax or self.North < self.ymin or self.East > self.xmax or self.East < self.xmin:
             # TODO: Move telescope to compensate
