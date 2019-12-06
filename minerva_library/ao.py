@@ -86,8 +86,8 @@ class ao:
 
         # the magnitudes of the corrections for the Starlight Xpress
         # converted to their definitions of North and East
-        slxNorth = -self.gain*self.platescale*(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))
-        slxEast  =  self.gain*self.platescale*(east*math.sin(self.rotoffset) + north*math.cos(self.rotoffset))
+        slxNorth = -self.platescale*(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))
+        slxEast  =  self.platescale*(east*math.sin(self.rotoffset) + north*math.cos(self.rotoffset))
 
         cmdN = 'G'
         if slxNorth > 0: cmdN += 'N'
