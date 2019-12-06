@@ -84,7 +84,7 @@ class control:
 			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory, red=True)
 			self.domes.append(astrohaven.astrohaven('astrohaven_red.ini',self.base_directory))
 			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory, red=True))
-			self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
+			self.cameras.append(imager_ascom.imager('imager_mred.ini',self.base_directory))
 #			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mred.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mredrack.ini',self.base_directory))
@@ -803,6 +803,7 @@ class control:
 
 		# try out the tip/tilt guiding...
 		ao = camera.isAOPresent()
+		ao = False
 
 		# center the AO unit
 		if ao: camera.homeAO()
@@ -1061,9 +1062,9 @@ class control:
 		# the longer I can slew, the more accurate the calculation
                 # calculate how far I can move before hitting the edge
                 # must assume random orientation
-                maxmove = min([x1,xsize-x1,y1,ysize-y1])*platescale
+#		maxmove = 40*camera.ao.arcsec_per_step # 40 steps, in arcsec
+		maxmove = 40*0.128
 
-		maxmove = 50.0
 
 		# jog telescope by 80% of the maximum move in +RA
 		if not camera.moveAO(0.0,maxmove): # in pixel units
@@ -1092,14 +1093,16 @@ class control:
 
                 # calculate rotator angle
 		rotoff = float(telescope.rotatoroffset[m3port])
-		skypa = (rotoff + float(parang) + float(rotpos) + 360.0) % 360
-		
+		skypa = (rotoff + float(parang) - float(rotpos) + 360.0) % 360
 
                 imagepa = math.atan2(y2-y1,x2-x1)*180.0/math.pi
-		aooff = (imagepa + skypa)%360
+		aooff = (imagepa + skypa + 360) % 360 # nope -- very far off
+		aooff = (imagepa - skypa + 360) % 360
+
+
                 #rotoff = (skypa - float(parang) + float(rotpos) + 360.0) % 360
 
-		platescale_measured = math.sqrt((x2-x1)**2 + (y2-y1)**2)/maxmove
+		platescale_measured = math.sqrt((x2-x1)**2 + (y2-y1)**2)/40.0
 
                 if x1 == x2 and y1 == y2:
                         self.logger.error("Same image! Do not trust! WTF?")

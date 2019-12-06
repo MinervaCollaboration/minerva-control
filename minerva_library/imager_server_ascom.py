@@ -437,8 +437,6 @@ class server:
 			response = self.set_temperature(tokens[1])
 		elif tokens[0] == 'get_temperature':
 			response = self.get_temperature()
-		elif tokens[0] == 'quit_maxim':
-			response = self.quit_maxim()
 		else:
 			self.logger.info('command not recognized: (' + tokens[0] +')')
 			response = 'fail'
