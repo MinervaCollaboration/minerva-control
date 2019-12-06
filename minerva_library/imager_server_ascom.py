@@ -29,17 +29,16 @@ class server:
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.set_data_path()
 
-                self.camera = ascomcam.ascomcam('',base=self.base_directory,driver='ASCOM.SDK2.Camera')
+                self.camera = ascomcam.ascomcam('',base=self.base_directory,driver=self.camera_driver)
                 self.guider = zwo.zwo('',self.base_directory)
-                self.fw = ascomfw.ascomfw('',base=self.base_directory,driver='ASCOM.Apogee.FilterWheel')
+                self.fw = ascomfw.ascomfw('',base=self.base_directory,driver=self.fw_driver)
 
 		self.connect_camera()
 		self.file_name = ''
 		self.guider_file_name = ''
 
-#		if socket.gethostname() == 't2-PC':
-#			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
-
+		if self.ao_ini != None:
+			self.ao = ao.ao(self.ao_ini)
 
 #==============utility functions=================#
 #these methods are not directly called by client
@@ -51,6 +50,10 @@ class server:
 			self.port = int(config['PORT'])
 			self.data_path_base = config['DATA_PATH']
 			self.logger_name = config['LOGNAME']
+			self.camera_driver = config['CAMERADRIVER']
+			self.fw_driver = config['FWDRIVER']
+			try: self.ao_ini = config['AOINI']
+			except: self.ao_ini = None
 			self.header_buffer = ''
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -478,12 +481,15 @@ class server:
 		self.run_server()
 
 if __name__ == '__main__':
-    if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC' or socket.gethostname() == 'minerva19-01':
+
+    hostname = socket.gethostname()
+
+    if hostname == 'Minervared2-PC' or hostname == 'Telcom-PC' or hostname == 'minerva19-01':
         config_file = 'imager_server_red.ini'
-    elif socket.gethostname() == "TacherControl":
+    elif hostname == "TacherControl":
         config_file = "imager_server_thach.ini"
     else:
-	config_file = 'imager_server.ini'
+	config_file = 'imager_server_' + hostname[0:2] + '.ini'
 
     base_directory = 'C:\minerva-control'
 

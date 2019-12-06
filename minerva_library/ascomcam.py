@@ -20,7 +20,13 @@ class ascomcam:
                         print("The driver is " + driver)
 
 		# initialize the camera
-		self.camera = win32com.client.Dispatch(driver)
+		try:
+			self.camera = win32com.client.Dispatch(driver)
+		except:
+                        x = win32com.client.Dispatch("ASCOM.Utilities.Chooser")
+                        x.DeviceType = 'Camera'
+                        driver = x.Choose(None)
+                        print("The driver is " + driver)
 
 		today = datetime.datetime.utcnow()
                 if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
