@@ -30,7 +30,7 @@ class ao:
         config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 
         try:       
-            self.platescale = float(config['Setup']['PLATESCALE'])
+            self.arcsec_per_step = float(config['Setup']['ARCSEC_PER_STEP'])
             self.rotoffset = math.radians(float(config['Setup']['ROTOFFSET']))
             self.gain = float(config['Setup']['GAIN'])
             self.xmin = float(config['Setup']['XMIN'])
@@ -89,8 +89,8 @@ class ao:
 
         # the magnitudes of the corrections for the Starlight Xpress
         # converted to their definitions of North and East
-        slxNorth = -self.gain*self.platescale*(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))
-        slxEast  =  self.gain*self.platescale*(east*math.sin(self.rotoffset) + north*math.cos(self.rotoffset))
+        slxNorth = -(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))/self.arcsec_per_step
+        slxEast  =  (east*math.sin(self.rotoffset) + north*math.cos(self.rotoffset))/self.arcsec_per_step
 
         cmdN = 'G'
         if slxNorth > 0: cmdN += 'N'
