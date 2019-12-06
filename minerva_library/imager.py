@@ -299,6 +299,10 @@ class imager:
 				n = 0
 			time.sleep(1)
 
+	def simulate_star_image(xstar,ystar,flux,fwhm,background=300.0, noise=10.0, guider=True):
+		res = self.send('simulate_star_image')
+
+
 	#set path for which new images will be saved,if not set image will go into dump folder
 	def set_dataPath(self):
 
@@ -622,7 +626,7 @@ class imager:
                 self.logger.info('cmd=' + cmd + ', out=' + out + ', err=' + err)
                 self.logger.info(cmdstr)
 
-                return True #NOTE THIS CODE DOES NOT HANDLE ERRORS (but its we also haven't had any so that's encouraging)                                   
+                return True #NOTE THIS CODE DOES NOT HANDLE ERRORS (but we also haven't had any so that's encouraging)                                   
 
 
         def send_to_computer(self, cmd):

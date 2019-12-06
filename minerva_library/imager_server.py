@@ -192,11 +192,90 @@ class server:
 		except:
 			return 'fail'
 
+        '''
+        this creates a simple simulated image of a star field
+        the idea is to be able to test guide performance without being on sky
+        x -- an array of X centroids of the stars (only integers tested!)
+        y -- an array of Y centroids of the stars (only integers tested!)
+        flux -- an array of fluxes of the stars (electrons)
+        fwhm -- the fwhm of the stars (arcsec)
+        background -- the sky background of the image
+        noise -- readnoise of the image
+        '''
+        def simulate_star_image(self,x,y,flux,fwhm,background=300.0,noise=10.0, guider=True):
+
+		if guider then camera = self.guider
+		else camera = self.cam
+
+                camera.dateobs = datetime.datetime.utcnow()
+
+                xwidth = camera.x2-camera.x1
+                ywidth = camera.y2-camera.y1
+                camera.image = np.zeros((ywidth,xwidth),dtype=np.float64) + background + np.random.normal(scale=noise,size=(ywidth,xwidth))
+
+                # add a guide star?
+                sigma = fwhm/camera.platescale
+                mu = 0.0
+                boxsize = math.ceil(sigma*10.0)
+
+                # make sure it's even to make the indices/centroids come out right
+                if boxsize % 2 == 1: boxsize+=1
+
+                xgrid,ygrid = np.meshgrid(np.linspace(-boxsize,boxsize,2*boxsize+1), np.linspace(-boxsize,boxsize,2*boxsize+1))
+                d = np.sqrt(xgrid*xgrid+ygrid*ygrid)
+                g = np.exp(-( (d-mu)**2 / ( 2.0 * sigma**2 ) ) )
+                g = g/np.sum(g) # normalize the gaussian
+
+                # add each of the stars
+                for ii in range(len(x)):
+
+                    xii = x[ii]-camera.x1+1
+                    yii = y[ii]-camera.y1+1
+
+                    # make sure the stamp fits on the image (if not, truncate the stamp)
+                    if xii >= boxsize:
+                        x1 = xii-boxsize
+                        x1stamp = 0
+                    else:
+                        x1 = 0
+                        x1stamp = boxsize-xii
+                    if xii <= (xwidth-boxsize):
+                        x2 = xii+boxsize+1
+                        x2stamp = 2*boxsize+1
+                    else:
+                        x2 = xwidth
+                        x2stamp = xwidth - xii + boxsize
+                    if yii >= boxsize:
+                        y1 = yii-boxsize
+                        y1stamp = 0
+                    else:
+                        y1 = 0
+                        y1stamp = boxsize-yii
+                    if yii <= (ywidth-boxsize):
+                        y2 = yii+boxsize+1
+                        y2stamp = 2*boxsize+1
+                    else:
+                        y2 = ywidth
+                        y2stamp = ywidth - yii + boxsize
+
+                    if (y2-y1) > 0 and (x2-x1) > 0:
+                        # normalize the star to desired flux
+                        star = g[y1stamp:y2stamp,x1stamp:x2stamp]*flux[ii]
+
+                        # add Poisson noise; convert to ADU
+                        noise = np.random.normal(size=(y2stamp-y1stamp,x2stamp-x1stamp))
+                        noisystar = (star + np.sqrt(star)*noise)/camera.gain
+
+                        # add the star to the image
+                        camera.image[y1:y2,x1:x2] += noisystar
+                    else: camera.logger.warning("star off image (" + str(xii) + "," + str(yii) + "); ignoring")
+
+                # now convert to 16 bit int
+                camera.image = camera.image.astype(np.int16)		
+
         def getGuideStar(self):
                 time,x,y = self.guider.getGuideStar()
                 timestr = time.strftime('%Y-%m-%dT%H:%M:%S.%f')
-                print 'success ' + timestr + ' '+str(x)+' '+str(y)
-
                 return 'success ' + timestr + ' '+str(x)+' '+str(y)
 
 	def exposeGuider(self,param):

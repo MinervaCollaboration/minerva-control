@@ -224,7 +224,6 @@ if __name__ == '__main__':
 		print ' m. connect_camera'
 		print ' n. disconnect_camera'
 		print ' o. powercycle'
-		print ' p. restart_maxim'
 		print ' q. recover'
 		print '----------------------------'
 		choice = raw_input('choice:')

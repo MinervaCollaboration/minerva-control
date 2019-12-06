@@ -84,7 +84,7 @@ class control:
 			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory, red=True)
 			self.domes.append(astrohaven.astrohaven('astrohaven_red.ini',self.base_directory))
 			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory, red=True))
-			self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
+			self.cameras.append(imager_ascom.imager('imager_mred.ini',self.base_directory))
 #			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mred.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mredrack.ini',self.base_directory))
@@ -803,6 +803,7 @@ class control:
 
 		# try out the tip/tilt guiding...
 		ao = camera.isAOPresent()
+		ao = False
 
 		# center the AO unit
 		if ao: camera.homeAO()
@@ -1036,6 +1037,85 @@ class control:
 		# The target is no longer acquired
 		camera.fau.acquired = False
 		return True
+
+	def calibrate_ao(self, telid, exptime=1):
+		gain=0.75
+		camera = utils.getCamera(self,telid)
+		telescope = utils.getTelescope(self,telid)
+
+		camera.homeAO()
+		m3port = telescope.port['FAU']
+		platescale = camera.fau.platescale
+		xsize = camera.fau.x2
+		ysize = camera.fau.y2
+
+		filename = camera.take_image(exptime=exptime,objname="aoCal",fau=True)
+
+		# locate star
+                datapath = telescope.datadir + self.night + '/'
+                x1, y1 = utils.findBrightest(datapath + filename)
+                if x1 == None or y1 == None: return False
+
+                print filename, x1, y1
+
+
+		# the longer I can slew, the more accurate the calculation
+                # calculate how far I can move before hitting the edge
+                # must assume random orientation
+#		maxmove = 40*camera.ao.arcsec_per_step # 40 steps, in arcsec
+		maxmove = 40*0.128
+
+
+		# jog telescope by 80% of the maximum move in +RA
+		if not camera.moveAO(0.0,maxmove): # in pixel units
+			self.logger.info('move not allowed; cannot calibrate')
+			ipdb.set_trace()
+
+#		ipdb.set_trace()
+
+
+
+		# wait for it to settle
+		time.sleep(1.0)
+
+		# take exposure
+                filename = camera.take_image(exptime=exptime,objname="aoCal",fau=True)
+
+                # locate star
+                x2, y2 = utils.findBrightest(datapath + filename)
+                if x2 == None or y2 == None: return False
+
+                print filename, x2, y2
+
+                rotatorStatus = telescope.getRotatorStatus(m3port)
+                rotpos = float(rotatorStatus.position)
+                parang = telescope.parangle(useCurrent=True)
+
+                # calculate rotator angle
+		rotoff = float(telescope.rotatoroffset[m3port])
+		skypa = (rotoff + float(parang) - float(rotpos) + 360.0) % 360
+
+                imagepa = math.atan2(y2-y1,x2-x1)*180.0/math.pi
+		aooff = (imagepa + skypa + 360) % 360 # nope -- very far off
+		aooff = (imagepa - skypa + 360) % 360
+
+
+                #rotoff = (skypa - float(parang) + float(rotpos) + 360.0) % 360
+
+		platescale_measured = math.sqrt((x2-x1)**2 + (y2-y1)**2)/40.0
+
+                if x1 == x2 and y1 == y2:
+                        self.logger.error("Same image! Do not trust! WTF?")
+                        return -999
+
+                self.logger.info("Found stars at (" + str(x1) + "," + str(y1) + " and (" + str(x2) + "," + str(y2) + ")")
+                self.logger.info("The Rotator position is " + str(rotpos) + ' degrees')
+                self.logger.info("The parallactic angle is " + str(parang) + ' degrees')
+                self.logger.info("The rotator offset is " + str(rotoff) + ' degrees')
+                self.logger.info("The Sky PA is " + str(skypa) + ' degrees')
+                self.logger.info("The Image PA is " + str(imagepa) + ' degrees')
+                self.logger.info("The AO offset is " + str(aooff) + ' degrees')
+                self.logger.info("The measured platescale is " + str(platescale_measured) + ' pixels/step')
 
 	'''
 	rasters the position of the fiber in a spiral from the nominal position 
