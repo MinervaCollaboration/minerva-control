@@ -33,7 +33,7 @@ class imager:
                         self.pdu = pdu_thach.pdu(self.pdu_config,base)
                 else:
                         self.pdu = pdu.pdu(self.pdu_config,base)
-		self.initialize()
+		#self.initialize()
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
@@ -74,6 +74,7 @@ class imager:
 			self.datapath = ''
 			self.gitpath = ''
 			self.file_name = 'test'
+			self.guider_file_name = ''
 			self.night = 'test'
 			self.nfailed = 0
 			self.nserver_failed = 0
@@ -395,9 +396,32 @@ class imager:
 		except: return False
 		return False
 
+	def get_north_east(self):
+		cmd = 'get_north_east none'
+		response = self.send(cmd,30)
+		if (response).split()[0] == 'success': 
+			north = float(response.split()[1])
+			east = float(response.split()[2])
+			return (north,east)
+		return (None,None)
+
+	def get_tip_tilt(self):
+		cmd = 'get_tip_tilt none'
+		response = self.send(cmd,30)
+		if (response).split()[0] == 'success': 
+			tip = float(response.split()[1])
+			tilt = float(response.split()[2])
+			return (tip,tilt)
+		return (None,None)
+
 	def moveAO(self,north,east):
 		cmd = 'moveAO ' + str(north) + ',' + str(east)
-		if (self.send(cmd,30)).split()[0] == 'success': return True
+		response = self.send(cmd,30)
+		if (response).split()[0] == 'success': 
+			if response.split()[1] == 'Limits_Reached':
+				return 'Limits_Reached'
+			else:
+				return True
 		return False
 
 	def homeAO(self):
@@ -462,6 +486,9 @@ class imager:
 
 	# returns file name of the image saved, return 'error' if error occurs
 	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False, piggyback=False, offset=(0.0,0.0)):
+
+		print exptime, objname, fau, offset
+
 #		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
 		ndx = self.get_index()

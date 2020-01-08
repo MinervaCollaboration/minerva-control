@@ -586,6 +586,10 @@ class server:
 			response = self.isSuperSaturated(guider=guider)
                 elif tokens[0] == 'isAOPresent':
                         response = self.isAOPresent() 
+                elif tokens[0] == 'get_tip_tilt':
+                        response = self.ao.get_tip_tilt() 
+                elif tokens[0] == 'get_north_east':
+                        response = self.ao.get_north_east() 
 		elif tokens[0] == 'moveAO':
 			array = tokens[1].split(',')
 			response = self.ao.move(float(array[0]),float(array[1]))
@@ -616,9 +620,9 @@ class server:
 			return
 
 		if response.split()[0] == 'fail':
-			self.logger.info('command failed: (' + tokens[0] +')')
+			self.logger.info('command failed (' + tokens[0] +')')
 		else:
-			self.logger.info('command succeeded(' + tokens[0] +')')
+			self.logger.info('command succeeded (' + tokens[0] +')')
 
 	#server loop that handles incoming command
 	def run_server(self):

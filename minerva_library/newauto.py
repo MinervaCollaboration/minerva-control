@@ -246,7 +246,7 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
     #S Return coeffs for extra output to any other function besides control
     return best_focus, coeffs
 
-def autofocus_step(control,telescope,newfocus,af_target):
+def autofocus_step(control,telescope,newfocus,af_target, simulate=False):
     
     status = telescope.getStatus()
     m3port = status.m3.port
@@ -294,7 +294,7 @@ def autofocus_step(control,telescope,newfocus,af_target):
 
 # the high-level auto-focus routine
 def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
-                  target=None,dome_override=False,simulate=False):
+                  target=None,dome_override=False,simulate=False,slew=True):
 
     control.logger.info("Beginning autofocus")
     telescope = utils.getTelescope(control,telid)
@@ -334,6 +334,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
         # use the current position
         ra = utils.ten(status.mount.ra_2000)
         dec = utils.ten(status.mount.dec_2000)
+        slew=False
         af_target = {'name':'autofocus',
                      'exptime':5,
                      'fauexptime':10,
@@ -377,7 +378,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
             telescope.recover(tracking=tracking,derotate=(not af_target['spectroscopy']))
         
     control.logger.info("checking keys")
-    if 'ra' in af_target.keys() and 'dec' in af_target.keys():
+    if 'ra' in af_target.keys() and 'dec' in af_target.keys() and slew:
         telescope.acquireTarget(af_target,derotate=(not af_target['spectroscopy']))
         # TODO: Need to think about incorporating guiding for FAU
     else:
@@ -437,7 +438,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
         #S move and wait for focuser
         telescope.logger.info("Defocusing port " + str(m3port) + " by " + str(step) + " mm, to " + str(newfocus))
 
-        median,stddev,numstars,imnum = autofocus_step(control,telescope,newfocus,af_target)
+        median,stddev,numstars,imnum = autofocus_step(control,telescope,newfocus,af_target, simulate=simulate)
         imagenum_list = np.append(imagenum_list,str(imnum))
         focusmeas_list = np.append(focusmeas_list,median*platescale)
         stddev_list = np.append(stddev_list,stddev)
