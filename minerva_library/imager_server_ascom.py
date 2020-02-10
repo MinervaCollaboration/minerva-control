@@ -29,17 +29,18 @@ class server:
 		self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 		self.set_data_path()
 
-                self.camera = ascomcam.ascomcam('',base=self.base_directory,driver='ASCOM.SDK2.Camera')
+                self.camera = ascomcam.ascomcam('',base=self.base_directory,driver=self.camera_driver)
+                if self.camera_fw_driver != None: self.camera.fw = ascomfw.ascomfw('',base=self.base_directory,driver=self.camera_fw_driver)
                 self.guider = zwo.zwo('',self.base_directory)
-                self.fw = ascomfw.ascomfw('',base=self.base_directory,driver='ASCOM.Apogee.FilterWheel')
+                self.guider.header_buffer = ''
+                if self.guider_fw_driver != None: self.guider.fw = ascomfw.ascomfw('',base=self.base_directory,driver=self.guider_fw_driver)
 
 		self.connect_camera()
 		self.file_name = ''
 		self.guider_file_name = ''
 
-#		if socket.gethostname() == 't2-PC':
-#			self.ao = ao.ao('ao_t' + socket.gethostname()[1] + '.ini')
-
+		if self.ao_ini != None:
+			self.ao = ao.ao(self.ao_ini)
 
 #==============utility functions=================#
 #these methods are not directly called by client
@@ -51,6 +52,14 @@ class server:
 			self.port = int(config['PORT'])
 			self.data_path_base = config['DATA_PATH']
 			self.logger_name = config['LOGNAME']
+			self.camera_driver = config['CAMERADRIVER']
+        		try: self.camera_fw_driver = config['FWDRIVER']
+                        except: self.camera_fw_driver = None
+        		try: self.guider_fw_driver = config['GUIDERFWDRIVER']
+                        except: self.guider_fw_driver = None
+
+			try: self.ao_ini = config['AOINI']
+			except: self.ao_ini = None
 			self.header_buffer = ''
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -66,21 +75,25 @@ class server:
 		files = glob.glob(self.data_path + "/*.fits*")
 		return 'success ' + str(len(files)+1)
 
-	def get_status(self,param):
+	def get_status(self,param, guider=False):
+
+                if guider: camera = self.guider
+                else: camera = self.camera
 
                 try:
                         status = {}
-                        status['CoolerOn'] = self.cam.CoolerOn
-                        status['CurrentTemp'] = self.cam.Temperature
-                        status['SetTemp'] = self.cam.TemperatureSetpoint
-                        status['BinX'] = self.cam.BinX
-                        status['BinY'] = self.cam.BinY
-                        status['filter'] = self.cam.Filter
-                        status['connected'] = self.cam.LinkEnabled
-                        status['X1'] = self.cam.StartX
-                        status['X2'] = self.cam.StartX + self.cam.NumX - 1
-                        status['Y1'] = self.cam.StartY
-                        status['Y2'] = self.cam.StartY + self.cam.NumY - 1
+                        status['CoolerOn'] = camera.camera.CoolerOn
+                        status['CurrentTemp'] = camera.camera.CCDTemperature
+                        status['SetTemp'] = camera.camera.SetCCDTemperature
+                        status['BinX'] = camera.camera.BinX
+                        status['BinY'] = camera.camera.BinY
+                        try: status['filter'] = camera.fw.current_filter()
+                        except: status['filter'] = None
+                        status['connected'] = camera.camera.connected
+                        status['X1'] = camera.x1
+                        status['X2'] = camera.x2
+                        status['Y1'] = camera.y1
+                        status['Y2'] = camera.y2
 		except:
                         self.logger.exception("error getting camera status")
                         self.connect_camera()
@@ -111,13 +124,13 @@ class server:
                 else: camera = self.camera
                 
 		try:
-			return 'success '+ str(camera.get_temperature)
+			return 'success '+ str(camera.get_temperature())
 		except:
 			return 'fail'
 
 	def isAOPresent(self):
-                if 'ao' in dir(self): return 'success'
-                return 'fail'
+                if 'ao' in dir(self): return 'success True'
+                return 'success False'
         
 #==========command functions==============#
 #methods directly called by client
@@ -125,10 +138,11 @@ class server:
 	def connect_camera(self):
         
                 try:
-                        self.camera.initialize()        
+                        self.camera.initialize()
+                        try: self.camera.fw.initialize()
+                        except: pass
                         #self.guider.initialize()        
-                        self.fw.initialize()
-                        return 'sucess'
+                        return 'success'
                 except:
                         self.logger.exception("Failed to connect to the camera")
 			return 'fail'
@@ -157,23 +171,27 @@ class server:
 		if len(param) != 4:
 			return 'fail'
 		try:
+                        x1 = int(param[0])
+                        x2 = int(param[1])
+                        y1 = int(param[2])
+                        y2 = int(param[3])
 			# Set to full frame
-			xsize = int(param[1])-int(param[0])+1
-			ysize = int(param[3])-int(param[2])+1
 			self.logger.info('Setting subframe to [' + param[0] + ':' + param[1] + ',' +
 						 param[2] + ':' + param[3] + ']')
-			if camera.set_roi(x1=param[0], x2=param[1], y1=param[2], y2=param[3]): return 'success'
+			if camera.set_roi(x1=x1, x2=x2, y1=y1, y2=y2): return 'success'
 			return 'fail'
 		except:
 			return 'fail'
 
-	def get_filter_name(self,param):
+	def get_filter_name(self,param,guider=False):
+                if guider: camera = self.guider
+                else: camera = self.camera                
+
 		res = 'success '
 
 		try:
-			num = int(param)
-			for i in range(int(param)):
-				res += self.cam.FilterNames[i] + ' '
+                        names = camera.fw.get_filter_names()
+                        res += ' '.join(names)
 			return res
 		except:
 			return 'fail'
@@ -184,29 +202,57 @@ class server:
                 return 'success ' + timestr + ' '+str(x)+' '+str(y)
 
 	def expose(self,param, guider=False):
-                if guider: camera=self.guider
-                else: camera = self.camera
-                
-		try:
-			param = param.split()
-			exptime = float(param[0])
-			openshutter = (param[1] == 1)
-			filter_num = param[2]
+                t0 = datetime.datetime.utcnow()
+                # this should be standardized with ascom
+                if guider:
+                        try:
+                                camera=self.guider
+                                param = param.split()
+                                exptime = float(param[0])
+                                acquisition_offset_x = float(param[1])
+                                acquisition_offset_y = float(param[2])
+                                offset = (acquisition_offset_x,acquisition_offset_y)
+                                filter_num = None
+                                open_shutter=True
 
-			if filter_num != None:
-                                self.fw.move_and_wait(position=int(filter_num))
+                                overhead = (datetime.datetime.utcnow() - t0).total_seconds()
+        		        self.logger.info("It took " + str(overhead) + " seconds to get to 'expose'")
 
-			camera.expose(exptime,openshutter=openshutter)
-			return 'success'
-		except:
-			return 'fail'
+                                t0 = datetime.datetime.utcnow()
+                                kwargs = {"offset":offset} 
+                                thread = threading.Thread(target=camera.expose,args=(exptime,),kwargs=kwargs)
+                                thread.name = "exposeGuider"
+                                thread.start()
+#                                camera.expose(exptime,offset=offset)
+        
+
+                                overhead = (datetime.datetime.utcnow() - t0).total_seconds()
+        		        self.logger.info("It took " + str(overhead) + " seconds to 'expose'")
+
+                                return 'success'
+                        except:
+                                return 'fail'
+                else:
+                        try:
+                                camera = self.camera
+                                param = param.split()
+                                exptime = float(param[0])
+                                open_shutter = (param[1] == 1)
+                                filter_num = param[2]
+                                if filter_num != None:
+                                        camera.fw.move_and_wait(position=int(filter_num))
+
+                                camera.expose(exptime,open_shutter=open_shutter)
+                                return 'success'
+                        except:
+                                return 'fail'
 
 	def save_image(self,param, guider=False):
                 if guider: camera=self.guider
-                else: camera = self.camera
+                else: camera=self.camera
 
                 try:
-                        filename = self.data_path + param.split()[0]
+                        filename = self.data_path + '\\' + param.split()[0]
                         camera.filename=filename
                         camera.save_image(filename)
                         return 'success'
@@ -218,12 +264,17 @@ class server:
 
                 if guider: camera=self.guider
                 else: camera=self.camera
+
+                self.logger.info("guider is " + str(guider))
+
 		camera.header_buffer += param
 		return 'success'
 
 	def write_header_done(self,param, guider=False):
                 if guider: camera=self.guider
                 else: camera=self.camera
+
+                self.logger.info("guider is " + str(guider))
                 
 		try:
 			filename=camera.filename
@@ -260,6 +311,7 @@ class server:
                					if math.isnan(value[0]): value[0] = 'NaN'
                        			f[0].header[key] = (value[0],value[1])
 
+                        print f
 			f.flush()
 			f.close()
 		except:
@@ -330,10 +382,24 @@ class server:
 			res = 'fail'
                 return res
 
+        def imageReady(self,param,guider=False):
+                #imageStart = datetime.datetime.strptime(param,'%Y-%m-%d %H:%M:%S.%f')
+                # we're comparing two clocks here (one on main and the local machine)
+                #imageStart = imageStart - datetime.timedelta(seconds=0.3) #
+                if guider:
+                        camera=self.guider
+                        #if camera.imageReady > imageStart: return 'success true'
+                        if camera.imageReady: return 'success true'
+                        return 'success false'
+                else:
+                        return 'success ' + str(self.camera.camera.ImageReady)                                
+
 	def isSuperSaturated(self, guider=False):
+                if guider: camera=self.guider
+                else: camera=self.camera                
+               
 		try:
-			if guider: image = pyfits.getdata(self.guider_file_name,0)
-			else: image = pyfits.getdata(self.file_name,0)
+			image = fits.getdata(camera.filename,0)
 			# mode is slow; take the central 100x100 region
 			# (or the size of the image, which ever is smaller)
 			nx = len(image)
@@ -353,92 +419,113 @@ class server:
 			return 'fail'
 
 	def remove(self, guider=False):
+
+                if guider: camera=self.guider
+                else: camera=self.camera 
+                
 		try:
-			if guider: os.remove(self.guider_file_name)
-			else: os.remove(self.file_name)
+			os.remove(camera.filename)
 			return 'success'
 		except:
 			return 'fail'
 
 
-	def disconnect_camera(self):
+	def disconnect_camera(self, guider=False):
+                if guider:
+                        camera=self.guider
+                else:
+                        disconnect_camera(self,guider=True)
+                        camera=self.camera
+                
 		try:
 			self.logger.info('turning cooler off')
-			self.cam.CoolerOn = False
+			camera.CoolerOn = False
 			time.sleep(1)
 			self.logger.info('disconnecting camera')
-			self.cam.LinkEnabled = False
+			camera.disconnect()
 			return 'success'
 		except:
                         self.logger.exception('disconnect failed')
 			return 'fail'
+
+                
+		
 #==================server functions===================#
 #used to process communication between camera client and server==#
 
 	#process received command from client program, and send response to given socket object
 	def process_command(self, command, conn):
 		tokens = command.split(None,1)
+
 		if len(command) < 100:
 			self.logger.info('command received: ' + command)
-		if len(tokens) != 2:
+
+                if len(tokens) == 2:
+                        param = tokens[1]
+                        if 'guider' in param: guider = True
+                        else: guider=False
+ 		if len(tokens) != 2:
 			response = 'fail'
 		elif tokens[0] == 'get_guide_star':
 			response = self.getGuideStar()
 		elif tokens[0] == 'get_filter_name':
-			response = self.get_filter_name(tokens[1])
+			response = self.get_filter_name(tokens[1], guider=guider)
 		elif tokens[0] == 'exposeGuider':
-			response = self.exposeGuider(tokens[1])
+			response = self.expose(tokens[1], guider=True)
 		elif tokens[0] == 'expose':
 			response = self.expose(tokens[1])
 		elif tokens[0] == 'save_image':
-			response = self.save_image(tokens[1])
+			response = self.save_image(tokens[1], guider=guider)
+		elif tokens[0] == 'image_ready':
+                        if guider: tokens[1] = tokens[1][0:-7]
+			response = self.imageReady(tokens[1], guider=guider)
 		elif tokens[0] == 'set_camera_param':
-			response = self.set_camera_param(tokens[1])
+			response = self.set_camera_param(tokens[1], guider=guider)
 		elif tokens[0] == 'set_data_path':
 			response = self.set_data_path()
 		elif tokens[0] == 'get_status':
-			response = self.get_status(tokens[1])
+			response = self.get_status(tokens[1], guider=guider)
 		elif tokens[0] == 'get_index':
 			response = self.get_index(tokens[1])
-		elif tokens[0] == 'set_binning':
-			response = self.set_binning(tokens[1])
-		elif tokens[0] == 'set_size':
-			response = self.set_size(tokens[1])
+		elif tokens[0] == 'set_bin':
+			response = self.set_bin(tokens[1], guider=guider)
+		elif tokens[0] == 'set_roi':
+			response = self.set_roi(tokens[1], guider=guider)
 		elif tokens[0] == 'write_header':
-			response = self.write_header(tokens[1])
+                        if guider: tokens[1] = tokens[1][0:-7]
+			response = self.write_header(tokens[1], guider=guider)
 		elif tokens[0] == 'write_header_done':
-			response = self.write_header_done(tokens[1])
+                        if guider: tokens[1] = tokens[1][0:-7]
+			response = self.write_header_done(tokens[1], guider=guider)
 		elif tokens[0] == 'compress_data':
 			response = self.compress_data(night=tokens[1])
 		elif tokens[0] == 'getMean':
-			guider = (tokens[1] == 'guider')
 			response = self.getMean(guider=guider)
 		elif tokens[0] == 'getMode':
-			guider = (tokens[1] == 'guider')
 			response = self.getMode(guider=guider)
 		elif tokens[0] == 'isSuperSaturated':
-			guider = (tokens[1] == 'guider')
 			response = self.isSuperSaturated(guider=guider)
                 elif tokens[0] == 'isAOPresent':
                         response = self.isAOPresent() 
+                elif tokens[0] == 'get_tip_tilt':
+                        response = self.ao.get_tip_tilt()
+                elif tokens[0] == 'get_north_east':
+                        response = self.ao.get_north_east()
 		elif tokens[0] == 'moveAO':
 			array = tokens[1].split(',')
-			response = self.ao.move(array[0],array[1])
+			response = self.ao.move(float(array[0]),float(array[1]))
 		elif tokens[0] == 'homeAO':
 			response = self.ao.home()
 		elif tokens[0] == 'remove':
-			guider = (tokens[1] == 'guider')
 			response = self.remove(guider=guider)
 		elif tokens[0] == 'connect_camera':
 			response = self.connect_camera()
 		elif tokens[0] == 'disconnect_camera':
 			response = self.disconnect_camera()
 		elif tokens[0] == 'set_temperature':
-			response = self.set_temperature(tokens[1])
+			response = self.set_temperature(tokens[1], guider=guider)
 		elif tokens[0] == 'get_temperature':
-			response = self.get_temperature()
-		elif tokens[0] == 'quit_maxim':
-			response = self.quit_maxim()
+			response = self.get_temperature(guider=guider)
 		else:
 			self.logger.info('command not recognized: (' + tokens[0] +')')
 			response = 'fail'
@@ -480,12 +567,15 @@ class server:
 		self.run_server()
 
 if __name__ == '__main__':
-    if socket.gethostname() == 'Minervared2-PC' or socket.gethostname() == 'Telcom-PC' or socket.gethostname() == 'minerva19-01':
+
+    hostname = socket.gethostname()
+
+    if hostname == 'Minervared2-PC' or hostname == 'Telcom-PC' or hostname == 'minerva19-01':
         config_file = 'imager_server_red.ini'
-    elif socket.gethostname() == "TacherControl":
+    elif hostname == "TacherControl":
         config_file = "imager_server_thach.ini"
     else:
-	config_file = 'imager_server.ini'
+	config_file = 'imager_server_' + hostname[0:2] + '.ini'
 
     base_directory = 'C:\minerva-control'
 

@@ -64,7 +64,7 @@ def rv_observing(minerva):
                         threads = []
                         for telescope in minerva.telescopes:
                             thread = threading.Thread(target=newauto.autofocus,args=(minerva,telescope.id,),kwargs=kwargs)
-                            thread.name = 'T' + str(telescope.num)
+                            thread.name = str(telescope.id) + ' (rv_control->rv_observing->autofocus)'
                             threads.append(thread)
                         for thread in threads(): thread.start()
                         for thread in threads(): thread.join()
@@ -84,7 +84,7 @@ def rv_observing(minerva):
     minerva.endNight()
     
 
-def doSpectra(minerva, target, tele_list, test=False):
+def doSpectra(minerva, target, tele_list, simulate=False):
 
     # if after end time, return
     if datetime.datetime.utcnow() > target['endtime']:
@@ -97,7 +97,7 @@ def doSpectra(minerva, target, tele_list, test=False):
         minerva.logger.info("Target " + target['name'] + " is before its starttime (" + str(target['starttime']) + "); waiting " + str(waittime) + " seconds")
         time.sleep(waittime)
 
-    if not test:
+    if not simulate:
         # if the dome isn't open, wait for it to open
         for dome in minerva.domes:
             while not dome.isOpen():
@@ -116,12 +116,15 @@ def doSpectra(minerva, target, tele_list, test=False):
         # JDE 2018-10-02: Don't do this (reduce mechanism wear, star not bright enough not to matter) 
         # block light from the star by switching to the imaging port (don't confuse star with fiber)
         #m3port = telescope.port['IMAGER'] 
+
         kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
         minerva.logger.info("Starting acquisition for " + telid)
         thread = threading.Thread(target = telescope.acquireTarget,args=(target,),kwargs=kwargs)
-        thread.name = telescope.id
+        thread.name = telescope.id + ' (rv_control->doSpectra->acquireTarget)'
         thread.start()
         threads.append(thread)
+
+#        telescope.acquireTarget(target,tracking=True,derotate=False,m3port=m3port)
 
     minerva.logger.info("got here")
 
@@ -133,8 +136,7 @@ def doSpectra(minerva, target, tele_list, test=False):
         elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
         minerva.logger.info("Waiting for all telescopes to slew (elapsed time = " + str(elapsedTime) + ")")
         thread.join(slewTimeout - elapsedTime)
-
-    minerva.logger.info("got here 2")
+        elapsedTime = (datetime.datetime.utcnow()-t0).total_seconds()
 
     # check if the thread timed out
     for t in range(len(tele_list)):
@@ -151,6 +153,8 @@ def doSpectra(minerva, target, tele_list, test=False):
 
     # begin exposure(s)
     for i in range(target['num'][0]):
+
+        minerva.logger.info('beginning exposure ' + str(i+1) + ' of ' + str(target['num'][0]))
 
         minerva.logger.info('checking max obs')
         if (i % max_obs_before_reacquire) == 0:
@@ -199,49 +203,53 @@ def doSpectra(minerva, target, tele_list, test=False):
 
                 # set the timeout to be the end of exposure
                 timeout = max([target['exptime'],300])
-                kwargs = {'timeout':timeout}
+                kwargs = {'timeout':timeout, 'simulate':simulate}
                 thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,telid,),kwargs=kwargs)
-                thread.name = telid
+                thread.name = telid + ' (rv_control->doSpetra->acquireFocusGuide)'
                 thread.start()
                 threads.append(thread)
         
             # wait for all telescopes to put target on their fibers (or timeout)
             # needs time to reslew (because m3port_switch stops tracking), fine acquire, autofocus, guiding
-            acquired = False
+            nacquired = 0
             timeout = 600.0 
             elapsedTime = 0.0
             t0 = datetime.datetime.utcnow()
-            while not acquired and elapsedTime < timeout:
-                acquired = True
-                for i in range(len(tele_list)):
-                    camera = utils.getCamera(minerva,tele_list[i])
-                    minerva.logger.info(tele_list[i] + ": acquired = " + str(camera.fau.acquired))
+            while nacquired != len(tele_list) and elapsedTime < timeout:
+                nacquired = 0
+                for telid in tele_list:
+                    camera = utils.getCamera(minerva,telid)
+                    minerva.logger.info(telid + ": acquired = " + str(camera.fau.acquired))
+                    if camera.fau.acquired: nacquired += 1
+                    minerva.logger.info(telid + ": nacquired = " + str(nacquired))
                     if not camera.fau.acquired:
-                        minerva.logger.info(tele_list[i] + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
-                        acquired = False
+                        minerva.logger.info(telid + " has not acquired the target yet; waiting (elapsed time = " + str(elapsedTime) + ")")
                 time.sleep(1.0)
                 elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
 
-        # what's the right thing to do in a timeout?
-        # Try again?
-        # Go on anyway? (as long as one telescope succeeded?)
-        # We'll try going on anyway for now...
-        
+            # if none acquired the target, give up
+            # otherwise, continue with what we have
+            if nacquired == 0:
+                minerva.logger.error("No telescopes acquired the target within the timeout; giving up. (clouds?)")
+                stopFAU(minerva,tele_list)
+                return
+
         # make sure we're not past the end time
         if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
             minerva.logger.info("target past its end time (" + str(target['endtime']) + '); skipping')
             stopFAU(minerva,tele_list)
             return
 
-        # if the dome isn't open, wait for it to open
-        for dome in minerva.domes:
-            while not dome.isOpen():
-                minerva.logger.info("Waiting for dome to open")
-                if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
-                    minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
-                    stopFAU(minerva,tele_list)
-                    return
-                time.sleep(60)
+        # if the dome isn't open, wait for it to open (why is this here? -- how would we have acquired?)
+        if not simulate:
+            for dome in minerva.domes:
+                while not dome.isOpen():
+                    minerva.logger.info("Waiting for dome to open")
+                    if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
+                        minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
+                        stopFAU(minerva,tele_list)
+                        return
+                    time.sleep(60)
 
         minerva.takeSpectrum(target)
         
@@ -276,31 +284,24 @@ def doSpectra(minerva, target, tele_list, test=False):
 
     return
 
-def acquireFocusGuide(minerva, target, telid, timeout=300.0):
+def acquireFocusGuide(minerva, target, telid, timeout=300.0, simulate=False):
     telescope = utils.getTelescope(minerva,telid)
     camera = utils.getCamera(minerva,telid)
     camera.fau.guiding=True
     t0 = datetime.datetime.utcnow()
 
     try:
-        # slew to the target
-        minerva.logger.info("beginning course acquisition")
-        telescope.acquireTarget(target,tracking=True,derotate=False,m3port=telescope.port['FAU'])
-        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
-            minerva.logger.error("course acquisition timed out")
-            return
 
-        # put the target on the fiber
-        minerva.logger.info("beginning fine acquisition")
-        try: minerva.fauguide(target,telid,acquireonly=True, skiponfail=True)
-        except: minerva.logger.exception("acquisition failed")
-        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
-            minerva.logger.error("fine acquisition timed out")
-            return
+#        # slew to the target
+#        minerva.logger.info("beginning course acquisition")
+#        telescope.acquireTarget(target,tracking=True,derotate=False,m3port=telescope.port['FAU'])
+#        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
+#            minerva.logger.error("course acquisition timed out")
+#            return
 
         # autofocus
         minerva.logger.info("beginning autofocus")
-        try: newauto.autofocus(minerva, telid)
+        try: newauto.autofocus(minerva, telid, simulate=simulate)
         except: minerva.logger.exception("autofocus failed")
         if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("autofocus timed out")
@@ -312,9 +313,17 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0):
             try: telescope.focuserMoveAndWait(telescope.focus[m3port]+camera.fau.focusOffset, m3port)
             except: minerva.logger.exception("focusing failed")
 
-        # guide
-        minerva.logger.info("beginning guiding")
-        try: minerva.fauguide(target,telid, skiponfail=True)
+#        # put the target on the fiber
+#        minerva.logger.info("beginning fine acquisition")
+#        try: minerva.fauguide(target,telid,acquireonly=True, skiponfail=True, simulate=simulate)
+#        except: minerva.logger.exception("acquisition failed")
+#        if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
+#            minerva.logger.error("fine acquisition timed out")
+#            return
+
+        # put the target on the fiber and start guiding
+        minerva.logger.info("beginning fine acquistion and guiding")
+        try: minerva.fauguide(target,telid, skiponfail=True, simulate=simulate)
         except: minerva.logger.exception("guiding failed")
         if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("guiding timed out")
@@ -382,14 +391,14 @@ def backlight(minerva, tele_list=0, exptime=0.01, name='backlight'):
 
     # take images with all FAUs
     fau_threads = []
-    for i in range(len(tele_list)):
-        telescope = utils.getTelescope(minerva, tele_list[i])
+    for telid in tele_list:
+        telescope = utils.getTelescope(minerva, telid)
         target = {
             'name':name,
             'fauexptime':exptime,
             }
         thread = threading.Thread(target=minerva.takeFauImage,args=[target,telescope.id],)
-        thread.name = telescope.id
+        thread.name = telescope.id + ' (rv_control->backlight->takeFauImage)'
         fau_threads.append(thread)
 
     # start all the FAU images

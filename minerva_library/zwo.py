@@ -2,11 +2,13 @@ import zwoasi as asi
 import numpy as np
 import ipdb
 from astropy.io import fits
+from astropy.io.fits import getdata
 import datetime
 from get_all_centroids import *
 #import pyfits as fits
 import datetime
 import socket
+import sep
 
 class zwo:
 
@@ -39,6 +41,7 @@ class zwo:
 		self.x2 = self.xsize
 		self.y1 = 1
 		self.y2 = self.ysize
+		self.imageReady = False
 
 		# make it full frame
 		self.camera.set_roi(start_x=0, start_y=0, width=self.xsize, height=self.ysize)
@@ -56,9 +59,48 @@ class zwo:
         def getGuideStar(self):
                 return (self.guideimagelastupdate, self.guidestarx, self.guidestary)
 
+        '''
+	def expose(self, exptime, offset = (0.0,0.0)):
+		self.camera.set_control_value(asi.ASI_EXPOSURE,int(round(exptime*1e6)))                
+                self.img = self.camera.capture()
+                self.imageReady = datetime.datetime.utcnow()
+				
+#		data = getdata(self.img)
+#		data = data.astype(float)
+                data = self.img.astype(float)
+		x1 = 1500
+                x2 = 1700
+                y1 = 800
+                y2 = 1000
+		data_subframe = data[x1:x2,y1:y2]
+                data_subframe = data_subframe.copy(order='C')
+		bkg = sep.Background(data_subframe)
+		data_sub = data_subframe-bkg
+		objects = sep.extract(data_sub, 40, err=bkg.globalrms, minarea =10, deblend_cont = 1)
+				
+		# no stars in the image
+		if len(objects) <1:
+                        self.guidestarx = np.nan
+                        self.guidestary = np.nan
+                        self.guideimagelastupdate = datetime.datetime.utcnow()
+		else:
+                        brightest_star = np.argmax(objects['flux'])
+					
+			dx = objects['x'] - (objects[brightest_star][0] + offset[0]) 
+			dy = objects['y'] - (objects[brightest_star][1] + offset[1])
+			dist = np.linalg.norm((dx,dy))
+                        ndx = np.argmin(dist)
+
+                        self.guidestarx = stars[ndx][0]+x1
+                        self.guidestary = stars[ndx][1]+y1
+                        self.guideimagelastupdate = datetime.datetime.utcnow()
+        '''
+        
         def expose(self, exptime,offset=(0.0,0.0)): 
+                self.imageReady = False
                 self.camera.set_control_value(asi.ASI_EXPOSURE,int(round(exptime*1e6)))                
                 self.img = self.camera.capture()
+                self.imageReady = True#datetime.datetime.utcnow()
                    
                 d = np.array(self.img, dtype='float')
                 th = threshold_pyguide(d, level = 4)
@@ -71,8 +113,6 @@ class zwo:
 
                 imtofeed = np.array(np.round((d*th)/np.max(d*th)*255), dtype='uint8')
                 stars = centroid_all_blobs(imtofeed)
-
-                print stars
         
                 if len(stars) < 1:
                         # no stars in the image
@@ -94,7 +134,7 @@ class zwo:
                         self.guidestary = stars[ndx][1]
                         self.guideimagelastupdate = datetime.datetime.utcnow()
 
-
+        
 	def setROI(self, x1=None, x2=None, y1=None, y2=None, fullFrame=False, bins=None):
                 if fullFrame:
                         x1 = 1

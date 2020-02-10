@@ -33,7 +33,7 @@ class imager:
                         self.pdu = pdu_thach.pdu(self.pdu_config,base)
                 else:
                         self.pdu = pdu.pdu(self.pdu_config,base)
-		self.initialize()
+		#self.initialize()
 		self.telcom = telcom_client.telcom_client(self.telcom_client_config,base)
 		self.status_lock = threading.RLock()
 		# threading.Thread(target=self.write_status_thread).start()
@@ -74,6 +74,7 @@ class imager:
 			self.datapath = ''
 			self.gitpath = ''
 			self.file_name = 'test'
+			self.guider_file_name = ''
 			self.night = 'test'
 			self.nfailed = 0
 			self.nserver_failed = 0
@@ -299,6 +300,10 @@ class imager:
 				n = 0
 			time.sleep(1)
 
+	def simulate_star_image(xstar,ystar,flux,fwhm,background=300.0, noise=10.0, guider=True):
+		res = self.send('simulate_star_image')
+
+
 	#set path for which new images will be saved,if not set image will go into dump folder
 	def set_dataPath(self):
 
@@ -386,12 +391,37 @@ class imager:
 
 	def isAOPresent(self):
 		cmd = 'isAOPresent None'
-		if (self.send(cmd,30)).split()[1] == 'True': return True
+		try:
+			if (self.send(cmd,30)).split()[1] == 'True': return True
+		except: return False
 		return False
+
+	def get_north_east(self):
+		cmd = 'get_north_east none'
+		response = self.send(cmd,30)
+		if (response).split()[0] == 'success': 
+			north = float(response.split()[1])
+			east = float(response.split()[2])
+			return (north,east)
+		return (None,None)
+
+	def get_tip_tilt(self):
+		cmd = 'get_tip_tilt none'
+		response = self.send(cmd,30)
+		if (response).split()[0] == 'success': 
+			tip = float(response.split()[1])
+			tilt = float(response.split()[2])
+			return (tip,tilt)
+		return (None,None)
 
 	def moveAO(self,north,east):
 		cmd = 'moveAO ' + str(north) + ',' + str(east)
-		if (self.send(cmd,30)).split()[0] == 'success': return True
+		response = self.send(cmd,30)
+		if (response).split()[0] == 'success': 
+			if response.split()[1] == 'Limits_Reached':
+				return 'Limits_Reached'
+			else:
+				return True
 		return False
 
 	def homeAO(self):
@@ -456,6 +486,9 @@ class imager:
 
 	# returns file name of the image saved, return 'error' if error occurs
 	def take_image(self,exptime=1,filterInd=None,objname = 'test' , fau=False, piggyback=False, offset=(0.0,0.0)):
+
+		print exptime, objname, fau, offset
+
 #		exptime = int(float(exptime)) #python can't do int(s) if s is a float in a string, this is work around
 		#put together file name for the image
 		ndx = self.get_index()
@@ -620,7 +653,7 @@ class imager:
                 self.logger.info('cmd=' + cmd + ', out=' + out + ', err=' + err)
                 self.logger.info(cmdstr)
 
-                return True #NOTE THIS CODE DOES NOT HANDLE ERRORS (but its we also haven't had any so that's encouraging)                                   
+                return True #NOTE THIS CODE DOES NOT HANDLE ERRORS (but we also haven't had any so that's encouraging)                                   
 
 
         def send_to_computer(self, cmd):

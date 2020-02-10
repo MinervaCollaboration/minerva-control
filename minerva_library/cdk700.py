@@ -603,8 +603,32 @@ class CDK700:
 
 
 	### ROTATOR ###
-	def rotatorMove(self, position, m3port):
-		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="move", position=position)
+	def rotatorMove(self, position, m3port, wait=False, timeout=400.0):
+		status = self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="move", position=position)
+		if not wait: return status
+
+		time.sleep(1.0)
+
+		t0 = datetime.datetime.utcnow()
+		elapsedTime = 0
+
+		rotatorStatus = self.getRotatorStatus(m3port)
+		while rotatorStatus.goto_complete == 'False' and elapsedTime < timeout:
+			elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
+			currentPos=rotatorStatus.position
+			self.logger.info('Moving rotator ' + str(m3port) + ' to ' + str(position) + '; current position=' + str(currentPos) + ' (elapsed time = ' + str(elapsedTime) + ')')
+			time.sleep(1.0)
+			rotatorStatus = self.getRotatorStatus(m3port)
+			
+		if rotatorStatus.goto_complete == 'False':
+			self.logger.error('Moving rotator ' + str(m3port) + ' failed')
+			self.rotatorMoving = False
+			return False
+
+		self.logger.info('Rotator on port ' + str(m3port) + ' move complete')
+		self.rotatorMoving = False
+		return True
+		
 
 	def rotatorIncrement(self, offset, m3port):
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="move", increment=offset)
@@ -621,6 +645,13 @@ class CDK700:
 	def rotatorHome180(self, m3port):
 		self.rotatorHomeAndWait(m3port)
 		self.rotatorMove(180,m3port)
+
+	def rotatorMovePA(self,skypa,m3port,wait=False):
+		rotatorStatus = self.getRotatorStatus(m3port)
+                rotoff = float(self.rotatoroffset[m3port])
+                parang = float(self.parangle(useCurrent=True))
+                rotpos = ((rotoff - skypa + parang) + 360.0) % 360
+                self.rotatorMove(rotpos,m3port,wait=wait)
 
 	def rotatorHome(self, m3port):
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="findhome")	
@@ -1531,6 +1562,49 @@ class CDK700:
 	#S need to be edited to mathc the arguements. It is expecting a target dictionary now.
 	def acquireTarget(self,target,pa=None, tracking=True, derotate=True, m3port=None):
 
+		#S make sure the m3 port is in the correct orientation and it's tracking
+		if 'spectroscopy' not in target.keys():
+			self.logger.info('spectroscopy not in target dictionary')
+			if m3port == self.port['FAU']:
+				target['spectroscopy'] = True
+			elif m3port == self.port['IMAGER']:
+				target['spectroscopy'] = False
+			elif m3port == None:
+				self.logger.info('m3port not specified; assuming imager')
+				target['spectroscopy'] = False
+
+		if tracking == None: tracking=True
+		elif tracking == False:
+			self.logger.info('tracking not requested, but is required for acquisition; turning on')
+			tracking=True
+
+		if target['spectroscopy']:
+			if derotate == None: derotate=False
+			elif derotate == True:
+				self.logger.info('derotation requested but should not be used for spectra; turning off')
+				derotate=False
+
+			if m3port == None: m3port = self.port['FAU']
+			elif m3port == self.port['IMAGER']:
+				self.logger.info('Imaging port requested, but FAU is required for spectroscopy; using FAU port')
+				m3port = self.port['FAU']
+
+			self.initialize(tracking=tracking,derotate=derotate)
+		else:
+			if m3port == None: m3port = self.port['IMAGER']
+			elif m3port == self.port['FAU']:
+				self.logger.info('FAU port requested, but IMAGER is required for imaging; using imaging port')
+				m3port = self.port['IMAGER']
+
+			self.initialize(tracking=tracking,derotate=detrotate)
+
+			rotator_angle = self.solveRotatorPosition(target)
+			self.rotatorMove(rotator_angle,m3port)
+
+		self.logger.info('tracking=' + str(tracking))
+		self.logger.info('derotate=' + str(derotate))
+		self.logger.info('m3port=' + str(m3port))
+
 		telescopeStatus = self.getStatus()
 
                 try: pmra = target['pmra']
@@ -1552,25 +1626,6 @@ class CDK700:
 			return 'out of bounds'
 			return False
 
-		#S make sure the m3 port is in the correct orientation and it's tracking
-		if 'spectroscopy' in target.keys():
-			if target['spectroscopy']:
-				if m3port == None: m3port = self.port['FAU']
-				#S Initialize the telescope
-				self.initialize(tracking=True,derotate=False)
-			else: 
-				if m3port == None: m3port = self.port['IMAGER']
-				#S Initialize the telescope
-				self.initialize(tracking=True,derotate=True)
-				rotator_angle = self.solveRotatorPosition(target)
-				self.rotatorMove(rotator_angle,m3port)
-
-		else:
-			if m3port == None: m3port = self.port['IMAGER']
-			self.initialize(tracking=True,derotate=True)
-			rotator_angle = self.solveRotatorPosition(target)
-			self.rotatorMove(rotator_angle,m3port)
-
 		self.m3port_switch(m3port)
 		self.logger.info('Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		if self.isMoving():
@@ -1582,27 +1637,15 @@ class CDK700:
 		# if it's not initialized here, it might have tracked up against its limits before
 		# wait for it to slew off them and retry
 		if not self.isInitialized(tracking=tracking,derotate=derotate):
+
+			self.logger.error("probably tracked into limits; waiting to slew, then re-initializing")
 			time.sleep(10)
 		        #S make sure the m3 port is in the correct orientation and it's tracking
-			if 'spectroscopy' in target.keys():
-				if target['spectroscopy']:
-					if m3port == None: m3port = self.port['FAU']
-				        #S Initialize the telescope
-					self.initialize(tracking=True,derotate=False)
-				else: 
-					if m3port == None: m3port = self.port['IMAGER']
-					#S Initialize the telescope
-					self.initialize(tracking=True,derotate=True)
-					rotator_angle = self.solveRotatorPosition(target)
-					self.rotatorMove(rotator_angle,m3port)
+			self.initialize(tracking=tracking,derotate=derotate)
 
-			else:
-				if m3port == None: m3port = self.port['IMAGER']
-				self.initialize(tracking=True,derotate=True)
+			if not target['spectroscopy']:
 				rotator_angle = self.solveRotatorPosition(target)
 				self.rotatorMove(rotator_angle,m3port)
-			
-
 
 		if self.inPosition(m3port=m3port, ra=ra_corrected, dec=dec_corrected, tracking=tracking, derotate=derotate):
 			self.logger.info('Finished slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))

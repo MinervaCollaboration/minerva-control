@@ -25,8 +25,8 @@ def SetupTech(minerva, telescope, camera):
     if not telescope.initialize(tracking=False, derotate=False):
         telescope.recover(tracking=False, derotate=False)
 
-    #minerva.logger.error("**** homing disabled****")
-    telescope.homeAndPark()
+    minerva.logger.error("**** homing disabled****")
+    #telescope.homeAndPark()
 
     # wait for the camera to cool down
     #minerva.logger.error("**** cooling disabled****")
@@ -316,6 +316,8 @@ def omniObserve(minerva, states):
                 thread.start()
                 threads.append(thread)
                 minerva.logger.info('RV thread is activated.')
+                #rv_control.doSpectra(minerva,RV_target,rv_teles_id)
+
 
                 # tell the scheduler that we observed the target
                 for ii,target in enumerate(minerva.scheduler.target_list):

@@ -5,6 +5,7 @@ from configobj import ConfigObj
 import serial
 import utils
 import datetime, time
+import sys
 
 class ao:
 
@@ -15,8 +16,10 @@ class ao:
         self.load_config()
 
         # current steps         
-        self.North = 0
-        self.East = 0
+        self.north = 0
+        self.east = 0
+        self.tip = 0
+        self.tilt = 0
         
         self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
@@ -29,7 +32,7 @@ class ao:
         config = ConfigObj(self.base_directory + '/config/' + self.config_file)
 
         try:       
-            self.platescale = float(config['Setup']['PLATESCALE'])
+            self.arcsec_per_step = float(config['Setup']['ARCSEC_PER_STEP'])
             self.rotoffset = math.radians(float(config['Setup']['ROTOFFSET']))
             self.gain = float(config['Setup']['GAIN'])
             self.xmin = float(config['Setup']['XMIN'])
@@ -75,9 +78,20 @@ class ao:
                 response = self.ser.read(self.ser.inWaiting())
                 time.sleep(0.001)
 
-            if response == "K": return "success " + response
+            if response == "K":
+		self.north = 0
+		self.east = 0
+		self.tip = 0
+		self.tilt = 0
+		return "success " + response
             return "failed " + response
         return "failed; serial connection not open"
+
+    def get_tip_tilt(self):
+        return 'success ' + str(self.tip) + ' ' + str(self.tilt)
+
+    def get_north_east(self):
+        return 'success ' + str(self.north) + ' ' + str(self.east)
 
     def move(self,north,east):        
         # https://www.sxccd.com/handbooks/Starlight%20Xpress%20SXV%20AOL%20unit.pdf
@@ -85,25 +99,37 @@ class ao:
 
         # the magnitudes of the corrections for the Starlight Xpress
         # converted to their definitions of North and East
-        slxNorth = -self.gain*self.platescale*(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))
-        slxEast  =  self.gain*self.platescale*(east*math.sin(self.rotoffset) + north*math.cos(self.rotoffset))
+        tip  = -(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))/self.arcsec_per_step
+        tilt =  (east*math.sin(self.rotoffset) + north*math.cos(self.rotoffset))/self.arcsec_per_step
+#        slxNorth = -(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))/self.arcsec_per_step
+#        sllxEast =  (east*math.sin(self.rotoffset) + north*math.cos(self.rotoffset))/self.arcsec_per_step
+
+        # keep track of the totals moved
+        self.tip += tip
+        self.tilt += tilt
+        self.north += north
+        self.east += east
 
         cmdN = 'G'
-        if slxNorth > 0: cmdN += 'N'
+        if tip > 0: cmdN += 'N'
         else: cmdN += 'S'
-        cmdN += str(abs(int(slxNorth))).zfill(5)
+        cmdN += str(abs(int(tip))).zfill(5)
 
         cmdE = 'G'
-        if slxEast > 0: cmdE += 'T'
+        if tilt > 0: cmdE += 'T'
         else: cmdE += 'W'
-        cmdE += str(abs(int(slxEast))).zfill(5)
+        cmdE += str(abs(int(tilt))).zfill(5)
 
-        self.North += slxNorth
-        self.East += slxEast
+	self.logger.info("commanded move is " + str(tip) + " steps in tip, " + str(tilt) + " steps in tilt")
 
-        if self.North > self.ymax or self.North < self.ymin or self.East > self.xmax or self.East < self.xmin:
+        if self.tip > self.ymax or self.tip < self.ymin or self.tilt > self.xmax or self.tilt < self.xmin:
             # TODO: Move telescope to compensate
-            return "failed; request outside of limits"
+            self.logger.error("request outside of limits")
+            self.north -= north
+            self.east -= east
+            self.tip -= tip
+            self.tilt -= tilt
+            return "success Limits_Reached"
         
         if self.ser.isOpen():
             cmd = cmdN + self.termstr + cmdE + self.termstr
@@ -118,7 +144,13 @@ class ao:
                 time.sleep(0.001)
             #print (datetime.datetime.utcnow() - t0).total_seconds()
             
-            if "L" in response: return "Limits Reached " + response
+                if "L" in response: 
+                    self.north -= north
+                    self.east -= east
+                    self.tip -= tip
+                    self.tilt -= tilt
+                    return "success Limits_Reached " + response
+
             if response == "GG": return "success " + response
-            return "failed " + response
-        return "failed; serial connection not open"
+            return "fail " + response
+        return "fail serial connection not open"
