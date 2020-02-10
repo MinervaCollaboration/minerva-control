@@ -52,6 +52,7 @@ class server:
                 self.file_name = ''
                 #S Create all class objects
                 self.create_class_objects()
+                self.chiller = com.com('chiller',self.base_directory,self.night())
 
                 # turn on cell heater to maintain temperature stablility
                 self.cell_heater_on()
@@ -335,7 +336,69 @@ class server:
                 conn.close()
                 s.close()
                 self.run_server()
-          
+
+        def get_chiller_status(self):
+                try:
+                        status = float(self.chiller.send('STAT1A?'))
+                except:
+                        self.logger.exception("Unexpected response: " + response)
+                        return 'fail'
+                return 'success ' + str(status)
+
+        def get_chiller_faults(self):
+                try:
+                        faults = float(self.chiller.send('FLTS1A?'))
+                except:
+                        self.logger.exception("Unexpected response: " + response)
+                        return 'fail'
+                return 'success ' + str(faults) 
+
+        def get_chiller_temp(self):
+                try:
+                        temp = float(self.chiller.send('TEMP?'))
+                except:
+                        self.logger.exception("Unexpected response: " + response)
+                        return 'fail'
+                return 'success ' + str(temp)
+        def get_chiller_settemp(self):
+                try:
+                        temp = float(self.chiller.send('SETTEMP?'))
+                except:
+                        self.logger.exception("Unexpected response: " + temp)
+                        return 'fail'
+                return 'success ' + str(temp)
+        def get_chiller_pumptemp(self):
+                try:
+                        temp = float(self.chiller.send('PUMPTEMP?'))
+                except:
+                        self.logger.exception("Unexpected response: " + temp)
+                        return 'fail'
+                return 'success ' + str(temp)
+
+	def logchiller(self):
+                while True:
+                        t0 = datetime.datetime.utcnow()
+                        path = self.base_directory + "/log/" + self.night() + "/"
+                        if not os.path.exists(path): os.mkdir(path)
+                        
+			# get the pressure in the spectrograph
+                        with open(path + 'chiller_temps.log','a') as fh:
+                                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+                                response = self.get_chiller_temp()
+                                if response <> 'fail': temp = str(response.split()[1])
+                                else: temp = 'UNKNOWN'
+                                        
+                                response = self.get_chiller_settemp()
+                                if response <> 'fail': settemp = str(response.split()[1])
+                                else: settemp = 'UNKNOWN'
+
+                                response = self.get_chiller_pumptemp()
+                                if response <> 'fail': pumptemp = str(response.split()[1])
+                                else: pumptemp = 'UNKNOWN'
+                                fh.write('%s,%s,%s,%s\n'%(now,temp, settemp, pumptemp))
+                        sleeptime = 5.0 - (datetime.datetime.utcnow() - t0).total_seconds()
+                        if sleeptime > 0.0: time.sleep(sleeptime)
+                return          
 
         def set_file_name(self,param):
                 if len(param.split()) != 1:
