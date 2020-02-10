@@ -53,6 +53,7 @@ class server:
                 #S Create all class objects
                 self.create_class_objects()
                 self.chiller = com.com('chiller',self.base_directory,self.night())
+                self.chillerlastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
                 # turn on cell heater to maintain temperature stablility
                 self.cell_heater_on()
@@ -337,6 +338,31 @@ class server:
                 s.close()
                 self.run_server()
 
+        def chiller_status_dict(self):
+
+                status_dict = {}
+                status = self.get_chiller_status()
+                if status != 'fail':
+                        status = int(float(status.split()[1]))
+                        status_dict['run']                    = bool(status & 0x000000001)
+                        status_dict['remote_lock']            = bool(status & 0b000000010)
+                        status_dict['ready']                  = bool(status & 0b000000100)
+                        status_dict['less_than_set_point']    = bool(status & 0b000001000)
+                        status_dict['greater_than_set_point'] = bool(status & 0b000010000)
+                        status_dict['tec_heating']            = bool(status & 0b000100000)
+                        status_dict['general_warning']        = bool(status & 0b001000000)
+                        status_dict['general_alarm']          = bool(status & 0b010000000)
+                        status_dict['autotune']               = bool(status & 0b100000000)
+
+                faults = self.get_chiller_faults()
+                if faults != 'fail':
+                        faults = int(float(faults.split()[1]))
+                        status_dict['rtd']       = bool(faults & 0b0001)
+                        status_dict['tank_low']  = bool(faults & 0b0010)
+                        status_dict['pump_fail'] = bool(faults & 0b0100)
+                        status_dict['fan_fail']  = bool(faults & 0b1000)
+                return status_dict
+
         def get_chiller_status(self):
                 try:
                         status = float(self.chiller.send('STAT1A?'))
@@ -380,6 +406,37 @@ class server:
                         t0 = datetime.datetime.utcnow()
                         path = self.base_directory + "/log/" + self.night() + "/"
                         if not os.path.exists(path): os.mkdir(path)
+                        status = self.chiller_status_dict()
+
+                        # watch dog for chiller failures
+			if 'rtd' in status.keys():
+                                if status['rtd'] and (datetime.datetime.utcnow() - self.chillerlastemailed).total_seconds() > 86400:
+                                        mail.send("Chiller RTD failed",
+                                                  "Dear Benevolent Humans,\n\n"+
+                                                  "The chiller's RTD failed. Please investigate.\n\n"
+                                                  "Love,\nMINERVA",level="serious")
+                                        self.chillerlastemailed = datetime.datetime.utcnow()
+			if 'fan_fail' in status.keys():
+                                if status['fan_fail'] and (datetime.datetime.utcnow() - self.chillerlastemailed).total_seconds() > 86400:
+                                        mail.send("Chiller fan failed",
+                                                  "Dear Benevolent Humans,\n\n"+
+                                                  "The chiller's fan failed. Please investigate.\n\n"
+                                                  "Love,\nMINERVA",level="serious")
+                                        self.chillerlastemailed = datetime.datetime.utcnow()
+			if 'pump_fail' in status.keys():
+                                if status['pump_fail'] and (datetime.datetime.utcnow() - self.chillerlastemailed).total_seconds() > 86400:
+                                        mail.send("Chiller pump failed",
+                                        	  "Dear Benevolent Humans,\n\n"+
+                                        	  "The chiller's pump failed. Please investigate.\n\n"
+                                        	  "Love,\nMINERVA",level="serious")
+                                        self.chillerlastemailed = datetime.datetime.utcnow()
+			if 'tank_low' in status.keys():
+                                if status['tank_low'] and (datetime.datetime.utcnow() - self.chillerlastemailed).total_seconds() > 86400:
+                                        mail.send("Chiller tank level is low",
+                                                  "Dear Benevolent Humans,\n\n"+
+                                                  "The chiller's tank level is low. Please fill.\n\n"
+                                                  "Love,\nMINERVA",level="serious")
+                                        self.chillerlastemailed = datetime.datetime.utcnow()                        
                         
 			# get the pressure in the spectrograph
                         with open(path + 'chiller_temps.log','a') as fh:
@@ -1489,8 +1546,9 @@ if __name__ == '__main__':
 
         # make sure it didn't die with the backlight on
         test_server.backlight_off()
-
+#        status = test_server.chiller_status_dict()
 #        ipdb.set_trace()
+        
 #        test_server.kill_si_image()
 #        thisnight = 'n20991332'
 #        path = test_server.base_directory + '/log/' + thisnight
@@ -1508,6 +1566,11 @@ if __name__ == '__main__':
         expmeter_thread = threading.Thread(target=test_server.logexpmeter)
         expmeter_thread.name = 'Kiwispec'
         expmeter_thread.start()
+
+        # log the chiller temps
+        chiller_thread = threading.Thread(target=test_server.logchiller)
+        chiller_thread.name = 'Kiwispec'
+        chiller_thread.start()
 	
 	#	test_server.logexpmeter()
 #	ipdb.set_trace()
