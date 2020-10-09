@@ -204,8 +204,8 @@ class server:
         '''
         def simulate_star_image(self,x,y,flux,fwhm,background=300.0,noise=10.0, guider=True):
 
-		if guider then camera = self.guider
-		else camera = self.cam
+		if guider: camera = self.guider
+		else: camera = self.cam
 
                 camera.dateobs = datetime.datetime.utcnow()
 
