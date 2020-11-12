@@ -20,7 +20,6 @@ class server:
 		self.base_directory = base
 		self.load_config()
 
-
                 if self.zwodirect: self.guider = zwo.zwo('',self.base_directory)
 
 		# reset the night at 10 am local
@@ -58,7 +57,7 @@ class server:
 			self.data_path_base = config['DATA_PATH']
 			self.logger_name = config['LOGNAME']
 			self.header_buffer = ''
-                        try: self.zwodirect = config['ZWODIRECT']
+                        try: self.zwodirect = config['ZWODIRECT'] == 'True'
                         except: self.zwodirect = False
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
