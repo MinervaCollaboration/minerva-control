@@ -278,6 +278,7 @@ class server:
                 return 'success ' + timestr + ' '+str(x)+' '+str(y)
 
 	def exposeGuider(self,param):
+                #self.logger.info("***" + param + "***")
 		try:
 			param = param.split()
 			exptime = float(param[0])
@@ -295,10 +296,10 @@ class server:
                 else:
                         self.logger.info("Exposing through Maxim: " + str(exptime))
                         self.cam.GuiderExpose(exptime)
-                        #try: self.cam.GuiderExpose(exptime)
-                        #except Exception as e:
-                        #        self.logger.exception(str(e.message))
-                        #        return 'fail'
+                        try: self.cam.GuiderExpose(exptime)
+                        except Exception as e:
+                                self.logger.exception(str(e.message))
+                                return 'fail'
                         return 'success'
 
 	def expose(self,param):
@@ -555,6 +556,7 @@ class server:
 		elif tokens[0] == 'get_filter_name':
 			response = self.get_filter_name(tokens[1])
 		elif tokens[0] == 'exposeGuider':
+                        #self.logger.info("***"+tokens[1]+"***")
 			response = self.exposeGuider(tokens[1])
 		elif tokens[0] == 'expose':
 			response = self.expose(tokens[1])
@@ -616,6 +618,7 @@ class server:
 			response = 'fail'
 		try:
 			conn.settimeout(3)
+			#self.logger.info('***'+response+'***')
 			conn.sendall(response)
 			conn.close()
 		except:
@@ -662,4 +665,5 @@ if __name__ == '__main__':
     base_directory = 'C:\minerva-control'
 
     test_server = server(config_file,base_directory)
+    #test_server.exposeGuider("1.0 0.0 0.0")
     test_server.run_server()
