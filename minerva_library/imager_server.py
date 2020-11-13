@@ -293,9 +293,12 @@ class server:
                         #except: return 'fail'
                         return 'success'
                 else:
-                        self.logger.info("Exposing through Maxim")
-                        try: self.cam.GuiderExpose(float(param))
-                        except: return 'fail'
+                        self.logger.info("Exposing through Maxim: " + str(exptime))
+                        self.cam.GuiderExpose(exptime)
+                        #try: self.cam.GuiderExpose(exptime)
+                        #except Exception as e:
+                        #        self.logger.exception(str(e.message))
+                        #        return 'fail'
                         return 'success'
 
 	def expose(self,param):
@@ -310,7 +313,8 @@ class server:
 			else:
 				self.cam.Expose(exptime,exptype,int(filter_num))
 			return 'success'
-		except:
+		except Exception as e:
+                        self.logger.exception(str(e.message))
 			return 'fail'
 
 	def save_image(self,param):
