@@ -295,7 +295,7 @@ class server:
                         return 'success'
                 else:
                         self.logger.info("Exposing through Maxim: " + str(exptime))
-                        self.cam.GuiderExpose(exptime)
+                        #self.cam.GuiderExpose(exptime)
                         try: self.cam.GuiderExpose(exptime)
                         except Exception as e:
                                 self.logger.exception(str(e.message))
