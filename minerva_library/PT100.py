@@ -78,8 +78,10 @@ class PT100:
 
     def logtemp(self):
 
-        if (datetime.datetime.utcnow() - min(self.lastcom)).total_seconds()/60.0 > min(self.maxtimewithoutcom):
-            self.send_lost_com_email(self.logger_name)
+        for i in range(4):
+            if self.maxtimewithoutcom[i] <> 0:
+                if (datetime.datetime.utcnow() - self.lastcom[i]).total_seconds()/60.0 >self.maxtimewithoutcom[i]:
+                    self.send_lost_com_email(self.logger_name)
         
         self.sock.settimeout(10.0)
         self.sock.gettimeout()

@@ -21,7 +21,7 @@ import utils
 # spectrograph control class, control all spectrograph hardware
 class spectrograph:
 
-	def __init__(self,config, base ='', red=False):
+	def __init__(self,config, base ='', red=False, directory=None):
 
 		self.lock = threading.Lock()
 		self.config_file = config
@@ -32,6 +32,13 @@ class spectrograph:
 		self.create_class_objects()
 		self.status_lock = threading.RLock()
 		self.file_name = ''
+
+		if directory == None:
+                       if red: self.directory = 'directory_red.txt'
+                       else: self.directory = 'directory.txt'
+                else: self.directory=directory
+
+
 		# threading.Thread(target=self.write_status_thread).start()
 
 	#load configuration file
@@ -308,6 +315,7 @@ class spectrograph:
 		self.si_imager_set_format_params()
 		return True
 
+
 	def si_recover(self):
 		try: self.recover_attempts += 1
 		except AttributeError: self.recover_attempts = 1
@@ -330,7 +338,7 @@ class spectrograph:
 				    "The SI Image software on Kiwispec failed to restart when attempting a recovery. "+\
 				    "I need you to restart the software, and investigate why I went into recovery "+\
 				    "in the first place.\n\n Love,\n MINERVA"
-				mail.send(subject,body,level='serious')
+				mail.send(subject,body,level='serious', directory=self.directory)
 				return False
 
 	def expose_with_timeout(self,exptime=1.0, exptype=1, expmeter=None, timeout=None):
@@ -347,7 +355,7 @@ class spectrograph:
 				  "The SI imager has timed out while exposing. This is usually "+
 				  "due to an improperly aborted exposure, in which case someone "+
 				  "needs to log into KIWISPEC-PC, click ok, and restart main.py\n\n"
-				  "Love,\n,MINERVA",level='serious')
+				  "Love,\n,MINERVA",level='serious', directory=self.directory)
 			self.logger.error("SI imager timed out")
 			sys.exit()
 			return False
@@ -446,6 +454,12 @@ class spectrograph:
 			return False
 
         def recover(self):
+		self.logger.error("Called the recovery but we have no recovery procedure!")
+		if self.red: specname = 'MRED'
+		else: specname = 'Kiwispec'
+		mail.send(specname + " spectrograph software crashed","Dear Benevolent humans,\n\n"+
+			  "The " + specname + " spectrograph software has crashed and I have no recovery procedure for this. Good luck!\n\n"+
+			  "Love,\nMINERVA",level='serious', directory=self.directory)
                 sys.exit()
 
 	def take_bias(self):
@@ -507,6 +521,23 @@ class spectrograph:
 				return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter) 
 
         ###
+        # FIBER SWITCHER FUNCTIONS (MRED only)
+        ###        
+	def get_fiber_position(self):
+		response = self.send('get_fiber_position None',10)
+		if 'success' in response: return float(response.split()[1].split('\\')[0])
+		return False
+	def fiber_to_calibrate(self):
+		response = self.send('fiber_to_calibrate None',10)
+		if response == 'success': return True
+		return False
+	def fiber_to_science(self):
+		response = self.send('fiber_to_science None',10)
+		if response == 'success': return True
+		return False
+
+
+        ###
         # IODINE CELL HEATER FUNCTIONS
         ###
         
@@ -557,7 +588,7 @@ class spectrograph:
                 self.logger.info("Spectrograph pressure is " + str(spec_pressure) + " mbar")
 
 		if spec_pressure < 500.0:
-			mail.send("The spectrograph is pumped (" + str(spec_pressure) + " mbar and attempting to vent!","Manual login required to continue",level='Debug')
+			mail.send("The spectrograph is pumped (" + str(spec_pressure) + " mbar and attempting to vent!","Manual login required to continue",level='Debug', directory=self.directory)
 			self.logger.error("The spectrograph is pumped (" + str(spec_pressure) + " mbar and attempting to vent; manual login required to continue")
 			ipdb.set_trace()
 			time.sleep(60)
@@ -593,7 +624,7 @@ class spectrograph:
 		timeout = 1200
 
 		if self.get_spec_pressure() > 500:
-			mail.send("The spectrograph is at atmosphere!","Manual login required to continue")
+			mail.send("The spectrograph is at atmosphere!","Manual login required to continue", level='serious', directory=self.directory)
 			self.logger.error("The spectrograph is at atmosphere! Manual login required to continue")
 
 			# TODO: make hold file to restart thread

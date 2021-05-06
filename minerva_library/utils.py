@@ -39,6 +39,19 @@ def dateobs2jd(dateobs):
     ti = datetime.datetime.strptime(dateobs,"%Y-%m-%dT%H:%M:%S.%f")
     return t0jd + (ti-t0).total_seconds()/86400.0
 
+def jd2datetime(jd):
+    jd0 = 2451544.5
+    t0 = datetime.datetime(2000,1,1)
+    date = t0 + datetime.timedelta(days=jd-jd0)
+    return date
+
+def datetime2jd(date):
+    jd0 = 2451544.5
+    t0 = datetime.datetime(2000,1,1)
+    jd = jd0 + (date - t0).total_seconds()/86400.0
+    return jd
+
+
 def findBrightest(imageName):
     catname = sextract('',imageName)
     cat = readsexcat(catname)
@@ -243,10 +256,11 @@ def getDome(minerva, telnum):
     return False
 
 
-def night():
+def night(utc=False):
     today = datetime.datetime.utcnow()
-    if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
-        today = today + datetime.timedelta(days=1)
+    if not utc:
+        if datetime.datetime.now().hour >= 10 and datetime.datetime.now().hour <= 16:
+            today = today + datetime.timedelta(days=1)
     return 'n' + today.strftime('%Y%m%d')
 
 def update_logger_path(logger, newpath):
@@ -308,7 +322,7 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
         sunset = site.sunset(horizon=sunalt, start=timeof - datetime.timedelta(days=0.1*niter))
         niter += 1
     if sunset > sunrise:
-        if logger <> None: logger.error("Error calculating nearest sunset")
+        if logger <> None: logger.error("Error calculating nearest sunset. Sunset = " + str(sunset) + ' sunrise = ' + str(sunrise))
         return
         
     site.obs.horizon = str(horizon)
@@ -353,9 +367,10 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
             risetime = sunrise
         niter += 1
 
-    if risetime > settime:
-        if logger <> None: logger.error("Error calculating nearest sunset")
-        return
+#    if risetime > settime:
+#        if logger <> None: logger.error("Error calculating risetime (" + str(risetime) + ") and settime (" + str(settime) + ")")
+#        ipdb.set_trace()
+#        return
 
     # the start time should be the later of the requested start time, when the target rises, or when the sun sets
     starttime = max(target['starttime'],risetime,sunset) 

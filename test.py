@@ -13,6 +13,7 @@ from minerva_library import rv_control
 from minerva_library import newauto
 from minerva_library import utils
 from minerva_library import mail
+from minerva_library.propagatingthread import PropagatingThread
 import glob
 import subprocess
 import os
@@ -22,19 +23,85 @@ def cleanUpNight(minerva, night=None):
 	for telescope in minerva.telescopes:
 		minerva.endNight(telescope, night=night)
 
+
+def f(*args, **kwargs):
+    print(args)
+    print(kwargs)
+    raise Exception('I suck at this')
+
 if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
+#	minerva.telescopes[3].calibrateRotator(minerva.cameras[3], exptime=0.5)
+#	minerva.telescopes[3].makePointingModel(minerva, npoints=6)
+
+#	cleanUpNight(minerva)
+
+	print minerva.site.getWeather()
+
+	ipdb.set_trace()
+
+	telescope = utils.getTelescope(minerva,'T4')
+	targetfile = open(minerva.base_directory + '/schedule/' + minerva.site.night + '.' + telescope.id + '.txt', 'r')
+	next(targetfile)
+	next(targetfile)
+	next(targetfile)
+	for line in targetfile: 
+		target = minerva.parseTarget(line)
+		target2 = utils.truncate_observable_window(minerva.site,target, logger=minerva.logger, timeof=datetime.datetime(2021,4,22,4))
+		ipdb.set_trace()
+
+	ipdb.set_trace()
+
+
+
+
+#	t0 = datetime.datetime.utcnow()
+#	parangle = minerva.telescopes[0].parangle(useCurrent=True,status=status)
+#	print (datetime.datetime.utcnow() - t0).total_seconds()
+
+
+
+	rv_control.backlight(minerva)
+
+
+
+#	telids = ['T1','T2','T3','T4']
+	for telescope in minerva.telescopes:
+		telid = telescope.id
+#		telescope = utils.getTelescope(minerva,telescope.id)
+		camera = utils.getCamera(minerva,telid)
+		print '***' + camera.guider_file_name + '***'
+#		ipdb.set_trace()
+		xfiber, yfiber = rv_control.find_fiber(telescope.datadir + minerva.night + '/' + camera.guider_file_name, camera, control=minerva)
+#		ipdb.set_trace()
+		print xfiber, ' ', yfiber
+
+
+#	minerva.cameras[1].expose(guider=True)
+	ipdb.set_trace()
 
 
 #	cleanUpNight(minerva)
 
 	
 
-	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 1.0,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
+	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 0.01,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
 #	utils.truncate_observable_window(minerva.site,target,timeof=datetime.datetime(2018,9,25,2,9,55),logger=minerva.logger)
+
+
+#	status = minerva.telescopes[0].getStatus()
+	t0 = datetime.datetime.utcnow()
+	minerva.takeFauImage(target,minerva.telescopes[1].id)
+	time.sleep(5)
+	print minerva.cameras[1].getGuideStar()
+
+	print (datetime.datetime.utcnow() - t0).total_seconds()
+	
+
+
 
 	ipdb.set_trace()
 	minerva.telescopes[0].calibrateRotator(minerva.cameras[0])
@@ -154,6 +221,7 @@ if __name__ == '__main__':
 	true = True
 	false = False
 
+#	minerva.telescopes[0].makePointingModel(minerva)
 #	minerva.telescopes[0].makePointingModel(minerva)
 	target = utils.parseTarget('{"name": "Stein2051", "ra": 4.519866, "dec": 58.9770833, "starttime": "2018-03-01 02:00:00", "endtime": "2021-03-31 03:00:00", "filter": ["ip"], "exptime":[30.0], "num":[999], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0}')
 	

@@ -8,6 +8,8 @@ from minerva_library import control
 from minerva_library import rv_control
 from minerva_library import utils
 from minerva_library import mail
+from minerva_library import DT_target_selection
+from minerva_library.propagatingthread import PropagatingThread
 import datetime
 
 #-------------------
@@ -17,6 +19,7 @@ import numpy as np
 import argparse
 #================#
 
+
 #  At 4:00 run this script.
 
 
@@ -25,9 +28,9 @@ def SetupTech(minerva, telescope, camera):
     if not telescope.initialize(tracking=False, derotate=False):
         telescope.recover(tracking=False, derotate=False)
 
-    minerva.logger.error("**** homing disabled****")
-    #telescope.homeAndPark()
-
+    #minerva.logger.error("**** homing disabled****")
+    telescope.homeAndPark()
+    
     # wait for the camera to cool down
     #minerva.logger.error("**** cooling disabled****")
     camera.cool()
@@ -121,8 +124,6 @@ def get_States(minerva, tel_phot_targets):
         if tel_phot_targets[telescope.id] != None:
             onePhot_tele = telescope.id 
             break
-
-
 
     if onePhot_tele != None:
         my_field_names = copy.copy(tel_phot_targets[onePhot_tele][0].keys()) # Any telescopes[index] (except the 'None' ones) and any ind_target should work
@@ -224,6 +225,7 @@ def get_States(minerva, tel_phot_targets):
         
     # Caveats:
     # 1) Every phot target must have the same fields filled out in their dictionaries.
+#    minerva.logger.debug("states_dict['Teles']=" + str(states_dict['Teles']) + "; states_dict['exp_starttime']=" + str(states_dict['exp_starttime'])) 
 
                 
     return states_dict 
@@ -270,7 +272,7 @@ def omniObserve(minerva, states):
                         phot_target[title] = phot_target_teles[title]
 
                 counter+=1 # index for the telescopes
-                thread = threading.Thread( target = minerva.doScience, args = (phot_target, tele) )
+                thread = PropagatingThread( target = minerva.doScience, args = (phot_target, tele) )
                 thread.name = 'Phot_Obs_' + tele
                 thread.start()
                 threads.append(thread)
@@ -279,21 +281,49 @@ def omniObserve(minerva, states):
 
             
         if state_ind < len(states['exp_starttime'])-1:
-            time_thresh = states['exp_starttime'][state_ind + 1] # upcoming state change
+            time_to_state_change = states['exp_starttime'][state_ind + 1] # upcoming state change
             
         elif state_ind == len(states['exp_starttime'])-1:
-            time_thresh = minerva.site.NautTwilBegin()
+            time_to_state_change = minerva.site.NautTwilBegin()
             
         minerva.logger.info('Beginning nightly loop')
+
+        # get DT target, if available
+        if minerva.red:
+            DT_Target = {}
+        else:
+            remaining_time = (time_to_state_change - datetime.datetime.utcnow()).total_seconds()
+            DT_Target = DT_target_selection.choose_dt_target(timeof = datetime.datetime.utcnow(), remaining_time=remaining_time, logger=minerva.logger)
+            #DT_Target = {}
+
+        if len(DT_Target) > 0:
+ #           minerva.logger.info("setting time_thresh to the DT start time (" + str(DT_Target['starttime']) + ")")
+            DT_Target = utils.truncate_observable_window(minerva.site, DT_Target, logger=minerva.logger)
+            minerva.logger.info("setting time_thresh to the DT start time (" + str(DT_Target['starttime']) + ")")
+            time_thresh = DT_Target['starttime']
+            observe_DT = True
+        else: 
+            time_thresh = time_to_state_change
+            observe_DT = False
+
         remaining_time = (time_thresh - datetime.datetime.utcnow()).total_seconds()
 
-        while remaining_time > 0.0:
+        while remaining_time > 0.0 or observe_DT:
         
             # check the time remaining before the next state change and know which telescope(s) will operate then
             minerva.logger.info('Time left in the night ' + str(remaining_time) + ' seconds')            
 
-            # tell the dynamic scheduler the remaining time gap
-            RV_target =  minerva.scheduler.choose_target(remaining_time=remaining_time,logger=minerva.logger, timeof=datetime.datetime.utcnow())
+            if observe_DT and remaining_time <= 0.0:
+                # observe our DT target!
+                RV_target = DT_Target
+            else:
+                # grab a regular RV target
+                RV_target = minerva.scheduler.choose_target(remaining_time=remaining_time,logger=minerva.logger, timeof=datetime.datetime.utcnow())
+
+            if minerva.spectrograph == None:
+                minerva.logger.error("***The spectrograph is disabled!***")
+                observe_DT = False
+                RV_target = {}
 
             # Check if dynamic scheduler provided any targets
             if len(RV_target) > 0:
@@ -311,13 +341,12 @@ def omniObserve(minerva, states):
     
                 # CALL RV observation
                 # The remaining telescopes will always collect RVs on the same target
-                thread = threading.Thread( target = rv_control.doSpectra, args = (minerva,RV_target,rv_teles_id) ) 
+                thread = PropagatingThread( target = rv_control.doSpectra, args = (minerva,RV_target,rv_teles_id) ) 
                 thread.name = 'RV_Obs'
                 thread.start()
                 threads.append(thread)
                 minerva.logger.info('RV thread is activated.')
                 #rv_control.doSpectra(minerva,RV_target,rv_teles_id)
-
 
                 # tell the scheduler that we observed the target
                 for ii,target in enumerate(minerva.scheduler.target_list):
@@ -328,6 +357,11 @@ def omniObserve(minerva, states):
                             minerva.scheduler.target_list[ii]['observed'] = 1
                         minerva.scheduler.target_list[ii]['last_obs'] = datetime.datetime.utcnow()
                         break
+
+                # if we just finished a DT observation, set time_thresh back to time_to_state_change, set observe_DT = False
+                if RV_target['DT']:
+                    time_thresh = time_to_state_change
+                    observe_DT = False
 
             else:
                 minerva.logger.info("The scheduler did not return any viable RV targets")
@@ -374,7 +408,7 @@ def observe(red=False, south=False):
         utils.scheduleIsValid(scheduleFile, email=True, logger=minerva.logger,directory=minerva.directory)
 
         # Setup tech thread
-        thread = threading.Thread( target = SetupTech, args=(minerva, telescope, camera) ) 
+        thread = PropagatingThread( target = SetupTech, args=(minerva, telescope, camera) ) 
         thread.name = telescope.id
         thread.start()
         threads.append(thread)       
@@ -397,15 +431,16 @@ def observe(red=False, south=False):
 
     # if before the end of twilight, do calibrations
     if datetime.datetime.utcnow() < minerva.site.NautTwilEnd():
-        rv_control.backlight(minerva)
+        if minerva.spectrograph != None: rv_control.backlight(minerva)
          
         # by default, checkiftime = True. This is just here as a reminder
         kwargs ={'checkiftime': True}
-        thread = threading.Thread( target = minerva.specCalib_catch, args=(),kwargs=kwargs ) 
-        if minerva.red: thread.name = 'MRED'
-        else: thread.name = 'Kiwispec'
-        thread.start()
-        threads.append(thread)
+        if minerva.spectrograph != None:
+            thread = PropagatingThread( target = minerva.specCalib_catch, args=(),kwargs=kwargs ) 
+            if minerva.red: thread.name = 'MRED'
+            else: thread.name = 'Kiwispec'
+            thread.start()
+            threads.append(thread)
 
     # photometric calibrations
     for telescope in minerva.telescopes:
@@ -417,7 +452,7 @@ def observe(red=False, south=False):
 
                 # by default, checkiftime = True. This is just here as a reminder
                 kwargs = {'checkiftime':True}
-                thread = threading.Thread( target = PhotCalib, args=(minerva, CalibInfo, telescope.id), kwargs=kwargs )
+                thread = PropagatingThread( target = PhotCalib, args=(minerva, CalibInfo, telescope.id), kwargs=kwargs )
                 thread.name = telescope.id
                 thread.start()                  
                 threads.append(thread)       
@@ -446,7 +481,7 @@ def observe(red=False, south=False):
         if CalibInfo != None and CalibEndInfo != None:
             if datetime.datetime.utcnow() < minerva.site.NautTwilEnd():
                 # Skyflats thread
-                thread = threading.Thread( target = startSkyFlats, args=(minerva, telescope, dome, CalibInfo) )
+                thread = PropagatingThread( target = startSkyFlats, args=(minerva, telescope, dome, CalibInfo) )
                 thread.name = telescope.id
                 thread.start()                  
                 threads.append(thread)
@@ -468,7 +503,7 @@ def observe(red=False, south=False):
                     
                     if target <> -1:  # only works for Python 2
                         # truncate the start and end times so it's observable: elevation (above ~20 degrees) and airmass (X < 3 or 2)
-                        target = utils.truncate_observable_window(minerva.site, target)
+                        target = utils.truncate_observable_window(minerva.site, target, logger=minerva.logger)
 
                              
                         # The target dictionary's start and end times should be in datetime.datetime format now

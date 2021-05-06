@@ -90,6 +90,7 @@ def mkdict(name=None, bstar=False, includeInactive=False,red=False):
         target['starttime'] = datetime.datetime(2015,01,01,00,00,00)
         target['endtime'] = datetime.datetime(2115,01,01,00,00,00)
         target['spectroscopy'] = True
+        target['DT'] = False
         target['filter'] = ["rp"]
         target['num'] = [1]
         target['exptime'] = [float(targetlist['exptime'][i])]

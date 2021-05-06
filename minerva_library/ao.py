@@ -16,10 +16,10 @@ class ao:
         self.load_config()
 
         # current steps         
-        self.north = 0
-        self.east = 0
-        self.tip = 0
-        self.tilt = 0
+        self.north = None
+        self.east = None
+        self.tip = None
+        self.tilt = None
         
         self.logger = utils.setup_logger(self.base_directory,self.night,self.logger_name)
 
@@ -97,6 +97,10 @@ class ao:
         # https://www.sxccd.com/handbooks/Starlight%20Xpress%20SXV%20AOL%20unit.pdf
         # pg 12
 
+        # home the tip/tilt
+        if self.tip == None or self.tilt == None or self.north == None or self.east == None:
+            self.home()
+
         # the magnitudes of the corrections for the Starlight Xpress
         # converted to their definitions of North and East
         tip  = -(east*math.cos(self.rotoffset) - north*math.sin(self.rotoffset))/self.arcsec_per_step
@@ -123,12 +127,7 @@ class ao:
 	self.logger.info("commanded move is " + str(tip) + " steps in tip, " + str(tilt) + " steps in tilt")
 
         if self.tip > self.ymax or self.tip < self.ymin or self.tilt > self.xmax or self.tilt < self.xmin:
-            # TODO: Move telescope to compensate
-            self.logger.error("request outside of limits")
-            self.north -= north
-            self.east -= east
-            self.tip -= tip
-            self.tilt -= tilt
+            self.logger.warning("request outside of limits")
             return "success Limits_Reached"
         
         if self.ser.isOpen():
@@ -144,12 +143,7 @@ class ao:
                 time.sleep(0.001)
             #print (datetime.datetime.utcnow() - t0).total_seconds()
             
-                if "L" in response: 
-                    self.north -= north
-                    self.east -= east
-                    self.tip -= tip
-                    self.tilt -= tilt
-                    return "success Limits_Reached " + response
+                if "L" in response: return "success Limits_Reached " + response
 
             if response == "GG": return "success " + response
             return "fail " + response

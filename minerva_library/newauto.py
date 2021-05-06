@@ -104,6 +104,8 @@ def recordplot(recordfile,step=1,saveplot=False):
 def quad(x,c):
     return c[0]*x**2+c[1]*x+c[2]
     
+## FWHM = 2*HFR
+# HFR in Pixels
 #S want to look at multiple images of one focus for FAU focusing potentially
 def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
     #S get a dictionary containg the columns of a sextracted image
@@ -262,19 +264,22 @@ def autofocus_step(control,telescope,newfocus,af_target, simulate=False):
         telescope.logger.warning("Focus position (" + str(newfocus) + ") out of range (" + str(telescope.minfocus[m3port]) + "," + str(telescope.maxfocus[m3port]) + ")")
         return median,stddev,numstar,imnum
 
+    telescope.logger.info("moving focuser and waiting")
     if not telescope.focuserMoveAndWait(newfocus,m3port):
         telescope.recoverFocuser(newfocus,m3port)
         telescope.acquireTarget(af_target)
 
     if af_target['spectroscopy']:
+        telescope.logger.info("taking FAU image")
         imagename = control.takeFauImage(af_target,telescope.id)
     else:
+        telescope.logger.info("taking image")
         imagename = control.takeImage(af_target,telescope.id)
     
     try: 
         imnum = imagename.split('.')[4]
     except: 
-        telescope.logger.exception('Failed to save image')
+        telescope.logger.exception('Failed to save image: "' + imagename + '"')
         return median,stddev,numstar,imnum
     
     datapath = '/Data/' + telescope.id.lower() + '/' + control.site.night + '/'
@@ -294,7 +299,7 @@ def autofocus_step(control,telescope,newfocus,af_target, simulate=False):
 
 # the high-level auto-focus routine
 def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
-                  target=None,dome_override=False,simulate=False,slew=True):
+                  target=None,dome_override=False,simulate=False,slew=True, exptime=5.0):
 
     control.logger.info("Beginning autofocus")
     telescope = utils.getTelescope(control,telid)
@@ -312,16 +317,17 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                 m3port = telescope.port['FAU']
             else:
                 m3port = telescope.port['IMAGER']
-                af_target['exptime'] = 5
+                af_target['exptime'] = exptime
+                af_target['fauexptime'] = exptime
                 af_target['filter'] = "V"
         else:
             m3port = telescope.port['IMAGER']                
             af_target['spectroscopy'] = False
-            af_target['exptime'] = 5
+            af_target['exptime'] = exptime
+            af_target['fauexptime'] = exptime
             af_target['filter'] = "V"
 
         control.logger.info("defined af_target")
-
             
     else:
         status = telescope.getStatus()
@@ -336,8 +342,8 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
         dec = utils.ten(status.mount.dec_2000)
         slew=False
         af_target = {'name':'autofocus',
-                     'exptime':5,
-                     'fauexptime':10,
+                     'exptime':exptime,
+                     'fauexptime':exptime,
                      'filter':"V",
                      'spectroscopy':spectroscopy,                     
                      'ra' : ra,
@@ -425,6 +431,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
 
         #S set the new focus, and move there if necessary
         newfocus = telescope.focus[m3port] + step*1000.0
+        telescope.logger.info("New step is " + str(newfocus))
 
         # if new focus out of mechanical range, skip this step
         if newfocus < float(telescope.minfocus[m3port]) or newfocus > float(telescope.maxfocus[m3port]):
@@ -434,6 +441,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
         status = telescope.getStatus()
 
         #S ensure we have the correct port
+        telescope.logger.info("switching to port " + str(m3port))
         telescope.m3port_switch(m3port)
         #S move and wait for focuser
         telescope.logger.info("Defocusing port " + str(m3port) + " by " + str(step) + " mm, to " + str(newfocus))

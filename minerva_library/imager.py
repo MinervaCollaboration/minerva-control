@@ -17,6 +17,8 @@ import cdk700
 import fau
 sys.dont_write_bytecode = True
 import utils
+import utils2
+import numpy as np
 
 class imager:
 
@@ -71,7 +73,7 @@ class imager:
 			self.flatmaxexptime = float(config['Setup']['FLATMAXEXPTIME'])
 			self.flatminsunalt = float(config['Setup']['FLATMINSUNALT'])
 			self.flatmaxsunalt = float(config['Setup']['FLATMAXSUNALT'])
-			self.datapath = ''
+			self.datadir = config['Setup']['DATADIR']
 			self.gitpath = ''
 			self.file_name = 'test'
 			self.guider_file_name = ''
@@ -162,6 +164,7 @@ class imager:
 				return 'fail'
 
 			try:
+				self.logger.debug("Sending message: " + msg)
 				s.sendall(msg)
 			except:
 				self.logger.error("Failed to send message (" + msg + ")")
@@ -169,6 +172,7 @@ class imager:
 				return 'fail'
 
 			try:
+				self.logger.info("Sending timeout: " + str(timeout))
 				s.settimeout(timeout)
 				data = s.recv(1024)
 			except:
@@ -178,11 +182,13 @@ class imager:
 
 			try:
 				command = msg.split()[0]
+				self.logger.info("data returned: " + data)
                                 if not self.thach:
                                         data = repr(data).strip("'")
 #				else:
 #					data = repr(data).strip('"')
 				data_ret = data.split()[0]
+
 			except:
 				self.logger.error("Error processing server response")
 				if self.recover_server(): return self.send(msg,timeout)
@@ -442,7 +448,8 @@ class imager:
 			cmd += " " + str(offset[0]) + ' ' + str(offset[1])
 			
 
-		self.logger.info("sending command:" + cmd)
+		self.logger.info("sending command: ***" + cmd + "***")
+
 		if (self.send(cmd,30)).split()[0] == 'success': return True
 		else: return False
 
@@ -478,6 +485,17 @@ class imager:
 			return False
 
 	def getGuideStar(self):
+		time = datetime.datetime.utcnow()
+		xy = utils2.get_stars_cv(None,filename=self.datadir + '/' + self.night + '/' + self.guider_file_name)
+		if len(xy) != 0:
+			brightestndx = np.argmax(xy[:,2])
+			x = xy[brightestndx][0]
+			y = xy[brightestndx][1]
+		else:
+			x = np.nan
+			y = np.nan
+		return time, x, y
+
 		response = self.send('get_guide_star none',30)
 		array = response.split()
 		time = datetime.datetime.strptime(array[1], '%Y-%m-%dT%H:%M:%S.%f')
@@ -551,6 +569,11 @@ class imager:
 				if fau or piggyback: self.guider_file_name = ''
 				else: self.file_name = ''
 				if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=guider, piggyback=piggyback)
+		else:
+			self.logger.error('Failed to save image: ' + filename)
+			if fau or piggyback: self.guider_file_name = ''
+			else: self.file_name = ''
+			if self.recover(): return self.take_image(exptime=exptime, filterInd=filterInd,objname=objname, fau=guider, piggyback=piggyback)
 
 		self.logger.error('Taking image failed, image not saved: ' + filename)
 		if fau or piggyback: self.guider_file_name = ''
@@ -582,7 +605,7 @@ class imager:
 
 		# if it's failed more than 3 times, something is seriously wrong -- give up
 		if self.nserver_failed > 3:
-			if not self.mailsent: mail.send(self.telid + ' server failed','',level='serious')
+			if not self.mailsent: mail.send(self.telid + ' server failed','Please fix and restart mainNew.py',level='serious')
 			self.mailsent = True
 			sys.exit()
 

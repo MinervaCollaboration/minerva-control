@@ -100,7 +100,14 @@ class CDK700:
                 else:
 		        self.pdu = pdu.pdu(self.pdu_config,base)
                         
-		self.status_lock = threading.RLock()
+		# this prevents multiple threads from trying to slew the same mechanism at the same time
+		self.telescope_lock = threading.RLock()
+		self.focuser1_lock = threading.RLock()
+		self.focuser2_lock = threading.RLock()
+		self.rotator1_lock = threading.RLock()
+		self.rotator2_lock = threading.RLock()
+
+
 		# threading.Thread(target=self.write_status_thread).start()
 		
 		self.focus = {'0':'UNKNOWN'}
@@ -137,7 +144,7 @@ class CDK700:
 					      + str(m1temp) + ', dT=' + str(dt) + ', gravity=' + str(gravity))
 
 	#additional higher level routines
-	#tracking and detrotating should be on by default
+	#tracking and derotating should be on by default
 	#much worse to be off when it should be on than vice versa
 	def isInitialized(self,tracking=True, derotate=True):
 
@@ -335,9 +342,9 @@ class CDK700:
 		"""
 		url = self.makeUrl(**kwargs)
 		try: ret = urllib.urlopen(url).read()
-		except:
-			self.restartPWI()
-			ret = urllib.urlopen(url).read()
+		except: ret = False
+#			self.restartPWI()
+#			ret = urllib.urlopen(url).read()
 		return ret
 
 	def parseXml(self, xml):
@@ -354,10 +361,9 @@ class CDK700:
 		Works like pwiRequest(), except returns a parsed XML object rather
 		than XML text
 		"""
-		try: return self.parseXml(self.pwiRequest(**kwargs))
-		except:
-			self.restartPWI()
-			return self.parseXml(self.pwiRequest(**kwargs))
+		ret = self.pwiRequest(**kwargs)
+		if ret == False: return False
+		return self.parseXml(ret)
 
 	### Status wrappers #####################################
 	def getStatusXml(self):
@@ -381,13 +387,17 @@ class CDK700:
 		Return a status object representing the tree structure of the XML text.
 		Example: getStatus().mount.tracking --> "False"
 		"""
-		try: status = self.parseXml(self.getStatusXml())
-		except: 
+		xmlstatus = self.getStatusXml()
+		if xmlstatus == False:
+			status = False
+		else: status = self.parseXml(xmlstatus)
+		if status == False:
 			xmlfile = open(self.base_directory + '/dependencies/telstateunknown.xml','r')
 			errxml = xmlfile.readline()
 			status = self.parseXml(errxml)
 
 		self.logger.debug('Alt/Az RMS error: ' + status.mount.alt_rms_error_arcsec + ',' + status.mount.azm_rms_error_arcsec)
+		self.logger.debug('Alt/Az: ' + status.mount.alt_radian + ',' + status.mount.azm_radian)
 		return status
 
 	def getFocuserStatus(self,m3port):
@@ -395,8 +405,8 @@ class CDK700:
 		if str(m3port) == '1': return telescopeStatus.focuser1
 		return telescopeStatus.focuser2
 
-	def getRotatorStatus(self,m3port):
-		telescopeStatus = self.getStatus()
+	def getRotatorStatus(self,m3port,telescopeStatus=None):
+		if telescopeStatus == None: telescopeStatus = self.getStatus()
 		if str(m3port) == '1': return telescopeStatus.rotator1
 		return telescopeStatus.rotator2
 
@@ -439,7 +449,6 @@ class CDK700:
 		"""
 		Move the focuser to the specified position in microns
 		"""
-
 		# make sure it's a legal move first
 		if position < float(self.minfocus[m3port]) or position > float(self.maxfocus[m3port]): 
 			self.logger.warning('Requested focus on port ' + m3port + ' (' + str(position) + ') out of bounds')
@@ -454,9 +463,13 @@ class CDK700:
 #			time.slee(0.01)
 #		self.focusMoving = True
 
+		if m3port == 1: lock = self.focuser1_lock
+		else: lock = self.focuser2_lock
+		lock.acquire()
+
 		if not self.focuserMove(position,m3port):
 			self.logger.warning('Focuser on port ' + str(m3port) + ' could not move to requested position (' + str(position) + ')')
-#			self.focusMoving = False
+			lock.release()
 			return False
 
 		# wait for the focuser to start moving
@@ -476,12 +489,11 @@ class CDK700:
 
 		if abs(float(focuserStatus.position) - float(position)) > 10:
 			self.logger.warning('Focuser on port ' + str(m3port) + ' (' + focuserStatus.position + ') not at requested position (' + str(position) + ') after ' + str(elapsedTime) + ' seconds')
-#			self.focusMoving = False
+			lock.release()
 			return False
 
 		self.logger.info('Focuser completed move in ' + str(elapsedTime) + ' seconds')
-#		self.focusMoving = False
-
+		lock.release()
 		return True
 
 
@@ -513,7 +525,6 @@ class CDK700:
                 for m3port in ['1','2']:
 			self.focuserHomeNominal(m3port)
 			self.rotatorHome180(m3port)
-
 		return
 
 		# doesn't handle simultantous commands gracefully
@@ -556,9 +567,9 @@ class CDK700:
 	# home the focuser and wait to completion
 	def focuserHomeAndWait(self, m3port, timeout=300.0):
 
-#		while self.focusMoving:                        
-#			time.sleep(0.1)
-#		self.focusMoving = True
+		if m3port == 1: lock = self.focuser1_lock
+		else: lock = self.focuser2_lock
+		lock.acquire()
 
 		# make sure it's not homing in another thread first
 		focuserStatus = self.getFocuserStatus(m3port)
@@ -577,7 +588,7 @@ class CDK700:
 			
 		if elapsedTime > timeout:
 			self.logger.error('Homing focuser ' + str(m3port) + ' failed')
-#			self.focusMoving = False
+			lock.release()
 			return False
 
 		self.logger.info('Homing focuser ' + str(m3port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
@@ -594,18 +605,25 @@ class CDK700:
 			
 		if abs(float(focuserStatus.position) - 1000) > 10:
 			self.logger.error('Homing focuser ' + str(m3port) + ' failed')
-#			self.focusMoving = False
+			lock.release()
 			return False
 
 		self.logger.info('Homing focuser ' + str(m3port) + ' complete')
-#		self.focusMoving = False
+		lock.release()
 		return True
 
 
 	### ROTATOR ###
 	def rotatorMove(self, position, m3port, wait=False, timeout=400.0):
+
+		if m3port == 1: lock = self.rotator1_lock
+		else: lock = self.rotator2_lock
+		lock.acquire()
+
 		status = self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="move", position=position)
-		if not wait: return status
+		if not wait: 
+			lock.release()
+			return status
 
 		time.sleep(1.0)
 
@@ -623,13 +641,14 @@ class CDK700:
 		if rotatorStatus.goto_complete == 'False':
 			self.logger.error('Moving rotator ' + str(m3port) + ' failed')
 			self.rotatorMoving = False
+			lock.release()
 			return False
 
 		self.logger.info('Rotator on port ' + str(m3port) + ' move complete')
 		self.rotatorMoving = False
+		lock.release()
 		return True
 		
-
 	def rotatorIncrement(self, offset, m3port):
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="move", increment=offset)
 
@@ -662,6 +681,10 @@ class CDK700:
 #			time.sleep(0.1)
 #		self.rotatorMoving = True
 
+		if m3port == 1: lock = self.rotator1_lock
+		else: lock = self.rotator2_lock
+		lock.acquire()
+
 		# make sure it's not homing in another thread first
 		rotatorStatus = self.getRotatorStatus(m3port)
 		if not rotatorStatus.finding_home == 'True': self.rotatorHome(m3port)
@@ -680,6 +703,7 @@ class CDK700:
 		if elapsedTime > timeout:
 			self.logger.error('Homing rotator ' + str(m3port) + ' failed')
 			self.rotatorMoving = False
+			lock.release()
 			return False
 
 		self.logger.info('Homing rotator ' + str(m3port) + ' complete; moving to nominal position (elapsed time = ' + str(elapsedTime) + ')')
@@ -696,21 +720,27 @@ class CDK700:
 		if rotatorStatus.moving == 'True':
 			self.logger.error('Homing rotator ' + str(m3port) + ' failed')
 			self.rotatorMoving = False
+			lock.release()
 			return False
 
 		self.logger.info('Homing rotator ' + str(m3port) + ' complete')
 		self.rotatorMoving = False
+		lock.release()
 		return True
 
 	#S i think we should make targets classes for functions like this, not in telescope.
 	#S i did that in scheduler sim, but could be a bit of an overhaul here....
-	def hourangle(self,target=None, useCurrent=False):
+	def hourangle(self,target=None, useCurrent=False, status=None):
 		#S calculate the current hour angle of the target
 		#TODO need to incorporate the updated RA, will be off by a few degrees
 		#TODO similar to caluclating the angle from target set check in observing script
-		lst = self.lst()
+		lst = self.lst(status=status)
+
+		if target != None: 
+			if 'ra' not in target.keys(): useCurrent = True
+
 		if useCurrent:
-			status = self.getStatus()
+			if status == None: status = self.getStatus()
 			ra = utils.ten(status.mount.ra)
 		else:
 			ra = target['ra']
@@ -718,16 +748,16 @@ class CDK700:
 
 	# calculate the Local Sidereal Time                                                   
 	# this is a bit of a hack...
-        def lst(self):
-                status = self.getStatus()
+        def lst(self, status=None):
+                if status == None: status = self.getStatus()
                 return utils.ten(status.status.lst)
 	
         # calculate the parallactic angle (for guiding)
-        def parangle(self, target=None, useCurrent=False):
+        def parangle(self, target=None, useCurrent=False, status=None):
 
-		ha = self.hourangle(target=target, useCurrent=useCurrent)
+		ha = self.hourangle(target=target, useCurrent=useCurrent, status=status)
 		if useCurrent:
-			status = self.getStatus()
+			if status==None: status = self.getStatus()
 			dec = utils.ten(status.mount.dec)
 		else:
 			dec = target['dec']
@@ -765,6 +795,7 @@ class CDK700:
 	### MOUNT ###
 	def mountConnect(self):
 		status = self.pwiRequestAndParse(device="mount", cmd="connect")
+		if status == False: return False
 		if status.mount.connected == 'False':
 			# after a power cycle, this takes longer than PWI allows -- try again
 			time.sleep(5.0)
@@ -936,42 +967,65 @@ class CDK700:
 			if self.initialize(tracking=tracking, derotate=derotate):
 				self.logger.info('recovered after reconnecting')
 				return True
+			else: self.nfailed += 1 
 
 		# restart PWI
-		self.logger.warning('reconnecting failed; restarting PWI')
-		try: self.shutdown()
-		except: pass
-		self.restartPWI()
+		if self.nfailed <= 2:
+			self.logger.warning('reconnecting failed; restarting PWI')
+			try: self.shutdown()
+			except: pass
+			self.restartPWI()
 		
-		if self.initialize(tracking=tracking, derotate=derotate):
-			self.logger.info('recovered after restarting PWI')
-			return True
+			if self.initialize(tracking=tracking, derotate=derotate):
+				self.logger.info('recovered after restarting PWI')
+				return True
+			else: self.nfailed += 1 
+
+		# restart PWI again
+		if self.nfailed <= 3:
+			self.logger.warning('restarting PWI failed; restarting PWI again')
+			try: self.shutdown()
+			except: pass
+			self.restartPWI()
+		
+			if self.initialize(tracking=tracking, derotate=derotate):
+				self.logger.info('recovered after restarting PWI a second time')
+				return True
+			else: self.nfailed += 1 
 
 		# home the scope
-		telescopeStatus = self.getStatus()
-		if telescopeStatus.mount.encoders_have_been_set <> 'True':
-			self.logger.warning('restarting PWI failed, homing telescope')
-			self.home()
-			time.sleep(0.25)
-			if self.initialize(tracking=tracking, derotate=derotate):
-				self.logger.info('recovered after homing')
-				return True
-		else: self.logger.warning('Telescope already home')
+		if self.nfailed <= 5:
+			telescopeStatus = self.getStatus()
+			if telescopeStatus.mount.encoders_have_been_set <> 'True':
+				self.logger.warning('restarting PWI failed, homing telescope')
+				self.home()
+				time.sleep(0.25)
+				if self.initialize(tracking=tracking, derotate=derotate):
+					self.logger.info('recovered after homing')
+					return True
+				else: self.nfailed += 1 
+			else: 
+				self.logger.warning('Telescope already home')
+				self.nfailed += 1 
 		
-#		if self.id != 'MRED':
-		if True:
-			# power cycle and rehome the scope
+		# power cycle and rehome the scope
+		if self.nfailed <= 6:
 			self.logger.info('Homing failed, power cycling the mount')
 			try: self.shutdown()
 			except: pass
 			self.killPWI()
 			self.powercycle()
 			self.startPWI()
-			self.home()
-			time.sleep(0.25)
-			if self.initialize():
+			time.sleep(10)
+		
+			if self.initialize(tracking=tracking, derotate=derotate):
 				self.logger.info('recovered after power cycling the mount')
-				return True
+				self.home()
+				if self.initialize(tracking=tracking, derotate=derotate):
+					return True
+				else: self.nfailed += 1 
+			else: self.nfailed += 1 
+
 
 		'''
 		# reboot the telcom machine
@@ -1311,6 +1365,10 @@ class CDK700:
 		rotatorStatus = self.getRotatorStatus(m3port)
 		rotpos = float(rotatorStatus.position)
 		parang = self.parangle(useCurrent=True)
+		parang2 = self.parangle(useCurrent=True, status=status)
+
+		self.logger.info('Parang = ' + str(parang))
+		self.logger.info('Parang2 = ' + str(parang2))
 
 		# calculate rotator angle
 		skypa = math.atan2(y2-y1,x2-x1)*180.0/math.pi
@@ -1596,7 +1654,7 @@ class CDK700:
 				self.logger.info('FAU port requested, but IMAGER is required for imaging; using imaging port')
 				m3port = self.port['IMAGER']
 
-			self.initialize(tracking=tracking,derotate=detrotate)
+			self.initialize(tracking=tracking,derotate=derotate)
 
 			rotator_angle = self.solveRotatorPosition(target)
 			self.rotatorMove(rotator_angle,m3port)
@@ -1826,11 +1884,16 @@ class CDK700:
 	def shutdown(self,m3port=None):
 
 		if not m3port==None:
+			self.logger.info('Shutting down focusing rotator on port ' + m3port)		
 			self.focuserStop(m3port)
 			self.rotatorStopDerotating(m3port)
 			self.focuserDisconnect(m3port)
+
+		self.logger.info('Turning off tracking')
 		self.mountTrackingOff()
+		self.logger.info('Disconnecting from the mount')
 		self.mountDisconnect()
+		self.logger.info('Disabling motors')
 		self.mountDisableMotors()
 		
 	def powercycle(self):
@@ -1899,7 +1962,7 @@ class CDK700:
 
 	def startPWI(self,email=True):
 		self.send_to_computer('schtasks /Run /TN "Start PWI"')
-		time.sleep(5.0)
+		time.sleep(10.0)
 
 	def restartPWI(self,email=True):
 		self.killPWI()

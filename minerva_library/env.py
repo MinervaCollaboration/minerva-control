@@ -18,6 +18,7 @@ import threading
 import copy
 import utils
 from weather_thach import get_current_weather
+from astropy.time import Time
 
 class site:
 
@@ -87,7 +88,8 @@ class site:
 			'totalRain'           : [0.0,1000.0],
 			'wxt510Rain'          : [0.0,50.0],
 			'barometer'           : [0,2000],
-			'windGustSpeed'       : [0.0,35.0],
+	#		'windGustSpeed'       : [0.0,35.0],
+			'windGustSpeed'       : [0.0,999.0],
 			'outsideHumidity'     : [0.0,75.0],
 			'outsideDewPt'        : [-100.0,100.0],
 			'outsideTemp'         : [-20.0,50.0],
@@ -106,7 +108,8 @@ class site:
 			'totalRain'           : [0.0,1000.0],
 			'wxt510Rain'          : [0.0,50.0],
 			'barometer'           : [0,2000],
-			'windGustSpeed'       : [0.0,40.0],
+	#		'windGustSpeed'       : [0.0,40.0],
+			'windGustSpeed'       : [0.0,999.0],
 			'outsideHumidity'     : [0.0,80.0],
 			'outsideDewPt'        : [-100.0,100.0],
 			'outsideTemp'         : [-30.0,60.0],
@@ -121,6 +124,78 @@ class site:
 			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
 
+	def getWeatherMearth(self):
+
+		url = "http://mearth.sao.arizona.edu/weather/now"
+
+		# read the webpage
+		self.logger.debug('Requesting URL: ' + url)
+		request = urllib2.Request(url)
+		try:
+			response = urllib2.urlopen(request)
+		except:
+			self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
+			return {}
+		
+		data = response.read().split()
+
+		if len(data) != 14: return {}
+
+		# TODO: update astropy to get rid of dubious year?
+#		mjd = Time(float(data[0]), format='mjd')
+#		date2 = mjd.datetime
+
+		# convert mjd to datetime object
+		jd = float(data[0]) + 2400000.5
+		date = utils.jd2datetime(jd)
+
+
+		weather = {'date':date, 
+			   'outsideTemp':float(data[3]), # C
+			   'windSpeed':float(data[2]), #km/h
+			   'windGustSpeed':0.0, 
+			   'windDirectionDegrees':float(data[1]), # degrees (I assume)
+			   'barometer':float(data[6]), # hPa
+			   'outsideHumidity':float(data[5]), # % (I assume)
+			   'wxt510Rain':float(data[7]), # mm
+			   'totalRain':0.0,
+			   'outsideDewPt':float(data[4]), # C (I assume)
+			   'rainDuration':float(data[8]), # seconds
+			   'rainIntensity':float(data[9]), # mm/hr
+			   'hailAccumulation':float(data[10]), # mm
+			   'hailDuration':float(data[11]), # seconds
+			   'hailIntensity':float(data[12]), # mm/hr
+			   'skyTemp':float(data[13]) # mm/hr
+			   }
+		return weather
+
+	def getWeatherRidge(self):
+		# the URL for the machine readable weather page for the Ridge
+		url = "http://linmax.sao.arizona.edu/weather/weather.cur_cond"
+
+		# read the webpage
+		self.logger.debug('Requesting URL: ' + url)
+		request = urllib2.Request(url)
+		try:
+			response = urllib2.urlopen(request)
+		except:
+			self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
+			return {}
+
+		data = response.read().split('\n')
+		if data[0] == '':
+			return {}
+
+		# convert the date into a datetime object
+		weather = {
+			'date':datetime.datetime.strptime(data[0],'%Y, %m, %d, %H, %M, %S, %f')}
+
+		# populate the weather dictionary from the webpage
+		for parameter in data[1:-1]:
+			weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
+		return weather
+
+
 	def getWeather(self):
 
            self.logger.debug("Beginning serial communications with the weather station")
@@ -128,29 +203,10 @@ class site:
            with self.lock:
 
 		if self.logger_name == 'site_mtHopkins':
-			# the URL for the machine readable weather page for the Ridge
-			url = "http://linmax.sao.arizona.edu/weather/weather.cur_cond"
 
-			# read the webpage
-			self.logger.debug('Requesting URL: ' + url)
-			request = urllib2.Request(url)
-			try:
-				response = urllib2.urlopen(request)
-			except:
-				self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
-				return
-
-			data = response.read().split('\n')
-			if data[0] == '':
-				return
-
-			# convert the date into a datetime object
-			weather = {
-				'date':datetime.datetime.strptime(data[0],'%Y, %m, %d, %H, %M, %S, %f')}
-
-			# populate the weather dictionary from the webpage
-			for parameter in data[1:-1]:
-				weather[(parameter.split('='))[0]] = float((parameter.split('='))[1])
+			# use MEarth weather station, backup of Ridge weather station
+			weather = self.getWeatherMearth()
+			if len(weather) == 0: weather = self.getWeatherRidge()
 
 			#S Acquire readings from the three cloud monitors at the address below. Order at
 			#S website is Date, Mearth, HAT, Aurora, MINERVA.

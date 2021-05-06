@@ -1,3 +1,4 @@
+
 import matplotlib
 matplotlib.use('Agg',warn=False)
 import threading
@@ -14,6 +15,7 @@ import utils
 import numpy as np
 import math
 import newauto
+from propagatingthread import PropagatingThread
 
 def rv_observing(minerva):
 
@@ -63,7 +65,7 @@ def rv_observing(minerva):
                         kwargs = {'target':target,'fau':fau}
                         threads = []
                         for telescope in minerva.telescopes:
-                            thread = threading.Thread(target=newauto.autofocus,args=(minerva,telescope.id,),kwargs=kwargs)
+                            thread = PropagatingThread(target=newauto.autofocus,args=(minerva,telescope.id,),kwargs=kwargs)
                             thread.name = str(telescope.id) + ' (rv_control->rv_observing->autofocus)'
                             threads.append(thread)
                         for thread in threads(): thread.start()
@@ -119,7 +121,7 @@ def doSpectra(minerva, target, tele_list, simulate=False):
 
         kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
         minerva.logger.info("Starting acquisition for " + telid)
-        thread = threading.Thread(target = telescope.acquireTarget,args=(target,),kwargs=kwargs)
+        thread = PropagatingThread(target = telescope.acquireTarget,args=(target,),kwargs=kwargs)
         thread.name = telescope.id + ' (rv_control->doSpectra->acquireTarget)'
         thread.start()
         threads.append(thread)
@@ -158,6 +160,10 @@ def doSpectra(minerva, target, tele_list, simulate=False):
 
         minerva.logger.info('checking max obs')
         if (i % max_obs_before_reacquire) == 0:
+
+            if i > 0: 
+                minerva.logger.info('Stopping guiding')
+                stopFAU(minerva,tele_list)
 
             minerva.logger.info('done checking max obs')
 
@@ -204,15 +210,15 @@ def doSpectra(minerva, target, tele_list, simulate=False):
                 # set the timeout to be the end of exposure
                 timeout = max([target['exptime'],300])
                 kwargs = {'timeout':timeout, 'simulate':simulate}
-                thread = threading.Thread(target=acquireFocusGuide,args=(minerva,target,telid,),kwargs=kwargs)
-                thread.name = telid + ' (rv_control->doSpetra->acquireFocusGuide)'
+                thread = PropagatingThread(target=acquireFocusGuide,args=(minerva,target,telid,),kwargs=kwargs)
+                thread.name = telid + ' (rv_control->doSpectra->acquireFocusGuide)'
                 thread.start()
                 threads.append(thread)
         
             # wait for all telescopes to put target on their fibers (or timeout)
             # needs time to reslew (because m3port_switch stops tracking), fine acquire, autofocus, guiding
             nacquired = 0
-            timeout = 600.0 
+            timeout = 750.0 
             elapsedTime = 0.0
             t0 = datetime.datetime.utcnow()
             while nacquired != len(tele_list) and elapsedTime < timeout:
@@ -251,7 +257,9 @@ def doSpectra(minerva, target, tele_list, simulate=False):
                         return
                     time.sleep(60)
 
+        minerva.logger.info('taking spectrum')
         minerva.takeSpectrum(target)
+        minerva.logger.info('done taking spectrum')
         
     stopFAU(minerva,tele_list)
 
@@ -264,7 +272,7 @@ def doSpectra(minerva, target, tele_list, simulate=False):
         threads[t].join(30.0)#exposureTimeout - elapsedTime)
         telescope.abort=False
 
-    # check if the thread timed out                                                                                                                                                
+    # check if the thread timed out          
     for t in range(len(tele_list)):
         if threads[t].isAlive():
             minerva.logger.error(tele_list[t] + ": thread timed out while exposing")
@@ -280,7 +288,7 @@ def doSpectra(minerva, target, tele_list, simulate=False):
     
     # stop tracking for all scopes (so they don't track out of bounds)
     for telescope in minerva.telescopes:
-        telescope.monutTrackingOff()
+        telescope.mountTrackingOff()
 
     return
 
@@ -301,16 +309,22 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0, simulate=False):
 
         # autofocus
         minerva.logger.info("beginning autofocus")
-        try: newauto.autofocus(minerva, telid, simulate=simulate)
+        try: newauto.autofocus(minerva, telid, simulate=simulate, slew=False, target=target, exptime=target['fauexptime'])
         except: minerva.logger.exception("autofocus failed")
         if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("autofocus timed out")
             return
 
+        if telescope.abort:
+            minerva.logger.error("aborted by telescope; returning")
+            return
+
         # if there's a focus offset (FAU and Fiber have a calibrated offset), apply it
         if camera.fau.focusOffset != 0 and not telescope.abort:
             m3port = telescope.port['FAU']
-            try: telescope.focuserMoveAndWait(telescope.focus[m3port]+camera.fau.focusOffset, m3port)
+            try: 
+                minerva.logger.info("focus offset of " + str(camera.fau.focusOffset) + " being applied")
+                telescope.focuserMoveAndWait(telescope.focus[m3port]+camera.fau.focusOffset, m3port)
             except: minerva.logger.exception("focusing failed")
 
 #        # put the target on the fiber
@@ -339,6 +353,9 @@ def stopFAU(minerva,tele_list):
     for telid in tele_list:
         camera = utils.getCamera(minerva,telid)
         camera.fau.guiding = False
+    minerva.logger.info("Waiting 30 seconds for guiders to stop. Please revisit for efficiency")
+    time.sleep(30)
+    
 
 def peakupflux(minerva, target, telid):
 
@@ -355,6 +372,9 @@ def endNight(minerva):
     minerva.endNight(kiwispec=True)
 
 def backlight(minerva, tele_list=0, exptime=0.01, name='backlight'):
+
+    if exptime == 0.01 and minerva.red:
+        exptime = 2.0
 
     #S check if tele_list is only an int
     if type(tele_list) is int:
@@ -397,7 +417,7 @@ def backlight(minerva, tele_list=0, exptime=0.01, name='backlight'):
             'name':name,
             'fauexptime':exptime,
             }
-        thread = threading.Thread(target=minerva.takeFauImage,args=[target,telescope.id],)
+        thread = PropagatingThread(target=minerva.takeFauImage,args=[target,telescope.id],)
         thread.name = telescope.id + ' (rv_control->backlight->takeFauImage)'
         fau_threads.append(thread)
 
@@ -407,7 +427,7 @@ def backlight(minerva, tele_list=0, exptime=0.01, name='backlight'):
 
     # wait for all fau images to complete
     for fau_thread in fau_threads:
-        fau_thread.join()
+        fau_thread.join(300)
 
     # turn off the backlight LEDs
     minerva.spectrograph.backlight_off()
@@ -417,21 +437,35 @@ def backlight(minerva, tele_list=0, exptime=0.01, name='backlight'):
 #    minerva.spectrograph.start_log_expmeter()
 
 # given a backlit FAU image, locate the fiber
-def find_fiber(imagename, camera, tolerance=40.,control=None):
+def find_fiber(imagename, camera, tolerance=10.0,control=None):
     
     catname = utils.sextract('',imagename,sexfile='backlight.sex')
     cat = utils.readsexcat(catname)
 
+    # find the brightest thing within TOLERANCE of the fiber
+    try:
+        xpos = cat['XWIN_IMAGE']
+        ypos = cat['YWIN_IMAGE']
+        alldist = np.sqrt(np.power(camera.fau.xfiber - xpos,2) + np.power(camera.fau.yfiber-ypos,2))
+        good = np.where(alldist <= tolerance)
+    except:
+        camera.logger.error("Error reading image " + imagename)
+        return None, None
+
+    if len(good[0]) < 1:
+        camera.logger.warning("No sources found within " + str(tolerance) + " of expected position")
+        return None, None
+
     # readsexcat will return an empty dictionary if it fails
     # and a dictionary with empty lists if there are no targets
     # both will be caught (and missing key) by this try/except
-    try: brightest = np.argmax(cat['FLUX_ISO'])
+    try: brightest = np.argmax(cat['FLUX_ISO'][good])
     except: return None, None
 
     try:
-        xfiber = cat['XWIN_IMAGE'][brightest]
-        yfiber = cat['YWIN_IMAGE'][brightest]        
-        dist = math.sqrt(math.pow(camera.fau.xfiber - xfiber,2) + math.pow(camera.fau.yfiber-yfiber,2))
+        xfiber = xpos[good[brightest]][0]
+        yfiber = ypos[good[brightest]][0]
+        dist = alldist[good[brightest]][0]
         if dist <= tolerance:
             camera.logger.info("Fiber found at (" + str(xfiber) +","+str(yfiber) + "), "+ str(dist) + " pixels from nominal position")
             
@@ -506,7 +540,7 @@ def fiber_stability(minerva):
         for telescope in minerva.telescopes:
             m3port = telescope.port['FAU']
         
-            thread = threading.Thread(target=telescope.rotatorMove,args=[rotang,m3port])
+            thread = PropagatingThread(target=telescope.rotatorMove,args=[rotang,m3port])
             thread.name = telescope.id
             threads.append(thread)
         for thread in threads:
