@@ -20,7 +20,6 @@ class server:
 		self.base_directory = base
 		self.load_config()
 
-
                 if self.zwodirect: self.guider = zwo.zwo('',self.base_directory)
 
 		# reset the night at 10 am local
@@ -58,7 +57,7 @@ class server:
 			self.data_path_base = config['DATA_PATH']
 			self.logger_name = config['LOGNAME']
 			self.header_buffer = ''
-                        try: self.zwodirect = config['ZWODIRECT']
+                        try: self.zwodirect = config['ZWODIRECT'] == 'True'
                         except: self.zwodirect = False
 		except:
 			print('ERROR accessing configuration file: ' + self.config_file)
@@ -204,8 +203,8 @@ class server:
         '''
         def simulate_star_image(self,x,y,flux,fwhm,background=300.0,noise=10.0, guider=True):
 
-		if guider then camera = self.guider
-		else camera = self.cam
+		if guider: camera = self.guider
+		else: camera = self.cam
 
                 camera.dateobs = datetime.datetime.utcnow()
 
@@ -274,11 +273,20 @@ class server:
                 camera.image = camera.image.astype(np.int16)		
 
         def getGuideStar(self):
-                time,x,y = self.guider.getGuideStar()
+                if self.zwodirect:
+                        time,x,y = self.guider.getGuideStar()
+                else:
+                        print self.guider_file_name
+                        x,y = utils.findBrightest(self.guider_file_name)
+                        if x == None: x = np.nan
+                        if y == None: y = np.nan
+                        time = datetime.datetime.utcnow()
+                       
                 timestr = time.strftime('%Y-%m-%dT%H:%M:%S.%f')
                 return 'success ' + timestr + ' '+str(x)+' '+str(y)
 
 	def exposeGuider(self,param):
+                #self.logger.info("***" + param + "***")
 		try:
 			param = param.split()
 			exptime = float(param[0])
@@ -294,9 +302,12 @@ class server:
                         #except: return 'fail'
                         return 'success'
                 else:
-                        self.logger.info("Exposing through Maxim")
-                        try: self.cam.GuiderExpose(float(param))
-                        except: return 'fail'
+                        self.logger.info("Exposing through Maxim: " + str(exptime))
+                        #self.cam.GuiderExpose(exptime)
+                        try: self.cam.GuiderExpose(exptime)
+                        except Exception as e:
+                                self.logger.exception(str(e.message))
+                                return 'fail'
                         return 'success'
 
 	def expose(self,param):
@@ -311,7 +322,8 @@ class server:
 			else:
 				self.cam.Expose(exptime,exptype,int(filter_num))
 			return 'success'
-		except:
+		except Exception as e:
+                        self.logger.exception(str(e.message))
 			return 'fail'
 
 	def save_image(self,param):
@@ -552,6 +564,7 @@ class server:
 		elif tokens[0] == 'get_filter_name':
 			response = self.get_filter_name(tokens[1])
 		elif tokens[0] == 'exposeGuider':
+                        #self.logger.info("***"+tokens[1]+"***")
 			response = self.exposeGuider(tokens[1])
 		elif tokens[0] == 'expose':
 			response = self.expose(tokens[1])
@@ -613,6 +626,7 @@ class server:
 			response = 'fail'
 		try:
 			conn.settimeout(3)
+			#self.logger.info('***'+response+'***')
 			conn.sendall(response)
 			conn.close()
 		except:
@@ -659,4 +673,8 @@ if __name__ == '__main__':
     base_directory = 'C:\minerva-control'
 
     test_server = server(config_file,base_directory)
+    #test_server.exposeGuider("1.0 0.0 0.0")
+    #test_server.guider_file_name = 'D:/minerva/data/n20201116/n20201116.T2.FAU.backlight.0014.fits'
+    #test_server.getGuideStar()
+    #ipdb.set_trace()
     test_server.run_server()

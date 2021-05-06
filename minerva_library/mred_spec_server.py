@@ -39,6 +39,7 @@ class server:
                 #self.benchpdu = pdu.pdu('apc_mred_bench.ini', self.base_directory)
                 self.gaugeController = com.com('gaugeControllerRed',self.base_directory,self.night())
                 self.chiller = com.com('chillerRed',self.base_directory,self.night())
+                self.chillerlastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
                 self.atm_pressure_gauge = com.com('atmPressureGauge',self.base_directory,self.night())
                 self.nspecfail = 0
                 self.lastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
@@ -74,7 +75,7 @@ class server:
 			today = today + datetime.timedelta(days=1)
 
 	def get_index(self,param):
-		files = glob.glob(self.data_path + "/*.fits*")
+		files = glob.glob(self.data_path() + "/*.fits*")
 		return 'success ' + str(len(files)+1)
 
 	def get_status(self,param):
@@ -218,7 +219,7 @@ class server:
 			self.logger.error('parameter mismatch')
 			return 'fail'
 		self.logger.info('setting name to:' + param)
-		self.file_name = self.data_path + '\\' + param                
+		self.file_name = self.data_path() + '\\' + param                
                 return 'success'
 
 	def save_image(self,param):
@@ -242,7 +243,7 @@ class server:
                                 while self.cam.GuiderRunning:
                                         time.sleep(0.1)
                                 self.logger.info('saving image to:' + file_name)
-                                self.guider_file_name = self.data_path + '\\' + file_name
+                                self.guider_file_name = self.data_path() + '\\' + file_name
                                 self.maxim.CurrentDocument.SaveFile(self.guider_file_name,3, False, 1)
 				return 'success'
                         else:
@@ -256,7 +257,7 @@ class server:
                 			timeElapsed = (datetime.datetime.utcnow() - t0).total_seconds()
                 		print self.cam.ImageReady, self.cam.CameraStatus
                                 self.logger.info('saving image to:' + file_name)
-        			self.file_name = self.data_path + '\\' + file_name
+        			self.file_name = self.data_path() + '\\' + file_name
                                 try:
                                         if self.cam.SaveImage(self.file_name):
                 				return 'success'
@@ -325,11 +326,16 @@ class server:
 			return 'fail'
 		return 'success'
 
+        # only for backward compatibility
 	def set_data_path(self):
-		self.data_path = self.data_path_base + '\\' + self.night()
-		if not os.path.exists(self.data_path):
-			os.makedirs(self.data_path)
+		data_path = self.data_path()
 		return 'success'
+
+        def data_path(self):
+                data_path = self.data_path_base + '\\' + self.night()
+		if not os.path.exists(data_path):
+			os.mkdir(data_path)
+                return data_path
 
 	def compress_data(self,night=None):
 		try:
@@ -340,7 +346,7 @@ class server:
 			#S be communicated back to Main, but am still thinking about it.
 			#TODO
 			if night == None:
-				data_path = self.data_path
+				data_path = self.data_path()
 			else:
 				data_path = self.data_path_base+'\\'+night
 			files = glob.glob(data_path + "/*.fits")
@@ -605,7 +611,7 @@ class server:
 						  "and stabilize the optical bench. Please investigate immediately.\n\n"+
 						  "Love,\nMINERVA",level="serious")
 					self.lastemailed = datetime.datetime.utcnow()
-			elif specpres > 0.06:
+			elif specpres > 0.1:
 				self.logger.error("the spectrograph pressure is out of range")
 				self.logger.info("The pump pressure is " + str(pumppres) + " mbar")
                                 self.logger.info("The spectrograph pressure is " + str(specpres) + " mbar")
@@ -617,7 +623,7 @@ class server:
 				if pumppres != 'UNKNOWN' and pumppres < specpres and pumpon and (not ventvalveopen) and pumpvalveopen:
 					# 0) pumping down after venting
 					# diagnosis:
-					#    spec pressure > 0.06
+					#    spec pressure > 0.1
 					#    pump pressure < spec pressure
 					# action:
 					# email in case of misdiagnosis
@@ -635,7 +641,7 @@ class server:
 							  "The pump valve is " + pumpvalvetxt + '\n\n'+
 							  "Love,\nMINERVA",level="serious")
 						self.lastemailed = datetime.datetime.utcnow()
-				elif pumppres != 'UNKNOWN' and pumppres < 0.06 and pumpon and (not ventvalveopen) and pumpvalveopen:
+				elif pumppres != 'UNKNOWN' and pumppres < 0.1 and pumpon and (not ventvalveopen) and pumpvalveopen:
 					# 1) a power outage closed the pump valve and the leak rate 
 					# caused it to slowly come back up slowly (bad, but not terrible)
 					# diagnosis:
@@ -698,7 +704,7 @@ class server:
 							  "The pump valve is " + pumpvalvetxt + '\n\n'+
 							  "Love,\nMINERVA",level="critical")
 						self.lastemailed = datetime.datetime.utcnow()
-				elif pumppres != 'UNKNOWN' and pumppres > 0.06 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
+				elif pumppres != 'UNKNOWN' and pumppres > 0.1 and (not pumpvalveopen) and ventvalveopen and (not pumpon):
 					# 3) we intentionally vented the spectrograph (probably fine as this is intentional)
 					#    spec pressure > 3
 					#    pump pressure > 3
@@ -791,17 +797,19 @@ class server:
         #S readings that are logged. A maxsafecount variable is
         #S defined here that will act as a catch if there
         #S is an overexposure hopefully before any damage is done.         
-        def logexpmeter(self, exptime=10):
+        def logexpmeter(self, exptime=1):
 
                 pythoncom.CoInitialize()
                 atik = ascomcam.ascomcam('atik.ini', self.base_directory, driver="ASCOM.AtikCameras.Camera")
                 atik.initialize()
-                atik.setROI(x1=550,x2=750,y1=450,y2=650)
+                atik.set_roi(x1=550,x2=750,y1=450,y2=650)
                 
                 #S Loop for catching exposures.
                 while self.log_exposure_meter:
 
-                        path = "C:/minerva/data/" + self.night() + "/expmeter/"
+                        basepath = "C:/minerva/data/" + self.night() 
+                        if not os.path.exists(basepath): os.mkdir(basepath)
+                        path = basepath + "/expmeter/"
                         if not os.path.exists(path): os.mkdir(path)
 
                         files = glob.glob(path + self.night() + '.expmeter.?????.fits') 
@@ -950,6 +958,47 @@ class server:
 		s.close()
 		self.run_server()
 
+        def chiller_status_dict(self):
+
+                status_dict = {}
+                status = self.get_chiller_status()
+                if status != 'fail':
+                        status = int(float(status.split()[1]))
+                        status_dict['run']                    = bool(status & 0x000000001)
+                        status_dict['remote_lock']            = bool(status & 0b000000010)
+                        status_dict['ready']                  = bool(status & 0b000000100)
+                        status_dict['less_than_set_point']    = bool(status & 0b000001000)
+                        status_dict['greater_than_set_point'] = bool(status & 0b000010000)
+                        status_dict['tec_heating']            = bool(status & 0b000100000)
+                        status_dict['general_warning']        = bool(status & 0b001000000)
+                        status_dict['general_alarm']          = bool(status & 0b010000000)
+                        status_dict['autotune']               = bool(status & 0b100000000)
+
+                faults = self.get_chiller_faults()
+                if faults != 'fail':
+                        faults = int(float(faults.split()[1]))
+                        status_dict['rtd']       = bool(faults & 0b0001)
+                        status_dict['tank_low']  = bool(faults & 0b0010)
+                        status_dict['pump_fail'] = bool(faults & 0b0100)
+                        status_dict['fan_fail']  = bool(faults & 0b1000)
+                return status_dict
+
+        def get_chiller_status(self):
+                try:
+                        status = float(self.chiller.send('STAT1A?'))
+                except:
+                        self.logger.exception("Unexpected response: " + response)
+                        return 'fail'
+                return 'success ' + str(status)
+
+        def get_chiller_faults(self):
+                try:
+                        faults = float(self.chiller.send('FLTS1A?'))
+                except:
+                        self.logger.exception("Unexpected response: " + response)
+                        return 'fail'
+                return 'success ' + str(faults) 
+
         def get_chiller_temp(self):
                 try:
                         temp = float(self.chiller.send('TEMP?'))
@@ -977,6 +1026,37 @@ class server:
                         t0 = datetime.datetime.utcnow()
                         path = self.base_directory + "/log/" + self.night() + "/"
                         if not os.path.exists(path): os.mkdir(path)
+
+                        # watch dog for chiller failures
+                        status = self.chiller_status_dict()
+			if 'rtd' in status.keys():
+                                if status['rtd'] and (datetime.datetime.utcnow() - self.chillerlastemailed).total_seconds() > 86400:
+                                        mail.send("Chiller RTD failed",
+                                                  "Dear Benevolent Humans,\n\n"+
+                                                  "The chiller's RTD failed. Please investigate.\n\n"
+                                                  "Love,\nMINERVA",level="serious")
+                                        self.chillerlastemailed = datetime.datetime.utcnow()
+			if 'fan_fail' in status.keys():
+                                if status['fan_fail'] and (datetime.datetime.utcnow() - self.chillerlastemailed).total_seconds() > 86400:
+                                        mail.send("Chiller fan failed",
+                                                  "Dear Benevolent Humans,\n\n"+
+                                                  "The chiller's fan failed. Please investigate.\n\n"
+                                                  "Love,\nMINERVA",level="serious")
+                                        self.chillerlastemailed = datetime.datetime.utcnow()
+			if 'pump_fail' in status.keys():
+                                if status['pump_fail'] and (datetime.datetime.utcnow() - self.chillerlastemailed).total_seconds() > 86400:
+                                        mail.send("Chiller pump failed",
+                                        	  "Dear Benevolent Humans,\n\n"+
+                                        	  "The chiller's pump failed. Please investigate.\n\n"
+                                        	  "Love,\nMINERVA",level="serious")
+                                        self.chillerlastemailed = datetime.datetime.utcnow()
+			if 'tank_low' in status.keys():
+                                if status['tank_low'] and (datetime.datetime.utcnow() - self.chillerlastemailed).total_seconds() > 86400:
+                                        mail.send("Chiller tank level is low",
+                                                  "Dear Benevolent Humans,\n\n"+
+                                                  "The chiller's tank level is low. Please fill.\n\n"
+                                                  "Love,\nMINERVA",level="serious")
+                                        self.chillerlastemailed = datetime.datetime.utcnow()                        
                         
 			# get the pressure in the spectrograph
                         with open(path + 'chiller_temps.log','a') as fh:
@@ -1048,27 +1128,36 @@ if __name__ == '__main__':
         test_server = server(config_file,base_directory)
         #test_server.log_atmpressure()
 
+        #status = test_server.chiller_status_dict()
+        #ipdb.set_trace()
+
         # make sure it didn't die with the backlight on
         test_server.backlight_off()
 
+        # update the log and data path
         logpath_thread = threading.Thread(target=test_server.logpath_watch)
         logpath_thread.name = 'MRED'
         logpath_thread.start()
 
+        # log the spectrograph and pump pressures
         pressure_thread = threading.Thread(target=test_server.log_pressures)
         pressure_thread.name = 'MRED'
         pressure_thread.start()
 
+        # log the exposure meter
         expmeter_thread = threading.Thread(target=test_server.logexpmeter)
         expmeter_thread.name = 'MRED'
         expmeter_thread.start()
 
+        # log the chiller temps
         chiller_thread = threading.Thread(target=test_server.logchiller)
         chiller_thread.name = 'MRED'
         chiller_thread.start()
-        
+
+        # log the atmospheric pressure
         atmpressure_thread = threading.Thread(target=test_server.log_atmpressure)
         atmpressure_thread.name = 'MRED'
         atmpressure_thread.start()
 
+        # listen for commands
         test_server.run_server()
