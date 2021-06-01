@@ -135,6 +135,7 @@ def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
     # We only expect one or two stars from the FAU guide camera
     if fau:
         # But ghosts are more likely than a second star; just use the brightest
+        # CD - we might want to also check that the source we use has a flag of 0 or 1  if we change sextract parameters
         hfr_med = cata['FLUX_RADIUS'][cata['FLUX_ISO'].argmax()]
         hfr_std = 1.0
         numstars = 1.0

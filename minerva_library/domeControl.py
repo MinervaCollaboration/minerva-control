@@ -78,8 +78,10 @@ def domeControl(minerva,dome,day=False):
                 if not dome.estopmailsent:
                     mail.send("Aqawan " + str(dome.id) + " Estop has been pressed!",dome.estopmail,level='serious')
                     dome.estopmailsent = True
-                else:
-                    dome.estopmailsent = False
+            else:
+                if dome.estopmailsent:
+                    mail.send("Aqawan " + str(dome.id) + " Estop has been cleared.","",level='serious')
+                dome.estopmailsent = False
 
         # ensure 4 hearbeats before timeout 
         sleeptime = max(14.0-(datetime.datetime.utcnow() - t0).total_seconds(),0)

@@ -94,10 +94,11 @@ def plotweather(minerva,night=None):
         xi = nplots -yi*nx
 
         # Wind Gust values are littered with zeros that make the plot messy; take them out
-        if 'Gust' in key:
-            good = np.where(y != 0.0)
-            time = time[good]
-            y = y[good]
+#        if 'Gust' in key:
+#            good = np.where(y != 0.0)
+#            time = time[good]
+#            y = y[good]
+
 
         # wrap around effects (0 to 359) make the plot messy, fix that
         if 'Direction' in key:

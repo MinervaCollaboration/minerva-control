@@ -123,8 +123,8 @@ class control:
 #			telescopes = [3,4]
 #			telescopes = [1,2,3,4]
 
-			telescopes = [1,2,3,4]
-#			self.logger.error("*** T3 & T4 disabled***")
+			telescopes = [1,2,4]
+			self.logger.error("*** T3 disabled***")
 
 
 #			self.logger.error("***only using T1 & T2***")
@@ -284,7 +284,7 @@ class control:
 
                 return
 
-	def telescope_park(self,tele_list=[]):
+	def telescope_park(self,tele_list=[],parkAlt=25.0, parkAz=0.0):
 
 		# default to all telescopes
 		if isinstance(tele_list,basestring):
@@ -297,7 +297,8 @@ class control:
 		threads = []
                 for telid in tele_list:
 			telescope = utils.getTelescope(self,telid)
-			thread = PropagatingThread(target = telescope.park)
+			kwargs = {'parkAlt':parkAlt, 'parkAz':parkAz}
+			thread = PropagatingThread(target = telescope.park, kwargs=kwargs)
 			thread.name = telid + ' (control->telescope_park->cdk700->park)'
 			thread.start()
 			threads.append(thread)

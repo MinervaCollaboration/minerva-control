@@ -1802,15 +1802,12 @@ class CDK700:
 			self.logger.info('No target coordinates given, maintaining ra=%s,dec=%s'%(str(ra),str(dec)))
 		
 
-	def park(self):
+	def park(self, parkAlt=25.0, parkAz=0.0):
 		# park the scope (no danger of pointing at the sun if opened during the day)
 		if not self.initialize(tracking=True, derotate=False):
 			self.recover()
 			self.park()
 			return
-
-		parkAlt = 25.0
-		parkAz = 0.0 
 
 		self.logger.info('Parking telescope (alt=' + str(parkAlt) + ', az=' + str(parkAz) + ')')
 		self.mountGotoAltAz(parkAlt, parkAz)

@@ -88,8 +88,8 @@ class site:
 			'totalRain'           : [0.0,1000.0],
 			'wxt510Rain'          : [0.0,50.0],
 			'barometer'           : [0,2000],
-	#		'windGustSpeed'       : [0.0,35.0],
-			'windGustSpeed'       : [0.0,999.0],
+			'windGustSpeed'       : [0.0,35.0],
+	#		'windGustSpeed'       : [0.0,999.0],
 			'outsideHumidity'     : [0.0,75.0],
 			'outsideDewPt'        : [-100.0,100.0],
 			'outsideTemp'         : [-20.0,50.0],
@@ -108,8 +108,8 @@ class site:
 			'totalRain'           : [0.0,1000.0],
 			'wxt510Rain'          : [0.0,50.0],
 			'barometer'           : [0,2000],
-	#		'windGustSpeed'       : [0.0,40.0],
-			'windGustSpeed'       : [0.0,999.0],
+			'windGustSpeed'       : [0.0,40.0],
+	#		'windGustSpeed'       : [0.0,999.0],
 			'outsideHumidity'     : [0.0,80.0],
 			'outsideDewPt'        : [-100.0,100.0],
 			'outsideTemp'         : [-30.0,60.0],
@@ -139,7 +139,7 @@ class site:
 		
 		data = response.read().split()
 
-		if len(data) != 14: return {}
+		if len(data) != 15: return {}
 
 		# TODO: update astropy to get rid of dubious year?
 #		mjd = Time(float(data[0]), format='mjd')
@@ -153,9 +153,9 @@ class site:
 		weather = {'date':date, 
 			   'outsideTemp':float(data[3]), # C
 			   'windSpeed':float(data[2]), #km/h
-			   'windGustSpeed':0.0, 
+			   'windGustSpeed':float(data[14]),# (km/h?)
 			   'windDirectionDegrees':float(data[1]), # degrees (I assume)
-			   'barometer':float(data[6]), # hPa
+			   'barometer':float(data[6]) * 1.33322,  # mmHg ->  hPa
 			   'outsideHumidity':float(data[5]), # % (I assume)
 			   'wxt510Rain':float(data[7]), # mm
 			   'totalRain':0.0,
@@ -206,7 +206,9 @@ class site:
 
 			# use MEarth weather station, backup of Ridge weather station
 			weather = self.getWeatherMearth()
-			if len(weather) == 0: weather = self.getWeatherRidge()
+			if len(weather) == 0:
+				self.logger.warning("MEarth weather failed. Getting weather from ridge sensor.")
+				weather = self.getWeatherRidge()
 
 			#S Acquire readings from the three cloud monitors at the address below. Order at
 			#S website is Date, Mearth, HAT, Aurora, MINERVA.

@@ -21,7 +21,7 @@ if __name__ == '__main__':
 
 	# home all telescopes (make sure they're pointing north)
 	# ***not in danger of pointing at the Sun***
-	minerva.telescope_park()
+	minerva.telescope_park(parkAlt=45.0)
 
 	for telescope in minerva.telescopes:
 		if not telescope.inPosition(alt=45.0,az=0.0, pointingTolerance=3600.0, tracking=False, derotate=False):

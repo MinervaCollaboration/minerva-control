@@ -14,6 +14,7 @@ from minerva_library import newauto
 from minerva_library import utils
 from minerva_library import mail
 from minerva_library.propagatingthread import PropagatingThread
+from minerva_library.plotweather import plotweather
 import glob
 import subprocess
 import os
@@ -23,6 +24,18 @@ def cleanUpNight(minerva, night=None):
 	for telescope in minerva.telescopes:
 		minerva.endNight(telescope, night=night)
 
+def redoSextract(night, sexfile):
+	
+	for i in range(1, 5):
+		datapath = '/Data/t' + str(i) + '/' + night + '/'
+                os.chdir(datapath)
+		imagefiles = glob.glob('*autofocus*.fits')
+
+		for imagefile in imagefiles:
+			utils.sextract(datapath, imagefile, sexfile=sexfile)
+# TODO: figure out a way to generate a different check image for each file so that they don't overwrite each other
+#       maybe edit the sexfile each time? is there a better way to change the CHECKIMAGE_NAEME param each time?
+
 
 def f(*args, **kwargs):
     print(args)
@@ -30,6 +43,8 @@ def f(*args, **kwargs):
     raise Exception('I suck at this')
 
 if __name__ == '__main__':
+#	redoSextract('n20210512', sexfile='autofocus.20210512.sex')
+#	ipdb.set_trace()
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
@@ -37,9 +52,11 @@ if __name__ == '__main__':
 #	minerva.telescopes[3].calibrateRotator(minerva.cameras[3], exptime=0.5)
 #	minerva.telescopes[3].makePointingModel(minerva, npoints=6)
 
-#	cleanUpNight(minerva)
+#	minerva.homeAll()
+	cleanUpNight(minerva)
 
-	print minerva.site.getWeather()
+#	print minerva.site.getWeather()
+#	plotweather(minerva)
 
 	ipdb.set_trace()
 
