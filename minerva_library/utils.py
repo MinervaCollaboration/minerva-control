@@ -27,11 +27,11 @@ def killmain(red=False,south=False):
                             os.kill(pid, signal.SIGKILL)
                         elif (p.cmdline())[2] == '--south' and south:
                             # kill main.py --south
-                            os.kill(pid, signal.SIGKILL)    
+                            os.kill(pid, signal.SIGKILL)
                     else:
                         # kill main.py
                         if not red and not south:
-                            os.kill(pid, signal.SIGKILL)    
+                            os.kill(pid, signal.SIGKILL)
 
 def dateobs2jd(dateobs):
     t0 = datetime.datetime(2000,1,1)
@@ -57,7 +57,7 @@ def findBrightest(imageName):
     cat = readsexcat(catname)
     try: brightest = np.argmax(cat['FLUX_ISO'])
     except: return None,None
-    
+
     try:
         x = cat['XWIN_IMAGE'][brightest]
         y = cat['YWIN_IMAGE'][brightest]
@@ -68,7 +68,7 @@ def findBrightest(imageName):
 
 # reads a CSV into a dictionary; the header line becomes the keys for lists
 def readcsv(filename):
-    # parse the CSV file                                                                                    
+    # parse the CSV file
     with open(filename,'rb') as f:
         reader = unicodecsv.reader(f)
         headers = reader.next()
@@ -117,9 +117,9 @@ def parseTarget(line, logger=None):
 
 def scheduleIsValid(scheduleFile, email=True, logger=None, directory=None):
     if not os.path.exists(scheduleFile):
-        if logger != None: 
+        if logger != None:
             logger.error('No schedule file: ' + scheduleFile)
-        else: 
+        else:
             print 'No schedule file: ' + scheduleFile
         return False
 
@@ -160,13 +160,13 @@ def scheduleIsValid(scheduleFile, email=True, logger=None, directory=None):
         linenum = 3
         for line in targetfile:
             target = parseTarget(line)
-            
+
             # check for malformed JSON code
             if target == -1:
                 if logger != None: logger.error('Line ' + str(linenum) + ': malformed JSON: ' + line)
                 emailbody = emailbody + 'Line ' + str(linenum) + ': malformed JSON: ' + line + '\n'
             else:
-                # check to make sure all required keys are present  
+                # check to make sure all required keys are present
                 key = 'name'
                 if key not in target.keys():
                     if logger != None: logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
@@ -181,7 +181,7 @@ def scheduleIsValid(scheduleFile, email=True, logger=None, directory=None):
                         if key not in target.keys():
                             if logger != None: logger.error('Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line)
                             emailbody = emailbody + 'Line ' + str(linenum) + ': Required key (' + key + ') not present: ' + line + '\n'
-                            
+
                     if target['name'] <> 'autofocus':
                         try:
                             nnum = len(target['num'])
@@ -190,20 +190,20 @@ def scheduleIsValid(scheduleFile, email=True, logger=None, directory=None):
                             if nnum <> nexptime or nnum <> nfilter:
                                 if logger != None: logger.error('Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree')
                                 emailbody = emailbody + 'Line ' + str(linenum) + ': Array size for num (' + str(nnum) + '), exptime (' + str(nexptime) + '), and filter (' + str(nfilter) + ') must agree\n'                   \
-                                    
+
                         except:
                             pass
-                        try: 
+                        try:
                             if target['ra'] > 24.0 or target['ra'] < 0:
                                 if logger != None: logger.error('Line ' + str(linenum) + ': RA (' + str(target['ra']) + ') must be in decimal hours (0 < RA < 24)')
                                 emailbody = emailbody + 'Line ' + str(linenum) + ': RA (' + str(target['ra']) + ') must be in decimal hours (0 < RA < 24)\n'
                         except: pass
-                        try: 
+                        try:
                             if target['dec'] > 90.0 or target['dec'] < -90:
                                 if logger != None: logger.error('Line ' + str(linenum) + ': Dec (' + str(target['dec']) + ') must be in decimal degrees (-90 < RA < 90)')
                                 emailbody = emailbody + 'Line ' + str(linenum) + ': Dec (' + str(target['dec']) + ') must be in decimal degrees (-90 < RA < 90)\n'
                         except: pass
-                        
+
             linenum = linenum + 1
             if emailbody <> '':
                 if email: mail.send("Errors in target file: " + scheduleFile,emailbody,level='serious',directory=directory)
@@ -231,9 +231,9 @@ def getCamera(minerva, telid):
 
 # gets the dome object (by reference) corresponding to a particular telescope number
 def getDome(minerva, telnum):
-    
+
     # this is a hack and should be done better
-    if telnum == 5 or telnum == 'MRED': 
+    if telnum == 5 or telnum == 'MRED':
         dome = minerva.domes[0]
         return dome
 
@@ -300,9 +300,9 @@ def setup_logger(base_dir, night, logger_name):
 
     return logger
 
-# Truncates target['starttime'] and target['endtime'] to ensure 
+# Truncates target['starttime'] and target['endtime'] to ensure
 # the object is observable (Sun below sunalt and target above horizon)
-def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None,logger=None):
+def truncate_observable_window(site, target, sunalt = -12.0, horizon=21.0, timeof=None, logger=None):
 
     if timeof == None: timeof = datetime.datetime.utcnow()
 
@@ -311,10 +311,10 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
 
     niter = 0
     while sunrise < timeof and niter < 100:
-        sunrise = site.sunrise(horizon=sunalt, start=timeof + datetime.timedelta(days=0.1*niter))
+        sunrise = site.sunrise(horizon=sunalt, start=timeof + datetime.timedelta(days = 0.1 * niter))
         niter += 1
     if sunrise < timeof:
-        if logger <> None: logger.error("Error calculating nearest sunrise")
+        if logger != None: logger.error("Error calculating nearest sunrise")
         return
 
     niter = 0
@@ -322,21 +322,21 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
         sunset = site.sunset(horizon=sunalt, start=timeof - datetime.timedelta(days=0.1*niter))
         niter += 1
     if sunset > sunrise:
-        if logger <> None: logger.error("Error calculating nearest sunset. Sunset = " + str(sunset) + ' sunrise = ' + str(sunrise))
+        if logger != None: logger.error("Error calculating nearest sunset. Sunset = " + str(sunset) + ' sunrise = ' + str(sunrise))
         return
-        
+
     site.obs.horizon = str(horizon)
     body = ephem.FixedBody()
     body._ra = ephem.hours(str(target['ra']))
     body._dec = ephem.degrees(str(target['dec']))
 
     #S UTC vs local time not right for epoch, but not significant
-    body._epoch = timeof#datetime.datetime.utcnow()
+    body._epoch = timeof
     body.compute()
 
     # calculate the object's rise time
     try:
-        risetime = site.obs.next_rising(body,start=sunset).datetime()
+        risetime = site.obs.next_rising(body, start=sunset).datetime()
     except ephem.AlwaysUpError:
         # if it's always up, we can observe at sunset
         risetime = sunset
@@ -346,7 +346,7 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
 
     # calculate the object's set time
     try:
-        settime = site.obs.next_setting(body,start=sunset).datetime()
+        settime = site.obs.next_setting(body, start=sunset).datetime()
     except ephem.AlwaysUpError:
         # if it's always up, we can observe until sunrise
         settime = sunrise
@@ -358,7 +358,7 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
     niter = 0
     while risetime > settime and niter < 100:
         try:
-            risetime = site.obs.next_rising(body,start=sunset - datetime.timedelta(days=0.1*niter)).datetime()
+            risetime = site.obs.next_rising(body, start = sunset - datetime.timedelta(days= 0.1 * niter)).datetime()
         except ephem.AlwaysUpError:
             # if it's always up, don't modify the start time
             risetime = sunset
@@ -372,11 +372,11 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
 #        ipdb.set_trace()
 #        return
 
-    # the start time should be the later of the requested start time, when the target rises, or when the sun sets
-    starttime = max(target['starttime'],risetime,sunset) 
+    # the start time should be the latest of the requested start time, when the target rises, or when the sun sets
+    starttime = max(target['starttime'], risetime, sunset)
 
-    # the end time should be the earlier of the requested end time, when the target sets, or when the sun rises
-    endtime = min(target['endtime'],sunrise,settime)
+    # the end time should be the earliest of the requested end time, when the target sets, or when the sun rises
+    endtime = min(target['endtime'], sunrise, settime)
 
     if logger <> None:
         logger.info('Time of calculation is ' + str(timeof))
@@ -387,12 +387,37 @@ def truncate_observable_window(site,target,sunalt=-12.0,horizon=21.0,timeof=None
         logger.info('Target end time is ' + str(target['endtime']))
         logger.info('Target set time is '  + str(settime))
         logger.info('Sun rise time is '  + str(sunrise))
-        logger.info('The new end time is ' + str(endtime))   
+        logger.info('The new end time is ' + str(endtime))
 
     target['starttime'] = starttime
     target['endtime'] = endtime
 
     return target
+
+def check_alt(site, target, horizon=21.0, max_alt = 85.0, timeof=None, logger=None):
+    '''
+    docstring
+    '''
+
+    site.obs.horizon = str(horizon)
+
+    body = ephem.FixedBody()
+    body._ra = ephem.hours(str(target['ra']))
+    body._dec = ephem.degrees(str(target['dec']))
+    body._epoch = timeof
+
+    exptime = target['exptime'] / 60     # minutes
+    obs_wind = np.append(np.arange(0, exptime, 1), exptime)
+
+    for i in range(len(obs_wind)):
+         body.compute(timeof + datetime.timedelta(minutes=obs_wind[i]))
+         alt = np.rad2deg(body.alt)
+         if alt >= max_alt:
+             if logger != None:
+                 logger.info('Target altitude exceeds 85 degrees')
+             return False
+
+    return True
 
 # converts a sexigesimal string to a float
 # the string may be delimited by either spaces or colons
@@ -414,13 +439,13 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
 
     try: ra = float(hdr[rakey])
     except: ra = ten(hdr[rakey])*15.0
-    
+
     try: dec = float(hdr[deckey])
     except: dec = ten(hdr[deckey])
     if dec > 90.0: dec = dec - 360.0
-    
+
     radius = 3.0*pixscale*float(hdr['NAXIS1'])/3600.0
-    
+
     cmd = 'solve-field --scale-units arcsecperpix' + \
         ' --scale-low ' + str(0.99*pixscale) + \
         ' --scale-high ' + str(1.01*pixscale)
@@ -445,11 +470,11 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
 
     cmd = r'/usr/local/astrometry/bin/' + cmd + ' >/dev/null 2>&1'
     os.system(cmd)
-    
+
     baseName = os.path.splitext(imageName)[0]
     f = pyfits.open(imageName, mode='update')
     if os.path.exists(baseName + '.new'):
-      
+
         # preserve original solution
         orighdr = pyfits.getheader(imageName)
         f[0].header['WCD1_1'] = float(f[0].header['CD1_1'])
@@ -513,9 +538,9 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
     for ext in extstodelete:
         if os.path.exists(baseName + ext):
             os.remove(baseName + ext)
-        
+
     return success
-    
+
 # run sextractor on an image
 def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=None,catfile=None):
     #S Path on MinervaMAIN where all the .sex, .param, etc. files will be
@@ -527,7 +552,7 @@ def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=
     #S general values for now.
     # We'll add on other parameters and arguements as they are specified
     sexcommand = 'sex '+datapath+imagefile+' -c ' + sexpath+sexfile
-    
+
     #S If a paramfile was specfied, then we will use that instead of the
     #S default param file in autofocus.sex (which is autofocus.param)
     if paramfile <> None:
@@ -578,7 +603,7 @@ def readsexcat(catname):
                     data[h].append(v)
     for key in data.keys():
         #S try and convert to an np.array, and if not possible jsut pass
-        #S the try is in case for some reason a non-numerical entry is 
+        #S the try is in case for some reason a non-numerical entry is
         #S encountered. may be a l
         try:
             data[key] = np.array(data[key])
@@ -586,4 +611,3 @@ def readsexcat(catname):
             pass
 
     return data
-    

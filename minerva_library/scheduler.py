@@ -1,9 +1,9 @@
-#S was going to make targets their own classes, but might as well preserve 
+#S was going to make targets their own classes, but might as well preserve
 #S dicts. we can just have the scheduler perform functions on them and update
-#S values. 
+#S values.
 """
 The scheduler class, which performs all checks on observability of targets,
-calculates weights, and some ephem on sun, moon. Will contain some other 
+calculates weights, and some ephem on sun, moon. Will contain some other
 utility functions.
 """
 
@@ -45,7 +45,7 @@ class scheduler:
         self.obs.lat = ephem.degrees(str(self.site.latitude)) # N
         self.obs.lon = ephem.degrees(str(self.site.longitude)) # E
         self.obs.horizon = ephem.degrees(str(self.sun_horizon))
-        self.obs.elevation = self.site.elevation # meters    
+        self.obs.elevation = self.site.elevation # meters
         # an ephem sun and moon object for tracking the sun
         self.sun = ephem.Sun()
         self.sun.compute(self.obs)
@@ -57,7 +57,7 @@ class scheduler:
         # TODO: incorporate this into the observing script and initialize to False
         if self.red: self.bstarobserved=True
         else: self.bstarobserved = False
-        
+
         # get the target list
         self.update_list()
 
@@ -91,7 +91,7 @@ class scheduler:
 
     def choose_target(self,key='weight',remaining_time=86400.0, logger=None, timeof=None, cadence=True):
         #S we assume you need to update the weights of targets
-        #S this calculates weghts for those targets which are currently 
+        #S this calculates weights for those targets which are currently
         #S observable, using datetime.datetime.utcnow()
         self.calculate_weights(remaining_time=remaining_time, logger=logger, timeof=timeof, cadence=cadence)
 
@@ -101,13 +101,13 @@ class scheduler:
         #S so we will just return the first entries dictionary
 
         # if no targets are observable, return an empty dictionary
-        if self.target_list[0]['weight'] == -999.0: 
+        if self.target_list[0]['weight'] == -999.0:
             if logger != None:
                 logger.info("No viable targets at " + str(timeof))
-            else: 
+            else:
                 print "No viable targets at " + str(timeof)
             return {}
- 
+
         return self.target_list[0]
 
 
@@ -118,7 +118,7 @@ class scheduler:
         except:
             #S Placeholder for logger
             pass
-        
+
     def calculate_weights(self, tels=None, remaining_time=86400.0, logger=None, timeof=None, cadence=True):
         #S need to update weights for all the targets in the list.
         #S going to use simple HA weighting for now.
@@ -131,37 +131,38 @@ class scheduler:
             target['endtime'] = datetime.datetime(2115,01,01,00,00,00)
 
             try:
-                target = utils.truncate_observable_window(self.site, target,timeof=timeof,logger=logger)
+                target = utils.truncate_observable_window(self.site, target, timeof=timeof, logger=logger)
             except:
                 print 'lskdjf'
                 ipdb.set_trace()
 
             # if the target is observable
-            if (target['starttime'] <= timeof) and (target['endtime'] >= (timeof + datetime.timedelta(seconds=target['exptime'][0]))):
+            if (target['starttime'] <= timeof) and (target['endtime'] >= (timeof + datetime.timedelta(seconds=target['exptime'][0]))) \
+               and utils.check_maxalt(self.site, target, timeof=timeof, logger=logger):
                 #S this is where you want to insert whatever weight function
                 if cadence:
-                    target['weight'] = self.calc_weight_multi(target,timeof=timeof,logger=logger)
+                    target['weight'] = self.calc_weight_multi(target, timeof=timeof, logger=logger)
                 else:
-                    target['weight'] = self.calc_weight_ha(target,timeof=timeof,logger=logger)
+                    target['weight'] = self.calc_weight_ha(target, timeof=timeof, logger=logger)
 
                 # weight for 1 Bstar per night
-                if target['bstar']: 
+                if target['bstar']:
                     if (self.bstarobserved):
                         # Only observe one B star per night (unless we have nothing better to do)
                         target['weight'] /= 1000000.0
-                    else:                    
+                    else:
                         # exponentially increase the priority of B stars as the night progresses
                         # multiply by 1 for 10 hours left in the night and 100 for 0.5 hours left in the night
                         timeleft = (self.nextsunrise(datetime.datetime.utcnow()) - datetime.datetime.utcnow()).total_seconds()
-                        target['weight'] *= 0.784*math.exp(8725.59/timeleft) 
+                        target['weight'] *= 0.784*math.exp(8725.59/timeleft)
             else:
                 # not observable
                 target['weight'] = -999.0
 
-            if logger != None:     
+            if logger != None:
                 logger.debug(target['name'] + ' ' + str(target['starttime']) + ' ' + str(target['endtime']) + ' '  + str(timeof) + ' ' + str(target['exptime']) + ' ' + str(target['weight']))
             else:
-                print target['name'], target['starttime'], target['endtime'], timeof,  target['exptime'], target['weight']
+                print(target['name'], target['starttime'], target['endtime'], timeof,  target['exptime'], target['weight'])
 
 
         #pass
@@ -173,7 +174,7 @@ class scheduler:
             target['fixedbody']._dec = ephem.degrees(target['dec'])
 #            target['fixedbody']._epoch = 2000.0
             target['fixedbody'].compute(self.obs)
-        
+
     def calc_weight_ha(self,target,logger=None,timeof=None):
         """
         simple, just going to weight for current ha sort of
@@ -223,9 +224,9 @@ class scheduler:
         if target['observed']>target['maxobs']: history_weight = -99.0
 
         target_ha=(math.degrees(self.obs.sidereal_time())/15.0-float(target['ra']))
-        #NM keep hour angle in range -12 to +12                                    
-        if target_ha > 12:                                                         
-            target_ha-=24.                                                         
+        #NM keep hour angle in range -12 to +12
+        if target_ha > 12:
+            target_ha-=24.
 
         # if hasn't been observed in the past day, boost its priority
         if (timeof-target['last_obs'][-1][0]).total_seconds() > 86400.0: cad_weight = 1.0
@@ -233,7 +234,7 @@ class scheduler:
 
         #S weight for the first observation of a three obs run.
         if target['observed']%3==0:
-            #S the standard deviation of this is actually important as we 
+            #S the standard deviation of this is actually important as we
             #S start to think about cadence. if we want to make cadence
             #S and the three obs weight complimetnary or something, a steeper
             #S drop off of the gaussian WILL matter when mixed with a cad term.
@@ -245,7 +246,7 @@ class scheduler:
             #N wider Gaussian near transit to grab second obs at good airmass
             #N taller Gaussian to prioritize second obs over first of another target
             threeobs_weight= 1+np.exp(-((target_ha+self.start_ha)**2./(2.*.75**2.)))\
-                             +1.5*np.exp(-(target_ha**2./(2.*2.5**2.))) 
+                             +1.5*np.exp(-(target_ha**2./(2.*2.5**2.)))
 
         #S weight for the third observation of a three obs run, but note that
         #S there is no cap on this one.
@@ -256,10 +257,10 @@ class scheduler:
 
         print target['name'],threeobs_weight, cad_weight, history_weight, target['priority']
         return (threeobs_weight+cad_weight+history_weight)*target['priority']
-            
+
     def prep_night(self,timeof=None,init_run=False):
         """
-        A function to go through some processes that only need to be done at 
+        A function to go through some processes that only need to be done at
         the beginning of the night.
         """
         if timeof == None:
@@ -295,7 +296,7 @@ class scheduler:
                     target['last_obs']=[[datetime.datetime(2000,1,1,0,0,0),datetime.datetime(2000,1,1,0,0,59),59,80,0,1]]
         # reset to sun horizon
         self.obs.horizon = str(self.sun_horizon)
-                
+
     def get_obs_history(self,target,obspath=None,timeof=None):
         if obspath == None:
             obspath = self.obspath
@@ -341,7 +342,7 @@ class scheduler:
 
         self.obs.date=timeof
 
-        # the observation 'quality', or whether it was a good observation or 
+        # the observation 'quality', or whether it was a good observation or
         # not (1 is good, 0 is unusable)
         obs_quality = 1
         target['fixedbody'].compute(self.obs)
@@ -354,7 +355,7 @@ class scheduler:
                 '%6.2f'%math.degrees(alt)+'\t'+\
                 '%7.2f'%math.degrees(azm)+' \t '+\
                 '%i'%obs_quality+\
-                '\n'         
+                '\n'
             print(target['name']+': '+obs_string)
             target_file.write(obs_string)
         obs_list = [obs_start,obs_end,duration,alt,azm,obs_quality]
@@ -408,7 +409,7 @@ class scheduler:
 
 #S Things we need
 #S -good way to break one telescope away.
-#S -i think we really need to break away from observing scripts for each 
+#S -i think we really need to break away from observing scripts for each
 #S  telescope. or at least need to find a new way potentially.
 #S -
 
