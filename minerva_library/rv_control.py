@@ -340,7 +340,8 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0, simulate=False):
         try: minerva.fauguide(target,telid, skiponfail=True, simulate=simulate)
         except: minerva.logger.exception("guiding failed")
         if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
-            minerva.logger.error("guiding timed out")
+            if not telescope.abort:
+                minerva.logger.error("guiding timed out")
             return
 
     except:
@@ -460,7 +461,10 @@ def find_fiber(imagename, camera, tolerance=10.0,control=None):
     # and a dictionary with empty lists if there are no targets
     # both will be caught (and missing key) by this try/except
     try: brightest = np.argmax(cat['FLUX_ISO'][good])
-    except: return None, None
+    except: 
+        camera.logger.warning("error finding brighest star")
+        return None, None
+
 
     try:
         xfiber = xpos[good[brightest]][0]
@@ -512,6 +516,7 @@ def find_fiber(imagename, camera, tolerance=10.0,control=None):
     except:
         camera.logger.exception("Error finding fiber position")
 
+    camera.logger.error("error finding fiber position 2")
     return None, None
 
 def rv_observing_catch(minerva):
@@ -563,6 +568,7 @@ def fiber_stability(minerva):
                     elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
                 
             backlight(minerva)
+            # doesn't work if any telescope offline!
             for ind in np.arange(4):
                 path = '/Data/t%s/%s/%s'\
                     %(str(ind+1),minerva.night,\

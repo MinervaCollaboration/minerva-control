@@ -127,21 +127,48 @@ class CDK700:
 			
 	def guessFocus(self, m3port):
 		status = self.getStatus()
+		dterr = False
 
 		# best guess at focus                                                                                          
-		try: m1temp = float(status.temperature.primary)
-		except: m1temp = float(self.T0[m3port])
+		try: 
+			m1temp = float(status.temperature.primary)
+		except: 
+			self.logger.info('Error getting primary temperature, not applying T or dT focus corrections')
+			m1temp = float(self.T0[m3port])
+			dterr = True
+
 		try: ambtemp = float(status.temperature.ambient)
-		except: ambtemp = m1temp - float(self.dT0[m3port])
-		try: gravity = math.sin(float(status.mount.alt_radian))
-		except: gravity = float(self.G0[m3port])
-		dt = m1temp-ambtemp
+		except: 
+			self.logger.info('Error getting ambient temperature, not applying dT focus correction')
+			ambtemp = m1temp - float(self.dT0[m3port])
+			dterr = True
+		try: 
+			sinalt = math.sin(float(status.mount.alt_radian))
+			cosalt = math.cos(float(status.mount.alt_radian))
+		except: 
+			self.logger.info('Error getting mount altitude, not applying alt focus correction')		       
+			sinalt = float(self.G0[m3port])
+			cosalt = float(self.G0[m3port])
+
+		# need both M1 and Tamb to compute dT. If we don't have both, zero the dT term
+		if dterr: dt = float(self.dT0[m3port])
+		else: dt = m1temp-ambtemp
+
 		self.focus[m3port] = float(self.F0[m3port]) + \
 		    float(self.C0[m3port])*(m1temp-float(self.T0[m3port])) + \
 		    float(self.C1[m3port])*(dt-float(self.dT0[m3port])) + \
-		    float(self.C2[m3port])*(gravity-float(self.G0[m3port]))
+		    float(self.C2[m3port])*(sinalt-float(self.G0[m3port]))
+
+#		self.focus[m3port] = float(self.F0[m3port]) + \
+#		    float(self.C0[m3port])*(m1temp-float(self.T0[m3port])) + \
+#		    float(self.C1[m3port])*(m1temp-float(self.T0[m3port]))**2 + \
+#		    float(self.C2[m3port])*(dt-float(self.dT0[m3port])) + \
+#		    float(self.C3[m3port])*(dt-float(self.dT0[m3port]))**2 + \
+#		    float(self.C4[m3port])*(cosalt-float(self.G0[m3port])) + \
+#		    float(self.C5[m3port])*(sinalt-float(self.G0[m3port]))
+
 		self.logger.info('Setting nominal focus for port ' + m3port + ' at ' + str(self.focus[m3port]) + ' when T='\
-					      + str(m1temp) + ', dT=' + str(dt) + ', gravity=' + str(gravity))
+					      + str(m1temp) + ', dT=' + str(dt) + ', gravity=' + str(sinalt))
 
 	#additional higher level routines
 	#tracking and derotating should be on by default

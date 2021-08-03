@@ -107,6 +107,16 @@ def quad(x,c):
 ## FWHM = 2*HFR
 # HFR in Pixels
 #S want to look at multiple images of one focus for FAU focusing potentially
+
+def get_star(cata):
+    # CD Returns the source we want the autofocus to use.
+    r = cata['FLUX_RADIUS']
+    b = cata['FLUX_ISO'] / np.max(cata['FLUX_ISO'])
+    # CD This function seems to work well for choosing the right source
+    # CD Might need to change later
+    starind = np.argmax(b + 1/r)
+    return starind
+
 def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
     #S get a dictionary containg the columns of a sextracted image
     cata = utils.readsexcat(catfile)
@@ -135,8 +145,12 @@ def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
     # We only expect one or two stars from the FAU guide camera
     if fau:
         # But ghosts are more likely than a second star; just use the brightest
-        # CD - we might want to also check that the source we use has a flag of 0 or 1  if we change sextract parameters
-        hfr_med = cata['FLUX_RADIUS'][cata['FLUX_ISO'].argmax()]
+       # hfr_med = cata['FLUX_RADIUS'][cata['FLUX_ISO'].argmax()]
+       
+        # CD New SExtractor parameters will return many false sources
+        # CD This function seems to work for finding the real star
+        true_star = get_star(cata)
+        hfr_med = cata['FLUX_RADIUS'][true_star]
         hfr_std = 1.0
         numstars = 1.0
         
@@ -166,7 +180,7 @@ def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
 def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
     
     #S if given a list of stadard deviations, we need to do the inverse of 
-    #S that for the wieght in np.polyfit per the documentation it minimizes 
+    #S that for the weight in np.polyfit per the documentation it minimizes 
     #S sum(w**2(y-y_mod)**2), where w is the weight provided.
     if len(np.where(weight_list==0.)[0])>0:
         weight_list = None

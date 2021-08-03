@@ -517,7 +517,7 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
     return success
     
 # run sextractor on an image
-def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=None,catfile=None):
+def sextract(datapath,imagefile,sexfile='autofocus.20210512.sex',paramfile=None,convfile=None,catfile=None):
     #S Path on MinervaMAIN where all the .sex, .param, etc. files will be
     #S located
     sexpath = '/usr/share/sextractor/'
@@ -557,33 +557,70 @@ def sextract(datapath,imagefile,sexfile='autofocus.sex',paramfile=None,convfile=
 # read a generic sextractor catalog file into a dictionary
 # the header values (PARAMS) become the dictionary keys
 # objects are read into lists under each dictionary key
-def readsexcat(catname):
 
-    data = {}
-    if not os.path.exists(catname): return data
-    with open(catname,'rb') as filep:
-        header = []
-        for line in filep:
+
+# def readsexcat(catname):
+
+#    data = {}
+#    if not os.path.exists(catname): return data
+#    with open(catname,'rb') as filep:
+#        header = []
+#        for line in filep:
             # header lines begin with # and are the 3rd item in the line
-            if line.startswith('#'):
-                header.append(line.split()[2])
-                for h in header:
-                    data[h] = []
+#            if line.startswith('#'):
+#                header.append(line.split()[2])
+#                for h in header:
+#                    data[h] = []
             # older sextractor catalogs contain a few nuisance lines; ignore those
-            elif not line.startswith('-----') and not line.startswith('Measuring') and \
-                    not line.startswith('(M+D)') and not line.startswith('Objects:'):
+#            elif not line.startswith('-----') and not line.startswith('Measuring') and \
+#                    not line.startswith('(M+D)') and not line.startswith('Objects:'):
                 # assume all values are floats
-                values = [ float(x) for x in line.split() ]
-                for h,v in zip(header,values):
-                    data[h].append(v)
-    for key in data.keys():
+#                values = [ float(x) for x in line.split() ]
+#                for h,v in zip(header,values):
+#                    data[h].append(v)
+#    for key in data.keys():
         #S try and convert to an np.array, and if not possible jsut pass
         #S the try is in case for some reason a non-numerical entry is 
         #S encountered. may be a l
+#        try:
+#            data[key] = np.array(data[key])
+#        except:
+#            pass
+
+#    return data
+    
+def readsexcat(catname):
+    # CD New function to read .cat files from SExtractor
+    # CD Adds in filtering of bad flags for fau sources here; more convenient than doing it in autofocus code
+    # CD Written 06/07/2021
+
+    data = {}
+    if not os.path.exists(catname): return data
+    with open(catname, 'rb') as f:
+        header = []
+        for line in f:
+            if line.startswith( '#' ):
+                header.append(line.split()[2])
+
+    cata = np.loadtxt(catname)
+    
+    if np.ndim(cata) > 1:
+        flag_ind = np.where(np.array(header) == 'FLAGS')[0][0]
+        r_ind = np.where(np.array(header) == 'FLUX_RADIUS')[0][0]
+        cata = cata[np.where(cata[:, flag_ind] <= 4)]
+        cata = cata[np.where(cata[:, r_ind] > 1)]
+    
+    cata = cata.T
+
+    for i in range(len(header)):
         try:
-            data[key] = np.array(data[key])
+            if type(cata[i]) == np.float64:
+                data[header[i]] = np.array([cata[i]])
+            elif len(cata) == 0:
+                data[header[i]] = []
+            else:
+                data[header[i]] = cata[i]
         except:
             pass
-
-    return data
     
+    return data
