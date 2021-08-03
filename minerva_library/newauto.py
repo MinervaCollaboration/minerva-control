@@ -13,7 +13,7 @@ import math
 import copy
 import glob
 
-#S A custom exception class, so we can catch the results of fits on a case by 
+#S A custom exception class, so we can catch the results of fits on a case by
 #S case basis.
 class afException(Exception):
     def __init__(self,message='Autofocus Exception',focus=0.0,coeffs=None):
@@ -59,11 +59,11 @@ def recordplot(recordfile,step=1,saveplot=False):
     except afException as e:
         coeffs = e.coeffs
 
-    #S make the x-values to evaluate the fit at for plotting. 
+    #S make the x-values to evaluate the fit at for plotting.
     xplot = np.linspace(poslist.min(),poslist.max(),100)
     #S some printing, not necessary at all but makes info easier
     print 'Only plotting points with found hfradii'
-    print 'Coeffs:' 
+    print 'Coeffs:'
     print coeffs
     print 'Focus:'
     print focus
@@ -73,9 +73,9 @@ def recordplot(recordfile,step=1,saveplot=False):
     ax = fig.add_subplot(1,1,1)
     ax.plot(poslist[goodind],hfrlist[goodind],'b.')
 
-    #S If using a port2 autorecord, the errors are fake. We don't want to 
-    #S plot bars for those errors, and this will also allow us to avoid 
-    #S hitting anything in the 
+    #S If using a port2 autorecord, the errors are fake. We don't want to
+    #S plot bars for those errors, and this will also allow us to avoid
+    #S hitting anything in the
     if recordfile.split('/')[4].split('.')[3] != 'port2':
         ax.errorbar(poslist[goodind],hfrlist[goodind],stdlist[goodind],\
                          linestyle='None')
@@ -94,7 +94,7 @@ def recordplot(recordfile,step=1,saveplot=False):
         plt.savefig(path+fname)
         #S return path for email attachment, whatever else you need
         return path+fname
-    
+
     else:
         #S just show it if we aren't saving
         plt.show()
@@ -103,7 +103,7 @@ def recordplot(recordfile,step=1,saveplot=False):
 
 def quad(x,c):
     return c[0]*x**2+c[1]*x+c[2]
-    
+
 ## FWHM = 2*HFR
 # HFR in Pixels
 #S want to look at multiple images of one focus for FAU focusing potentially
@@ -136,7 +136,7 @@ def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
     else:
         ellip = cata['A_IMAGE']/cata['B_IMAGE']
         circ_ind = np.where( (ellip >= ellip_lim) & (ellip <= 1.0/ellip_lim) )[0]
-    
+
     # Check if the stars are too elliptical => windy or not stars; don't use for autofocus
     if len(circ_ind) == 0:
         if telescope != None: telescope.logger.error("Stars are too elliptical, can't use "+catfile)
@@ -153,7 +153,7 @@ def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
         hfr_med = cata['FLUX_RADIUS'][true_star]
         hfr_std = 1.0
         numstars = 1.0
-        
+
     # We expect more than MIN_STAR (ten) stars in a normal image
     elif len(circ_ind>min_stars):
         try:
@@ -167,20 +167,26 @@ def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
             # Get the Median Absolute Deviation, and we'll convert to stddev then stddev of the mean
             hfr_mad = np.median(np.absolute(cata['FLUX_RADIUS'][circ_ind]-np.median(cata['FLUX_RADIUS'][circ_ind])))
 
-            # We assume that our distribution is normal, and convert to stddev. 
-            # May need to think more about this, as it isn't probably normal. 
+            # We assume that our distribution is normal, and convert to stddev.
+            # May need to think more about this, as it isn't probably normal.
             #S Recall stddev of the mean = stddev/sqrt(N)
             hfr_std = (hfr_mad*1.4862)/np.sqrt(numstars)
-        except: 
+        except:
             if telescope != None: telescope.logger.error("Could not get HFR_STD in "+catfile)
             return np.nan, np.inf, 0
 
     return hfr_med, hfr_std, numstars
 
 def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
+<<<<<<< HEAD
     
     #S if given a list of stadard deviations, we need to do the inverse of 
     #S that for the weight in np.polyfit per the documentation it minimizes 
+=======
+
+    #S if given a list of stadard deviations, we need to do the inverse of
+    #S that for the wieght in np.polyfit per the documentation it minimizes
+>>>>>>> b908752742d9bfe7b4f287d742de3c5284cc7163
     #S sum(w**2(y-y_mod)**2), where w is the weight provided.
     if len(np.where(weight_list==0.)[0])>0:
         weight_list = None
@@ -215,7 +221,7 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
     best_measured_focus = None
 
     while not (oldcoeffs == coeffs).all() and iters<10:
-        if len(inds) < 3: 
+        if len(inds) < 3:
             if type(logger)!=type(None): logger.error("Not enough points (" + str(len(inds)) + ") to fit")
             return best_measured_focus, coeffs
 
@@ -232,8 +238,8 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
         quad = coeffs[0]*poslist**2 + coeffs[1]*poslist + coeffs[2]
         #S find the std of the residuals
         std = np.std(fwhmnp[inds]-quadnp[inds])
-        #S redefine the indices where the residuals are greater than 3 sigma. 
-        #S this should catch all points that were previously excluded. 
+        #S redefine the indices where the residuals are greater than 3 sigma.
+        #S this should catch all points that were previously excluded.
         fwhmnp = np.asarray(fwhmlist)
         quadnp = np.asarray (quad)
         inds = np.where(np.absolute(fwhmnp-quadnp) < 3.*std)[0]
@@ -246,13 +252,13 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
         return best_measured_focus, coeffs
 
     # Check if our fit was upside down (and so clearly wrong)
-    if coeffs[0] <= 0.0: 
+    if coeffs[0] <= 0.0:
         if type(logger)!=type(None): logger.error('Fit upside down quadratic')
         return best_measured_focus, coeffs
 
     # solve for minimum (derivative = 0), and convert to an integer
     best_focus = int(-coeffs[1]/(2.0*coeffs[0]))
- 
+
     # don't allow it to go beyond the limits
     if best_focus < min(poslist) or best_focus > max(poslist):
         #S log that we were out of range
@@ -264,7 +270,7 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
     return best_focus, coeffs
 
 def autofocus_step(control,telescope,newfocus,af_target, simulate=False):
-    
+
     status = telescope.getStatus()
     m3port = status.m3.port
 
@@ -290,25 +296,25 @@ def autofocus_step(control,telescope,newfocus,af_target, simulate=False):
     else:
         telescope.logger.info("taking image")
         imagename = control.takeImage(af_target,telescope.id)
-    
-    try: 
+
+    try:
         imnum = imagename.split('.')[4]
-    except: 
+    except:
         telescope.logger.exception('Failed to save image: "' + imagename + '"')
         return median,stddev,numstar,imnum
-    
+
     datapath = '/Data/' + telescope.id.lower() + '/' + control.site.night + '/'
     catalog = '.'.join(imagename.split('.')[0:-2]) + '.cat'
-    
+
     #S Sextract this guy, put in a try just in case. Defaults should
     #S be fine, which are set in newauto. NOT sextrator defaults
     try:
         catalog = utils.sextract(datapath,imagename)
         telescope.logger.debug('Sextractor success on '+catalog)
     except:
-        telescope.logger.exception('Sextractor failed on '+catalog)  
+        telescope.logger.exception('Sextractor failed on '+catalog)
         return median,stddev,numstar,imnum
-    
+
     median,stddev,numstar=new_get_hfr(catalog,telescope=telescope,fau=af_target['spectroscopy'])
     return median,stddev,numstar,imnum
 
@@ -336,14 +342,14 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                 af_target['fauexptime'] = exptime
                 af_target['filter'] = "V"
         else:
-            m3port = telescope.port['IMAGER']                
+            m3port = telescope.port['IMAGER']
             af_target['spectroscopy'] = False
             af_target['exptime'] = exptime
             af_target['fauexptime'] = exptime
             af_target['filter'] = "V"
 
         control.logger.info("defined af_target")
-            
+
     else:
         status = telescope.getStatus()
         m3port = status.m3.port
@@ -360,7 +366,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                      'exptime':exptime,
                      'fauexptime':exptime,
                      'filter':"V",
-                     'spectroscopy':spectroscopy,                     
+                     'spectroscopy':spectroscopy,
                      'ra' : ra,
                      'dec' : dec
                      }
@@ -379,7 +385,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
 #        float(telescope.C0[m3port])*(m1temp-float(telescope.T0[m3port])) + \
 #        float(telescope.C1[m3port])*(dt-float(telescope.dT0[m3port])) + \
 #        float(telescope.C2[m3port])*(gravity-float(telescope.G0[m3port]))
-#    telescope.logger.info('Starting focus for port ' + m3port + ' at ' + str(telescope.focus[m3port]) + ' when T=' + str(m1temp) + ', dT=' + str(dt) + ', gravity=' + str(gravity)) 
+#    telescope.logger.info('Starting focus for port ' + m3port + ' at ' + str(telescope.focus[m3port]) + ' when T=' + str(m1temp) + ', dT=' + str(dt) + ', gravity=' + str(gravity))
 
     control.logger.info("setting platescale")
     #S set the platescale for the image
@@ -397,7 +403,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
     if not telescope.isInitialized(tracking=tracking,derotate=(not af_target['spectroscopy'])):
         if not telescope.initialize(tracking=tracking,derotate=(not af_target['spectroscopy'])):
             telescope.recover(tracking=tracking,derotate=(not af_target['spectroscopy']))
-        
+
     control.logger.info("checking keys")
     if 'ra' in af_target.keys() and 'dec' in af_target.keys() and slew:
         telescope.acquireTarget(af_target,derotate=(not af_target['spectroscopy']))
@@ -413,7 +419,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
     # S Get current time for measuring timeout
     t0 = datetime.datetime.utcnow()
 
-    # we don't normally want to do an autofocus when the dome is closed, 
+    # we don't normally want to do an autofocus when the dome is closed,
     # but we want to be able to test it during the day
     if not simulate:
         # S Loop to wait for dome to open, cancels after ten minutes
@@ -439,7 +445,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
     poslist = np.array([])
 
     for step in defsteps:
- 
+
         if telescope.abort:
             telescope.logger.info("Autofocus aborted")
             return
@@ -451,7 +457,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
         # if new focus out of mechanical range, skip this step
         if newfocus < float(telescope.minfocus[m3port]) or newfocus > float(telescope.maxfocus[m3port]):
             telescope.logger.info("Autofocus step (" + str(newfocus) + ") out of range; skipping")
-            continue 
+            continue
 
         status = telescope.getStatus()
 
@@ -547,20 +553,20 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
                     'Column 4\tSDOM\n'+\
                     'Column 5\tNumber of stars'
                 #S save the array of good stuff
-                np.savetxt(fd,autodata,fmt='%s',header=header)
+                np.savetxt(fd,autodata, fmt='%s', header=header)
         else:
             control.logger.error('mismatch length in autofocus arrays')
     except:
         control.logger.exception('unhandled error in autofocus results.')
-        
+
     # update the best focus
-    if new_best_focus == None: 
+    if new_best_focus == None:
         best_measured_foc = np.nanmin(focusmeas_list)
         best_measured_pos = poslist[np.nanargmin(focusmeas_list)]
         if best_measured_foc > 3.0:
             # fit failed, no good values; don't update focus
             telescope.logger.warning('Autofocus failed, and best focus is bad (' + str(best_measured_foc) + '"); using old focus')
-        else: 
+        else:
             # fit failed; good values; use best measured focus
             telescope.logger.warning('Autofocus failed, using best measured focus (' + str(best_measured_pos) + ',' + str(best_measured_foc) + ')')
             telescope.focus[m3port] = best_measured_pos
@@ -604,8 +610,8 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
             "into newauto.recordplot(). Just "\
             +"'python newauto.py' and enter the recordplot(path+"+\
             "record_name).\n"
- 
- 
+
+
         if len(goodind)!=0:
             try:
                 afplot = recordplot(datapath+datafile,saveplot=True)
@@ -619,7 +625,7 @@ def autofocus(control,telid,num_steps=10,defocus_step=0.3,\
             afplot=None
             subject = "Autofocus failed on %s; no stars in image"\
                 %(telid)
- 
+
         mail.send(subject,body,level='serious',attachments=[afplot])
 
 
@@ -627,7 +633,7 @@ if __name__ == '__main__':
 
 #    recordplot('/Data/t1/n20160405/n20160405.T1.autorecord.port2.V.1753.1767.txt')
 #    ipdb.set_trace()
-    
+
     filenames = glob.glob('/Data/t?/n20161220/*autorecord*.txt')
 #    filenames = glob.glob('/Data/t4/n20161214/*autorecord*0005.0014.txt')
     for filename in filenames:

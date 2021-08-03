@@ -122,7 +122,7 @@ class server:
 	def create_class_objects(self):
                 #S I would home here, or maybe it would be better to put it in the self.i2stage_connect()?
                 #S I would say it makes sense to put in the the stage connect
-                self.i2stage_connect()
+                
 		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
                 self.gaugeController = com.com('gaugeController',self.base_directory,self.night())
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night())                
@@ -132,6 +132,9 @@ class server:
                 self.backlight_motor = dynamixel.Robotis_Servo2(dyn, 1, series = "XM" )
                 self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
 		self.controlroompdu = pdu.pdu('apc_5.ini',self.base_directory)
+
+                self.i2stage_connect()
+		
                 return
 
 
@@ -638,7 +641,9 @@ class server:
                 #S as possible, a power cycle is being included. The ten second sleep time is there to give
                 #S the motor some time to do it's start up stuff (e.g. it won't connect if you try to
                 #S quickly after the cycle.
-                #self.dynapower2.cycle('i2stage',2)
+                self.benchpdu.i2stage.off()
+                time.sleep(10)
+                self.benchpdu.i2stage.on()
                 time.sleep(1)
                 
                 
