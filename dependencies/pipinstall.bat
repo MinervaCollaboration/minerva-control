@@ -1,4 +1,5 @@
-pip install -U pip
+#pip install -U pip
+pip install pip==20.3.4
 pip install ipdb==0.8
 pip install pyephem
 pip install pyfits
