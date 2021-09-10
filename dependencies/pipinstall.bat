@@ -29,5 +29,5 @@ pip install astropy==1.1.2
 pip install matplotlib
 pip install pandas
 pip install zwoasi
-pip install sep=1.0.3
+pip install sep==1.0.3
 #copy CCDPlugFingerLakes.dll "C:\Program Files (x86)\Diffraction Limited\MaxIm DL 6"
