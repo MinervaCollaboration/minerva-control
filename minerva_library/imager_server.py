@@ -674,7 +674,7 @@ if __name__ == '__main__':
 
     test_server = server(config_file,base_directory)
     #test_server.exposeGuider("1.0 0.0 0.0")
-    #test_server.guider_file_name = 'D:/minerva/data/n20201116/n20201116.T2.FAU.backlight.0014.fits'
+    #test_server.guider_file_name = 'C:/minerva/data/n20201116/n20201116.T2.FAU.backlight.0014.fits'
     #test_server.getGuideStar()
     #ipdb.set_trace()
     test_server.run_server()
