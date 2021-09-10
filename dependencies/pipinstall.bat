@@ -1,8 +1,8 @@
 #pip install -U pip
 pip install pip==20.3.4
 pip install ipdb==0.8
-pip install pyephem
-pip install pyfits
+pip install pyephem==3.7.5.3
+pip install pyfits==3.3
 pip install configobj
 pip install opencv_python-2.4.10-cp27-none-win32.whl
 pip install psutil
@@ -29,4 +29,5 @@ pip install astropy==1.1.2
 pip install matplotlib
 pip install pandas
 pip install zwoasi
+pip install sep=1.0.3
 #copy CCDPlugFingerLakes.dll "C:\Program Files (x86)\Diffraction Limited\MaxIm DL 6"
