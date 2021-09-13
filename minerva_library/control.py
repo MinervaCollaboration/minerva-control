@@ -272,7 +272,7 @@ class control:
 				tele_list.append(telescope.id)
 
 		threads = []
-                for telid in tele_list:
+        for telid in tele_list:
 			telescope = utils.getTelescope(self,telid)
 			thread = PropagatingThread(target = telescope.mountGotoAltAz,args=(alt,az))
 			thread.name = telid + ' (control->telescope_mountGotoAltAz->mountGotoAltAz)'
