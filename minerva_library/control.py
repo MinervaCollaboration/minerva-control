@@ -123,10 +123,8 @@ class control:
 #			telescopes = [3,4]
 #			telescopes = [3,4]
 #			telescopes = [1,2,3,4]
-
-			telescopes = [1,2,4]
-			self.logger.error("*** T3 disabled***")
-
+			telescopes = [1,3,4]
+			self.logger.warning('*** T2 is disabled ***')
 
 #			self.logger.error("***only using T1 & T2***")
 #			telescopes = [1,2]
