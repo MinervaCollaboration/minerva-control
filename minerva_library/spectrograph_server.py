@@ -52,7 +52,8 @@ class server:
                 self.file_name = ''
                 #S Create all class objects
                 self.create_class_objects()
-                self.chiller = com.com('chiller',self.base_directory,self.night())
+                # self.chiller = com.com('chiller',self.base_directory,self.night())
+                self.logger.warning('chiller disabled')
                 self.chillerlastemailed = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
                 # turn on cell heater to maintain temperature stablility
@@ -124,15 +125,14 @@ class server:
                 #S I would say it makes sense to put in the the stage connect
                 
 		self.pdu = pdu.pdu(self.pdu_config, self.base_directory)
-                self.gaugeController = com.com('gaugeController',self.base_directory,self.night())
+                self.gaugeController = com.com('gaugeController',self.base_directory,self.night())    
                 self.cellheater_com = com.com('I2Heater',self.base_directory,self.night())                
-                self.expmeter_com = com.com('expmeter',self.base_directory,self.night())
+                self.expmeter_com = com.com('expmeter',self.base_directory,self.night())    
                 self.backlight_com = com.com('backlight',self.base_directory,self.night())
                 dyn = dynamixel.USB2Dynamixel_Device('COM7')
                 self.backlight_motor = dynamixel.Robotis_Servo2(dyn, 1, series = "XM" )
                 self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
 		self.controlroompdu = pdu.pdu('apc_5.ini',self.base_directory)
-
                 self.i2stage_connect()
 		
                 return
@@ -634,18 +634,19 @@ class server:
         #S Initialize the stage, needs to happen before anyhting else.
         def i2stage_connect(self):
 
-                #S Decided to place a power cycle before any connectino we make to the i2stage.
+                #S Decided to place a power cycle before any connection we make to the i2stage.
                 #S There is an issue that occurs in a dynamic linked librry (.dll) file that PyAPT uses
                 #S if the motor was not discnnected properly. If the issue is hit, it crashes python.exe,
                 #S and will do so until the power is cycled on the motor. So, to try and avoid this as uch
                 #S as possible, a power cycle is being included. The ten second sleep time is there to give
                 #S the motor some time to do it's start up stuff (e.g. it won't connect if you try to
                 #S quickly after the cycle.
+
+                # NOTE: the home position must be away from the motor. Otherwise homing will timeout
                 self.benchpdu.i2stage.off()
                 time.sleep(10)
                 self.benchpdu.i2stage.on()
-                time.sleep(1)
-                
+                time.sleep(10)                
                 
                 #S Try and connect and initialize
                 try:
@@ -761,6 +762,7 @@ class server:
         def i2stage_movef(self, position):
 
                 if position < 0.0 or position > 150.0:
+                #if position < -150.0 or position > 0.0:
                         self.logger.error("Requested position out of range")
                         return "fail"
 
@@ -1550,9 +1552,10 @@ if __name__ == '__main__':
 	test_server = server('spectrograph_server.ini',base_directory)
 
         # make sure it didn't die with the backlight on
+        test_server.logger.info('turning backlight off')
         test_server.backlight_off()
+        test_server.logger.info('backlight off')
 #        status = test_server.chiller_status_dict()
-#        ipdb.set_trace()
         
 #        test_server.kill_si_image()
 #        thisnight = 'n20991332'
@@ -1568,14 +1571,16 @@ if __name__ == '__main__':
 	pressure_thread.name = 'Kiwispec'
         pressure_thread.start()
 
-        expmeter_thread = threading.Thread(target=test_server.logexpmeter)
-        expmeter_thread.name = 'Kiwispec'
-        expmeter_thread.start()
+#        expmeter_thread = threading.Thread(target=test_server.logexpmeter)
+#        expmeter_thread.name = 'Kiwispec'
+#        expmeter_thread.start()
+	test_server.logger.warning('*** EXPMETER disabled ***')
 
         # log the chiller temps
-        chiller_thread = threading.Thread(target=test_server.logchiller)
-        chiller_thread.name = 'Kiwispec'
-        chiller_thread.start()
+#        chiller_thread = threading.Thread(target=test_server.logchiller)
+#        chiller_thread.name = 'Kiwispec'
+#        chiller_thread.start()
+	test_server.logger.warning('*** chiller disabled ***')
 	
 	#	test_server.logexpmeter()
 #	ipdb.set_trace()
