@@ -239,14 +239,14 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
             if best_measured_fwhm < 3.0:
                 # if the FWHM of our best step is less than 3'', use that position
                 telescope.logger.warning('Autofocus failed, using best measured focus ('\
-                                         + str(best_measured_pos) + ',' + str(best_measured_foc) + ')')
+                                         + str(best_measured_pos) + ',' + str(best_measured_fwhm) + ')')
                 telescope.focus[m3port] = best_measured_pos
             else:
                 # if our best step is still bad, use the focus guess
                 telescope.logger.warning('Autofocus failed, and best measured focus is bad ('\
-                                          + str(best_measured_foc) + '"); using initial focus guess')
+                                          + str(best_measured_fwhm) + '"); using initial focus guess')
 
-        # write the focus position to a text file 
+        # write the focus position to a text file
         focname = 'focus.' + telescope.logger_name + '.port' + m3port+'.txt'
         with open(focname,'w') as fname:
             fname.write(str(telescope.focus[m3port]))
@@ -307,10 +307,10 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
         except:
             control.logger.exception('unhandled error in autofocus results.')
 
-        if best_focus == None:
+        if best_fit_pos == None:
             return
 
         telescope.logger.info('Updating best focus for port '+str(m3port)+\
                                 ' to '+str(telescope.focus[m3port]))
         telescope.logger.info('Finished autofocus')
-        return
+        return best_fit_pos
