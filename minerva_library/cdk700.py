@@ -1307,51 +1307,39 @@ class CDK700:
 
 			pointsAdded += 1
 
-	def diagnoseFlexure(self, minerva, npoints=100, maxmag=4.0,
-	          fau=True, exptime=1.0, filterName='V', shuffle=True,
-	          minalt=-999, maxalt=80.0, minaz=0.0, maxaz=360.0):
+	def diagnoseFlexure(self, minerva, npoints=100, maxmag=4.0, fau=True,
+						exptime=1.0, filterName='V', shuffle=True, minalt=-999,
+						maxalt=80.0, minaz=0.0, maxaz=360.0):
 
-	  # can't set defaults using self...
-	  if minalt == -999: minalt = self.horizon
+	  if minalt == -999:
+		  minalt = self.horizon
 
 	  camera = utils.getCamera(minerva, self.id)
 	  datapath = self.datadir + self.night + '/'
 
 	  if fau:
-	    xcenter = camera.fau.xcenter
-	    ycenter = camera.fau.ycenter
-	    xsize = camera.fau.x2
-	    ysize = camera.fau.y2
 	    m3port = self.port['FAU']
 	    platescale = camera.fau.platescale
 	    derotate = False
 
 	  else:
-	    xcenter = camera.xcenter
-	    ycenter = camera.ycenter
-	    xsize = camera.x2
-	    ysize = camera.y2
 	    m3port = self.port['IMAGER']
 	    platescale = camera.platescale
 	    derotate = True
-
 
 	  brightstars = utils.brightStars(maxmag=maxmag)
 	  nstars = len(brightstars['dec'])
 
 	  i = 0
-	  ntried = 0
 
-	  alts = np.zeros(npoints)
-	  best_fwhms = np.zeros(npoints)
+	  ndxs = []
+	  good_ndxs = []
+	  alts = np.array([])
+	  foci = np.array([])
 
 	  while i < npoints:
 
-	    ntried += 1
-
-	    # create the pointing model by pointing to a series of bright stars
-
-	    ndx = random.random() * nstars
+	    ndx = random.randrange(nstars)
 
 	    # apply proper motion to coordinates
 	    raj2000 = float(brightstars['ra'][ndx])
@@ -1364,31 +1352,61 @@ class CDK700:
 	         " adding proper motion " + str(pmra) + "," + str(pmdec) +
 	         " is " + str(ra) + "," + str(dec))
 
+		# check that star has not been tried before
+		if ndx is in ndxs:
+			continue
+
+		ndxs.append(ndx)
+
 	    # if the star is not above the horizon, skip to the next one
 	    alt, az = self.radectoaltaz(ra, dec)
-	    if alt < minalt or alt > maxalt: continue
+	    if alt < minalt or alt > maxalt:
+			continue
 
 	    target = {
 	      'ra':ra,
 	      'dec':dec,
 	      'spectroscopy':fau,
-	      'fauexptime': exptime,
-	      'name':'Pointing',
+	      'fauexptime':exptime,
+	      'name':'Autofocus+Flex',
 	      'endtime':datetime.datetime(2100,12,31),
 	      }
 
 	    focus = autofocus(minerva, self.id, target = target, exptime = exptime)
 	    if focus == None:
-	      self.logger.warning('Autofocus failed for pointing target ' + str(int(i)))
+	      self.logger.warning('Something went wrong with the autofocus')
 	      continue
 
-	    alts[i] = alt
-	    best_fwhms[i] = focus
+	    alts = np.append(alts, alt)
+	    foci = np.append(foci, focus)
 
 	    i += 1
+		good_ndxs.append(ndx)
 
-	    if ntried >= npoints * 2:
-	      break
+	vmags = brightstars['vmag'][good_ndxs]
+
+	filename = '{}.{}.flexure_autofocus'.format(self.night, self.id)
+	try:
+		if len(alts) == len(foci) == len(vmags):
+			data = np.array([alts, foci, vmags]).T
+			header = 'Altitude (deg)\tFocuser Position (mm)\tVmag'
+			np.savetxt(datapath + filename + '.txt', data, fmt='%s', header = header)
+		else:
+			self.logger.error('mismatch length in arrays when trying to save data')
+	except:
+		self.logger.exception('unhandled exception in data saving')
+
+	try:
+		plt.plot(alts, foci, 'bo')
+		plt.xlabel('Altitude (degrees)')
+		plt.ylabel('Focuser Position (mm)')
+		plt.savefig(datapath + filename + '.png')
+		plt.show()
+	except:
+		self.logger.exception('plotting failed :(')
+
+	return alts, foci
+
 
 	# this is designed to calibrate the rotator using a single bright star
 	def calibrateRotator(self, camera, fau=True, exptime=1):
