@@ -1,80 +1,46 @@
 ### ===========================================================================
 ### Written by Cayla Dedrick
 ### new_get_hfr, autofocus_step taken with few changes from newauto.py
-### Last updated 20210803
+### Last updated 20211101
 ### ===========================================================================
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 import utils
+from stats import robust_least_squares as rlsq
+
 # from sep_extract import sep_extract, get_hfr
 
-def leave_one_out_fit(x, y, logger=None):
-    '''
-    TODO: Docstring
-    '''
+def quad(c, x):
+    return c[0] + x ** 2 + c[1] + x + c[2]
 
-    best_focus = None
-    best_fit = None
-    fit_flag = np.zeros_like(x)
+def quadfit_rlsq(pos, fwhm, loss = 'soft_l1', f_scale=0.1):
+    c0 = np.polyfit(pos, fwhm, 2)
+    return rlsq(pos, fwhm, quad, c0, loss, f_scale)
 
-    nanind = np.where(np.isnan(x))[0]
-    fit_flag[nanind] = np.nan
-
-    try:
-        coeffs0, rss0, rank, singular_values, rcond = np.polyfit(x, y, 2, full=True)
-    except:
-        if logger != None and best_focus == None: logger.error('Quadratic fit failed.')
-        return None, None, np.ones_like(x) + fit_flag
-
-    while True:
-
-        good = np.where(fit_flag == 0)[0]
-        n = len(good)
-
-        fit = np.polyval(coeffs0, x[good])
-        redchi = rss0 / (n - 2)
-
-        chi2_list = np.zeros_like(x)
-        coeffs = np.zeros((len(x), 3))
-
-        for i in range(len(x)):
-            if fit_flag[i] == 1:
-                chi2_list[i] *= np.nan
-                coeffs[i] *= np.nan
-            else:
-                rm_ind = np.delete(good, np.where(good == i)[0])
-                rm_x = x[rm_ind]
-                rm_y = y[rm_ind]
-
-            try:
-                coeff, rss, rank, singular_values, rcond = np.polyfit(rm_x, rm_y, 2, full=True)
-            except:
-                chi2_list[i] *= np.nan
-                coeffs[i] *= np.nan
-                continue
-
-            if len(rss) == 0:
-                rss = np.nan
-            chi2_list[i] = rss / (n - 1 - 2)
-            coeffs[i] = coeff
-
-        if np.isnan(chi2_list).all() or np.nanmax(redchi - chi2_list) < 1 / (n + 1) ** 2:
-            break
-
-        ol = np.nanargmax(redchi - chi2_list)
-
-        fit_flag[ol] = 1
-        coeffs0 = coeffs[ol]
-        rss0 = chi2_list[ol] * (n - 1 - 2)
-
-    if coeffs0[0] <= 0:
-        if logger!= None: logger.error('Fit upside down quadratic')
-        best_focus = None
+def check_quadfit(telescope, c):
+    if np.any(c == np.nan):
+        telescope.logger.error('Quadratic fit failed')
+    elif c[0] < 0:
+        telescope.logger.error('Fit upside down quadratic')
     else:
-        best_focus = int(-coeffs0[1] / (2.0 * coeffs0[0]))
+        return True
+    return False
 
-    return best_focus, coeffs0, fit_flag
+def do_quadfit(telescope, pos, fwhm):
+
+    coeff = quadfit_rlsq(pos, fwhm)
+
+    if check_quadfit(telescope, coeff):
+        pos_bestfoc = -coeff[1]/(2*coeff[0])
+        fwhm_bestfoc = quad(coeff, pos_bestfoc)
+    else:
+        pos_bestfoc = np.nan
+        fwhm_bestfoc = np.nan
+
+    return pos_bestfoc, fwhm_bestfoc
+
 
 def get_real_af(r, b):
     '''
