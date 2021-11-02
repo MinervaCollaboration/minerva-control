@@ -1,7 +1,7 @@
 ### ===========================================================================
 ### Written by Cayla Dedrick as a replacement for newauto.py
 ### Significant code stolen from newauto.py
-### Last updated 20210803
+### Last updated 20211101
 ### ===========================================================================
 
 import numpy as np
@@ -17,13 +17,10 @@ import glob
 import utils
 import af_utils
 
-def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
+def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
               target = None, exptime = 15.0, dome_override = False,
-              simulate = False, slew = True):
+              slew = True, test = False, simulate = False):
     '''
-
-
-
     Inputs:
         control (obj) - minerva.control object
         telid (str) - ID of desired telescope (e.g. 'T1')
@@ -47,7 +44,7 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
         camera = utils.getCamera(control, telid)
         dome = utils.getDome(control, telid)
 
-        # if we have a defined target, use that
+        # if we have a defined target, use it
         if target != None:
 
             # make a new "autofocus target" dict
@@ -62,13 +59,13 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
                     m3port = telescope.port['IMAGER']
                     af_target['exptime'] = exptime
                     af_target['fauexptime'] = exptime
-                    af_target['filter'] = "V"
+                    af_target['filter'] = 'V'
             else:
                 m3port = telescope.port['IMAGER']
                 af_target['spectroscopy'] = False
                 af_target['exptime'] = exptime
                 af_target['fauexptime'] = exptime
-                af_target['filter'] = "V"
+                af_target['filter'] = 'V'
 
             control.logger.info('defined af_target')
 
@@ -99,6 +96,9 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
                          }
             control.logger.info('defined af_target based on current status of the telescope')
 
+        if test:
+            ipdb.set_trace()
+
         # set platescale from camera info
         control.logger.info('setting platescale')
         if af_target['spectroscopy']:
@@ -122,7 +122,7 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
         if 'ra' in af_target.keys() and 'dec' in af_target.keys() and slew:
             telescope.acquireTarget(af_target, derotate=(not af_target['spectroscopy']))
         else:
-            telescope.logger.info('No ra and dec, using current position')
+            telescope.logger.info('No ra and dec in target dict, using current position')
 
         # set the datapath to save images
         control.logger.info("setting data path")
@@ -132,6 +132,9 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
         if telescope.abort:
             telescope.logger.info("Autofocus aborted")
             return
+
+        if test:
+            ipdb.set_trace()
 
         # get current time
         t0 = datetime.datetime.utcnow()
@@ -153,39 +156,50 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
 
         control.logger.info("defining initial autofocus steps")
 
-        # step size
+        # step size in mm
         stepsize = defocus_step * 1000
 
         # start with 5 steps centered at best focus guess
         # add first 5 steps to step queue
         init_steps = focus_guess + (np.linspace(-2, 2, 5) * stepsize)
 
-        queue = init_steps
-
         pos_list = np.array([])
         fwhm_list = np.array([])
         imnum_list = np.array([])
 
-        # if routine hasn't worked after 10 steps, give up
-        while len(pos_list) <= 10:
+        queue = init_steps
 
-            # loop through steps in queue
-            while len(queue) > 0:
-
+        while len(pos_list) <= 10:             # if routine hasn't worked after 10 steps, give up
+            while len(queue) > 0:              # loop through steps in queue 
                 # first, check if abort == True
                 if telescope.abort:
                     telescope.logger.info("Autofocus aborted")
                     return
 
+                focuserStatus = telescope.getFocuserStatus(m3port)
+                focuser_pos = focuserStatus.position
+
                 # start with step closest to the current position of the focuser
-                goto = np.argmin(np.abs(telescope.focus[m3port] - queue))
-                newpos = queue[goto]
+                goto = np.argmin(np.abs(focuser_pos - queue))
+                new_focuser_pos = queue[goto]
 
-                median, std, numstars, imnum = af_utils.autofocus_step(control, telescope, newpos, af_target)
+                median, std, numstars, imnum = af_utils.autofocus_step(control, telescope, new_focuser_pos, af_target)
 
-                pos_list = np.append(pos_list, newpos)
+                if test:
+                    ipdb.set_trace()
+
+                pos_list = np.append(pos_list, new_focuser_pos)
                 fwhm_list = np.append(fwhm_list, median * platescale)
                 imnum_list = np.append(imnum_list, str(imnum))
+
+                queue = np.delete(queue, goto)
+
+                if test:
+                    focuserStatus = telescope.getFocuserStatus(m3port)
+                    print(new_focuser_pos)
+                    print(focuserStatus.position)
+                    ipdb.set_trace()
+
 
             # get the indices of the non-nan points
             goodind = np.where(np.logical_not(np.isnan(fwhm_list)))[0]
@@ -198,40 +212,38 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
             good_pos = pos_list[goodind]
             good_fwhm = fwhm_list[goodind]
 
-            min_dex = np.nanargmin(good_fwhm)
-            best_measured_pos = good_pos[min_dex]
+            min_dex = np.argmin(good_fwhm)
+            pos_bestmeas = good_pos[min_dex]
+            fwhm_bestmeas = np.min(good_fwhm)
 
-            control.logger.info('fitting quadratic')
-            best_fit_pos, coeffs, fit_flag = af_utils.leave_one_out_fit(pos_list, fwhm_list,
-                                                                   logger = control.logger)
+            telescope.logger.info('fitting quadratic')
+            pos_bestfit, fwhm_bestfit = af_utils.do_quadfit(telescope, good_pos, good_fwhm)
 
-            if best_fit_pos != None:
-                best_pos = best_fit_pos
-                in_fit = np.where( fit_flag == 0 )[0]
-                good_pos = pos_list[in_fit]
-                good_foc = focus_list[in_fit]
-
+            if pos_bestfit = np.nan:
+                best_pos = pos_bestfit
             else:
-                best_pos = best_measured_pos
+                best_pos = pos_bestmeas
 
-            control.logger.info('checking if parabola is well-sampled')
-            pts_to_left = len(np.where( good_pos < best_pos )[0])
-            pts_to_right = len(np.where( good_pos > best_pos )[0])
+            telescope.logger.info('checking if parabola is well-sampled')
+            pts_to_left = len(np.where( good_pos <  best_pos )[0])
+            pts_to_right = len(np.where( good_pos >  best_pos )[0])
+
+            queue = np.array([])
 
             if pts_to_left < 2 or good_fwhm[np.argmin(good_pos)] - np.min(good_fwhm) < 1:
-                control.logger.info('adding additional autofocus step at {:.0f} mm'.format(np.min(pos_list) - stepsize))
+                telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(np.min(pos_list) - stepsize))
                 queue = np.append(queue, np.min(pos_list) - stepsize)
 
             if pts_to_right < 2 or good_fwhm[np.argmax(good_pos)] - np.min(good_fwhm) < 1:
-                control.logger.info('adding additional autofocus step at {:.0f} mm'.format(np.max(pos_list) + stepsize))
+                telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(np.max(pos_list) + stepsize))
                 queue = np.append(queue, np.max(pos_list) + stepsize)
 
             if len(queue) == 0:
                 break
 
-        if best_fit_pos != None:
+        if pos_bestfit != np.nan:
             # fit succeeded; use best fitted focus
-            telescope.focus[m3port] = best_fit_pos
+            telescope.focus[m3port] = pos_bestfit
         else:
             # fit failed;
             best_measured_fwhm = np.nanmin(fwhm_list)
@@ -246,10 +258,13 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
                 telescope.logger.warning('Autofocus failed, and best measured focus is bad ('\
                                           + str(best_measured_fwhm) + '"); using initial focus guess')
 
+        if test:
+            ipdb.set_trace()
+        
         # write the focus position to a text file
-        focname = 'focus.' + telescope.logger_name + '.port' + m3port+'.txt'
-        with open(focname,'w') as fname:
-            fname.write(str(telescope.focus[m3port]))
+        filename = 'focus.' + telescope.logger_name + '.port' + m3port+'.txt'
+        with open(filename, 'w') as f:
+            f.write(str(telescope.focus[m3port]))
 
         # move to the focus position
         if not telescope.focuserMoveAndWait(telescope.focus[m3port], m3port):
@@ -280,20 +295,20 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
         except: tback = 'UNKNOWN'
 
         try:
-            if len(imnum_list)==len(pos_list)==len(focus_list)==len(fit_flag):
+            if len(imnum_list)==len(pos_list)==len(fwhm_list):
                 ar_filename = '{}.{}.autorecord.port{}.{}.{}.{}.txt'.format(control.site.night, telid, m3port,\
                                                                             af_target['filter'][0], imnum_list[0],\
                                                                             imnum_list[-1])
 
-                autodata = np.array([imnum_list, pos_list, focus_list, fit_flag]).T
+                autodata = np.array([imnum_list, pos_list, fwhm_list]).T
 
                 tel_header = '# Guess\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\trotang\n'
-                tel_info = '{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(focus_guess, best_focus, tm1, tm2, tm3,\
+                tel_info = '{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(focus_guess, telescope.focus[m3port], tm1, tm2, tm3,\
                                                                          tamb, tback, float(alt), rotang)
-                with open(ar_filename, 'a') as fd:
-                    fd.write(tel_header)
-                    fd.write(tel_info)
-                    fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
+                # with open(ar_filename, 'a') as fd:
+                #     fd.write(tel_header)
+                #     fd.write(tel_info)
+                #     fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
 
                 data_header = 'Column 1\tImage number\n'+\
                               'Column 2\tFocuser position\n'+\
@@ -307,10 +322,6 @@ def autofocus(control = None, telid = None, num_steps = 5, defocus_step = 0.3,
         except:
             control.logger.exception('unhandled error in autofocus results.')
 
-        if best_fit_pos == None:
-            return
-
         telescope.logger.info('Updating best focus for port '+str(m3port)+\
                                 ' to '+str(telescope.focus[m3port]))
         telescope.logger.info('Finished autofocus')
-        return best_fit_pos
