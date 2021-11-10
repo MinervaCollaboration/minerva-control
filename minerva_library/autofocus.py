@@ -229,7 +229,7 @@ def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
                 telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(np.nanmin(pos_list) - stepsize))
 
             if right < 2: 
-                queue = np.append(queue, np.nanmax(pos_list) - stepsize)
+                queue = np.append(queue, np.nanmax(pos_list) + stepsize)
                 telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(np.nanmax(pos_list) + stepsize))
 
             if len(queue) > 0:
@@ -242,7 +242,7 @@ def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
             telescope.logger.info('fitting quadratic')
             pos_bestfit, fwhm_bestfit = af_utils.do_quadfit(telescope, poslist_good, fwhmlist_good)
             
-            if pos_bestfit == np.nan:
+            if np.isnan(pos_bestfit):
                 side = np.argmin([left, right])
                 dxn = [-1, 1][side]
                 queue = np.append(queue, [np.nanmin(pos_list), np.nanmax(fwhm_list)][side] + dxn * stepsize)
@@ -265,7 +265,7 @@ def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
 #===================================================================================
             
         # fit succeeded; use best fitted focus
-        if pos_bestfit != np.nan:
+        if not np.isnan(pos_bestfit):
             best_focus = pos_bestfit
         
         # fit failed;
@@ -285,7 +285,7 @@ def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
                                           + str(best_measured_fwhm) + '"); using initial focus guess')
 
         # set focus!
-        telescope.focus['m3port'] = best_focus
+        telescope.focus[m3port] = best_focus
 
         if test:
             ipdb.set_trace()
@@ -299,7 +299,8 @@ def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
         if not telescope.focuserMoveAndWait(telescope.focus[m3port], m3port):
             telescope.recoverFocuser(telescope.focus[m3port], m3port)
             telescope.acquireTarget(af_target)
-
+        
+        status = telescope.getStatus()
         # record environment data
         try: alt = str(float(status.mount.alt_radian) * 180.0/math.pi)
         except: alt = '-1'
@@ -341,8 +342,7 @@ def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
 
                 data_header = 'Column 1\tImage number\n'+\
                               'Column 2\tFocuser position\n'+\
-                              'Column 3\tMedian focus measure\n'\
-                              'Column 4\tOutlier flag'
+                              'Column 3\tMedian focus measure'
                 header = tel_header + tel_info + data_header
 
                 np.savetxt(datapath + ar_filename, autodata, fmt='%s', header=header)
