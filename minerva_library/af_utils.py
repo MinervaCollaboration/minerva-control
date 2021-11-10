@@ -6,6 +6,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import ipdb
 
 import utils
 from stats import robust_least_squares as rlsq
@@ -31,6 +32,8 @@ def check_quadfit(telescope, c):
 def do_quadfit(telescope, pos, fwhm):
 
     coeff = quadfit_rlsq(pos, fwhm)
+
+    ipdb.set_trace()
 
     if check_quadfit(telescope, coeff):
         pos_bestfoc = -coeff[1]/(2*coeff[0])
