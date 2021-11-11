@@ -17,7 +17,7 @@ import glob
 import utils
 import af_utils
 
-def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
+def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
               target = None, exptime = 15.0, dome_override = False,
               slew = True, simulate = False):
     '''
@@ -153,9 +153,9 @@ def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
         # step size in mm
         stepsize = defocus_step * 1000
 
-        # start with 5 steps centered at best focus guess
-        # add first 5 steps to step queue
-        init_steps = focus_guess + (np.linspace(-2, 2, 5) * stepsize)
+        # start with 3 steps centered at best focus guess
+        # add first 3 steps to step queue
+        init_steps = focus_guess + (np.linspace(-1, 1, 3) * stepsize)
 
         pos_list = np.array([])
         fwhm_list = np.array([])
@@ -214,13 +214,19 @@ def autofocus(control, telid, num_steps = 5, defocus_step = 0.3,
 
             queue = np.array([])
 
-            if pts_to_left < 2 or good_fwhm[np.argmin(good_pos)] - np.min(good_fwhm) < 1:
-                telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(np.min(pos_list) - stepsize))
-                queue = np.append(queue, np.min(pos_list) - stepsize)
+            if pts_to_left < 2:
+                n_add_left = 2 - pts_to_left
+                add_left = np.min(pos_list) - stepsize * np.linspace(1, n_add_left, n_add_left)
+                for step in add_left:
+                    telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(step))
+                queue = np.append(queue, add)
 
-            if pts_to_right < 2 or good_fwhm[np.argmax(good_pos)] - np.min(good_fwhm) < 1:
-                telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(np.max(pos_list) + stepsize))
-                queue = np.append(queue, np.max(pos_list) + stepsize)
+            if pts_to_right < 2:
+                n_add_right = 2 - pts_to_right
+                add_right = np.max(pos_list) + stepsize * np.linspace(1, n_add_right, n_add_right)
+                for step in add_right:
+                    telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(step))
+                queue = np.append(queue, add_right)
 
             if len(queue) == 0:
                 break

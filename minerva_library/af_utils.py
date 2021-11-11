@@ -14,7 +14,7 @@ from stats import robust_least_squares as rlsq
 # from sep_extract import sep_extract, get_hfr
 
 def quad(c, x):
-    return c[0] + x ** 2 + c[1] + x + c[2]
+    return c[0] * x ** 2 + c[1] * x + c[2]
 
 def quadfit_rlsq(pos, fwhm, loss = 'soft_l1', f_scale=0.1):
     c0 = np.polyfit(pos, fwhm, 2)
@@ -32,8 +32,6 @@ def check_quadfit(telescope, c):
 def do_quadfit(telescope, pos, fwhm):
 
     coeff = quadfit_rlsq(pos, fwhm)
-
-    ipdb.set_trace()
 
     if check_quadfit(telescope, coeff):
         pos_bestfoc = -coeff[1]/(2*coeff[0])
