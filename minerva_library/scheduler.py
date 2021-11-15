@@ -29,7 +29,7 @@ import utils, env
 ###
 
 class scheduler:
-    def __init__(self,config_file,base_directory='.',red=False,south=False):
+    def __init__(self,config_file,base_directory='.',red=False,south=False,logger=None):
         #S want to get the site from the control class, makes easy computing
         #S LST and such
         self.base_directory = base_directory
@@ -59,7 +59,7 @@ class scheduler:
         else: self.bstarobserved = False
 
         # get the target list
-        self.update_list()
+        self.update_list(logger=logger)
 
         self.make_fixedBodies()
 
@@ -93,6 +93,7 @@ class scheduler:
         #S we assume you need to update the weights of targets
         #S this calculates weights for those targets which are currently
         #S observable, using datetime.datetime.utcnow()
+        if logger != None: logger.info("Calculating weights")
         self.calculate_weights(remaining_time=remaining_time, logger=logger, timeof=timeof, cadence=cadence)
 
         #S next we sort the target list based on the weight key
@@ -111,18 +112,18 @@ class scheduler:
         return self.target_list[0]
 
 
-    def update_list(self,bstar=False,includeInactive=False):
+    def update_list(self,bstar=False,includeInactive=False, logger=None):
         #S need to update list potentially
         try:
-            self.target_list = targetlist.mkdict(includeInactive=includeInactive,red=self.red) + targetlist.mkdict(bstar=True,includeInactive=includeInactive)
+            self.target_list = targetlist.mkdict(includeInactive=includeInactive,red=self.red,logger=logger) + targetlist.mkdict(bstar=True,includeInactive=includeInactive,logger=logger)
         except:
-            #S Placeholder for logger
-            pass
+            if logger != None: logger.error("Error updating target list")
 
     def calculate_weights(self, tels=None, remaining_time=86400.0, logger=None, timeof=None, cadence=True):
         #S need to update weights for all the targets in the list.
         #S going to use simple HA weighting for now.
         if timeof == None: timeof = datetime.datetime.utcnow()
+        if logger != None: logger.info("Setting timeof to " + str(timeof))
 
         for target in self.target_list:
 
@@ -132,13 +133,13 @@ class scheduler:
 
             try:
                 target = utils.truncate_observable_window(self.site, target, timeof=timeof, logger=logger)
+                if logger != None: logger.info("Truncate Observable window succeeded")
             except:
-                print 'lskdjf'
-                ipdb.set_trace()
+                if logger != None: logger.error("Truncate Observable window failed")
 
             # if the target is observable
-            if (target['starttime'] <= timeof) and (target['endtime'] >= (timeof + datetime.timedelta(seconds=target['exptime'][0]))) \
-               and utils.check_maxalt(self.site, target, timeof=timeof, logger=logger):
+            if (target['starttime'] <= timeof) and (target['endtime'] >= (timeof + datetime.timedelta(seconds=target['exptime'][0]+750))) \
+                                                        and utils.check_alt(self.site, target, timeof=timeof, logger=logger):
                 #S this is where you want to insert whatever weight function
                 if cadence:
                     target['weight'] = self.calc_weight_multi(target, timeof=timeof, logger=logger)
