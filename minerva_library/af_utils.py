@@ -6,7 +6,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import ipdb
+#import ipdb
 
 import utils
 from stats import robust_least_squares as rlsq
@@ -21,7 +21,7 @@ def quadfit_rlsq(pos, fwhm, loss = 'soft_l1', f_scale=0.1):
     return rlsq(pos, fwhm, quad, c0, loss, f_scale)
 
 def check_quadfit(telescope, c):
-    if np.any(c == np.nan):
+    if np.any(np.isnan(c)):
         telescope.logger.error('Quadratic fit failed')
     elif c[0] < 0:
         telescope.logger.error('Fit upside down quadratic')
@@ -32,16 +32,19 @@ def check_quadfit(telescope, c):
 def do_quadfit(telescope, pos, fwhm):
 
     coeff = quadfit_rlsq(pos, fwhm)
-
+    
     if check_quadfit(telescope, coeff):
-        pos_bestfoc = -coeff[1]/(2*coeff[0])
-        fwhm_bestfoc = quad(coeff, pos_bestfoc)
+        quad_min = int(-coeff[1]/(2*coeff[0]))
+        if quad_min > np.min(pos) and quad_min < np.max(pos):
+            pos_bestfoc = quad_min
+            fwhm_bestfoc = quad(coeff, quad_min)
     else:
         pos_bestfoc = np.nan
         fwhm_bestfoc = np.nan
 
     return pos_bestfoc, fwhm_bestfoc
 
+# ================================================================================================================
 
 def get_real_af(r, b):
     '''
