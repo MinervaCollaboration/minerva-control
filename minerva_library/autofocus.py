@@ -219,7 +219,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 add_left = np.min(pos_list) - stepsize * np.linspace(1, n_add_left, n_add_left)
                 for step in add_left:
                     telescope.logger.info('adding additional autofocus step at {:.0f} mm'.format(step))
-                queue = np.append(queue, add)
+                queue = np.append(queue, add_left)
 
             if pts_to_right < 2:
                 n_add_right = 2 - pts_to_right
@@ -264,7 +264,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
         status = telescope.getStatus() 
         rotatorStatus = telescope.getRotatorStatus(m3port)
         # record environment data
-        try: alt = str(float(status.mount.alt_radian) * 180.0/np.pi)
+        try: alt = str(np.rad2deg(float(status.mount.alt_radian)))
         except: alt = '-1'
     
         try: rotang = str(float(rotatorStatus.position))
@@ -296,17 +296,17 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 tel_header = '# Guess\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\trotang\n'
                 tel_info = '{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(focus_guess, telescope.focus[m3port], tm1, tm2, tm3,\
                                                                          tamb, tback, float(alt), rotang)
-                # with open(ar_filename, 'a') as fd:
-                #     fd.write(tel_header)
-                #     fd.write(tel_info)
-                #     fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
+                with open(ar_filename, 'a') as fd:
+                    fd.write(tel_header)
+                    fd.write(tel_info)
+                    fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
 
-                data_header = 'Column 1\tImage number\n'+\
+                    data_header = 'Column 1\tImage number\n'+\
                               'Column 2\tFocuser position\n'+\
                               'Column 3\tMedian focus measure'
-                header = tel_header + tel_info + data_header
+                #header = tel_header + tel_info + data_header
 
-                np.savetxt(ar_filename, autodata, fmt='%s', header=header)
+                    np.savetxt(fd, autodata, fmt='%s', header=data_header)
             else:
                 control.logger.error('mismatch length in autofocus arrays')
         except:
