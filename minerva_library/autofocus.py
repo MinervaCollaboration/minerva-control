@@ -57,9 +57,9 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                     m3port = telescope.port['FAU']
                 else:
                     m3port = telescope.port['IMAGER']
-                    af_target['exptime'] = exptime
-                    af_target['fauexptime'] = exptime
-                    af_target['filter'] = 'V'
+                af_target['exptime'] = exptime
+                af_target['fauexptime'] = exptime
+                af_target['filter'] = 'V'
             else:
                 m3port = telescope.port['IMAGER']
                 af_target['spectroscopy'] = False
@@ -171,7 +171,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                     return
 
                 focuserStatus = telescope.getFocuserStatus(m3port)
-                focuser_pos = focuserStatus.position
+                focuser_pos = int(focuserStatus.position)
 
                 # start with step closest to the current position of the focuser
                 goto = np.argmin(np.abs(focuser_pos - queue))
