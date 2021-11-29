@@ -263,7 +263,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
 
         # write the focus position to a text file
         filename = 'focus.' + telescope.logger_name + '.port' + m3port+'.txt'
-        with open(filename, 'w') as f:
+        with open(datapath + filename, 'w') as f:
             f.write(str(telescope.focus[m3port]))
 
         status = telescope.getStatus() 
@@ -311,7 +311,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 
                 header = tel_header + tel_info + now + data_header
 
-                np.savetxt(ar_filename, autodata, fmt='%s', header=header)
+                np.savetxt(datapath + ar_filename, autodata, fmt='%s', header=header)
 
             else:
                 control.logger.error('mismatch length in autofocus arrays')
