@@ -29,12 +29,14 @@ def plot_autofocus(night):
                 f.readline()
                 fm = f.readline()
                 fm = fm.split('#')[1].split()
+
                 old_best_focus = int(fm[0])
                 try:
                     new_best_focus = int(fm[1])
                 except:
                     new_best_focus = old_best_focus
                     fail = True
+
 
                 if new_best_focus == old_best_focus:
                     fail = True
@@ -43,6 +45,7 @@ def plot_autofocus(night):
             ax = plt.gca()
 
             af = np.loadtxt(autorecord)
+
             poslist = af[:, 1]
             focusmeas_list = af[:, 2]
             goodind = np.where(np.logical_not(np.isnan(focusmeas_list)))[0]
@@ -51,6 +54,7 @@ def plot_autofocus(night):
             ax.set_xlim(new_best_focus - 3000, new_best_focus + 3000)
             ax.set_ylim(np.min(focusmeas_list[goodind]) - np.max(focusmeas_list[goodind]) * 0.4, np.max(focusmeas_list[goodind]) + 1)
             ax.set_title('T' + str(j) + '.' + im0 + '.' + im1)
+
 
             pos = np.linspace(new_best_focus - 3000, new_best_focus + 3000)
             

@@ -1,7 +1,7 @@
 ### ===========================================================================
 ### Written by Cayla Dedrick as a replacement for newauto.py
 ### Significant code stolen from newauto.py
-### Last updated 20211101
+### Last updated 20211129
 ### ===========================================================================
 
 import numpy as np
@@ -268,6 +268,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
 
         status = telescope.getStatus() 
         rotatorStatus = telescope.getRotatorStatus(m3port)
+
         # record values that may correlate with focus
         ## Mount Altitude
         try: alt = str(np.rad2deg(float(status.mount.alt_radian)))
@@ -298,17 +299,20 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 tel_header = '# Guess\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\trotang\n'
                 tel_info = '{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(focus_guess, telescope.focus[m3port], tm1, tm2, tm3,\
                                                                          tamb, tback, float(alt), rotang)
-                # with open(ar_filename, 'a') as fd:
-                #     fd.write(tel_header)
-                #     fd.write(tel_info)
-                #     fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
+                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') +'\n'
+ #               with open(ar_filename, 'a') as fd:
+ #                   fd.write(tel_header)
+ #                   fd.write(tel_info)
+ #                   fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
 
                 data_header = 'Column 1\tImage number\n'+\
                                'Column 2\tFocuser position\n'+\
                                'Column 3\tMedian focus measure'
-                header = tel_header + tel_info + data_header
+                
+                header = tel_header + tel_info + now + data_header
 
-                np.savetxt(ar_filename, autodata, fmt='%s', header=data_header)
+                np.savetxt(ar_filename, autodata, fmt='%s', header=header)
+
             else:
                 control.logger.error('mismatch length in autofocus arrays')
         except:
