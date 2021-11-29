@@ -296,7 +296,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 tel_header = '# Guess\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\trotang\n'
                 tel_info = '{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(focus_guess, telescope.focus[m3port], tm1, tm2, tm3,\
                                                                          tamb, tback, float(alt), rotang)
-                with open(ar_filename, 'a') as fd:
+                with open(datapath + ar_filename, 'a') as fd:
                     fd.write(tel_header)
                     fd.write(tel_info)
                     fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
