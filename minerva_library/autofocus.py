@@ -1,13 +1,12 @@
 ### ===========================================================================
 ### Written by Cayla Dedrick as a replacement for newauto.py
 ### Significant code stolen from newauto.py
-### Last updated 20211101
+### Last updated 20211129
 ### ===========================================================================
 
 import numpy as np
 import matplotlib.pyplot as plt
 import subprocess
-import ipdb
 import warnings
 import datetime
 import time
@@ -160,10 +159,13 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
         pos_list = np.array([])
         fwhm_list = np.array([])
         imnum_list = np.array([])
+        
+        std_list = np.array([])
+        n_list = np.array([])
 
         queue = init_steps
 
-        while len(pos_list) <= 10:             # if routine hasn't worked after 10 steps, give up
+        while len(pos_list) < 10:             # if routine hasn't worked after 10 steps, give up
             while len(queue) > 0:              # loop through steps in queue 
                 # first, check if abort == True
                 if telescope.abort:
@@ -176,12 +178,16 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 # start with step closest to the current position of the focuser
                 goto = np.argmin(np.abs(focuser_pos - queue))
                 new_focuser_pos = queue[goto]
+                telescope.logger.info("New step is " + str(new_focuser_pos))
 
                 median, std, numstars, imnum = af_utils.autofocus_step(control, telescope, new_focuser_pos, af_target)
 
                 pos_list = np.append(pos_list, new_focuser_pos)
                 fwhm_list = np.append(fwhm_list, median * platescale)
                 imnum_list = np.append(imnum_list, str(imnum))
+                # for photometry, i guess
+                std_list = np.append(std_list,std)
+                n_list = np.append(n_list,numstars)
 
                 queue = np.delete(queue, goto)
 
@@ -190,7 +196,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
 
             # if no stars are found in the first pass through, give up
             if len(goodind) == 0:
-                telescope.logger.error('No stars in all images; autofocus failed.')
+                telescope.logger.error('No stars; autofocus failed')
                 return
 
             good_pos = pos_list[goodind]
@@ -200,15 +206,16 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
             pos_bestmeas = good_pos[min_dex]
             fwhm_bestmeas = np.min(good_fwhm)
 
-            telescope.logger.info('fitting quadratic')
-            pos_bestfit, fwhm_bestfit = af_utils.do_quadfit(telescope, good_pos, good_fwhm)
+            if len(goodind) > 4:
+                telescope.logger.info('fitting to '+str(len(goodind))+' points.')
+                pos_bestfit, fwhm_bestfit = af_utils.do_quadfit(telescope, good_pos, good_fwhm)
 
-            if np.isnan(pos_bestfit):
-                best_pos = pos_bestfit
-            else:
+            if np.isnan(pos_bestfit) or len(goodind) <= 4:
                 best_pos = pos_bestmeas
+            else:
+                best_pos = pos_bestfit
 
-            telescope.logger.info('checking if parabola is well-sampled')
+            telescope.logger.info('checking that parabola is well-sampled on both sides of the minimum')
             pts_to_left = len(np.where( good_pos <  best_pos )[0])
             pts_to_right = len(np.where( good_pos >  best_pos )[0])
 
@@ -231,6 +238,10 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
             if len(queue) == 0:
                 break
 
+            if len(pos_list) == 10:
+                telescope.logger.warning('Autofocus was unable to determine the best focus after 10 steps, moving on.')
+
+        # set the new focus 
         if not np.isnan(pos_bestfit):
             # fit succeeded; use best fitted focus
             telescope.focus[m3port] = pos_bestfit
@@ -238,7 +249,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
             # fit failed;
             best_measured_fwhm = np.min(good_fwhm)
             best_measured_pos = good_pos[np.argmin(good_fwhm)]
-            if best_measured_fwhm < 3.0:
+            if best_measured_fwhm <= 3.0:
                 # if the FWHM of our best step is less than 3'', use that position
                 telescope.logger.warning('Autofocus failed, using best measured focus ('\
                                          + str(best_measured_pos) + ',' + str(best_measured_fwhm) + ')')
@@ -247,41 +258,33 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 # if our best step is still bad, use the focus guess
                 telescope.logger.warning('Autofocus failed, and best measured focus is bad ('\
                                           + str(best_measured_fwhm) + '"); using initial focus guess')
-        
+
+        # Save all the relevant info to text files:
+
         # write the focus position to a text file
         filename = 'focus.' + telescope.logger_name + '.port' + m3port+'.txt'
-        with open(filename, 'w') as f:
+        with open(datapath + filename, 'w') as f:
             f.write(str(telescope.focus[m3port]))
-
-        # move to the focus position
-        if not telescope.focuserMoveAndWait(telescope.focus[m3port], m3port):
-            telescope.recoverFocuser(telescope.focus[m3port], m3port)
-            telescope.acquireTarget(af_target)
-
-        telescope.logger.info('Updating best focus for port '+str(m3port)+\
-            ' to '+str(telescope.focus[m3port]))
 
         status = telescope.getStatus() 
         rotatorStatus = telescope.getRotatorStatus(m3port)
-        # record environment data
+
+        # record values that may correlate with focus
+        ## Mount Altitude
         try: alt = str(np.rad2deg(float(status.mount.alt_radian)))
         except: alt = '-1'
-    
+        ## Rotator Angle
         try: rotang = str(float(rotatorStatus.position))
         except: rotang = '720'
-
+        ## Various Temperatures
         try:    tm1 = str(status.temperature.primary)
         except: tm1 = 'UNKNOWN'
-
         try:    tm2 = str(status.temperature.secondary)
         except: tm2 = 'UNKNOWN'
-
         try:    tm3 = str(status.temperature.m3)
         except: tm3 = 'UNKNOWN'
-
         try:    tamb = str(status.temperature.ambient)
         except: tamb = 'UNKNOWN'
-
         try:    tback = str(status.temperature.backplate)
         except: tback = 'UNKNOWN'
 
@@ -296,22 +299,32 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 tel_header = '# Guess\tNew\tTM1\tTM2\tTM3\tTamb\tTback\talt\trotang\n'
                 tel_info = '{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(focus_guess, telescope.focus[m3port], tm1, tm2, tm3,\
                                                                          tamb, tback, float(alt), rotang)
-                with open(datapath + ar_filename, 'a') as fd:
-                    fd.write(tel_header)
-                    fd.write(tel_info)
-                    fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
+                now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') +'\n'
+ #               with open(ar_filename, 'a') as fd:
+ #                   fd.write(tel_header)
+ #                   fd.write(tel_info)
+ #                   fd.write(datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')+'\n')
 
-                    data_header = 'Column 1\tImage number\n'+\
-                              'Column 2\tFocuser position\n'+\
-                              'Column 3\tMedian focus measure'
-                #header = tel_header + tel_info + data_header
+                data_header = 'Column 1\tImage number\n'+\
+                               'Column 2\tFocuser position\n'+\
+                               'Column 3\tMedian focus measure'
+                
+                header = tel_header + tel_info + now + data_header
 
-                    np.savetxt(fd, autodata, fmt='%s', header=data_header)
+                np.savetxt(datapath + ar_filename, autodata, fmt='%s', header=header)
+
             else:
                 control.logger.error('mismatch length in autofocus arrays')
         except:
             control.logger.exception('unhandled error in autofocus results.')
-            
-        telescope.logger.info('Updating best focus for port '+str(m3port)+\
-                                ' to '+str(telescope.focus[m3port]))
+        
+        # move to the new focus position
+        if not telescope.focuserMoveAndWait(telescope.focus[m3port], m3port):
+            telescope.recoverFocuser(telescope.focus[m3port], m3port)
+            telescope.acquireTarget(af_target)
+
+        telescope.logger.info('Updating best focus for port '+str(m3port)
+                        ' to '+str(telescope.focus[m3port])+' (TM1='+tm1 +\
+                        ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + \
+                        tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
         telescope.logger.info('Finished autofocus')

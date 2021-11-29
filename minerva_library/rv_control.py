@@ -14,7 +14,8 @@ import time
 import utils
 import numpy as np
 import math
-import newauto
+#import newauto
+from autofocus import autofocus
 from propagatingthread import PropagatingThread
 
 def rv_observing(minerva):
@@ -65,7 +66,7 @@ def rv_observing(minerva):
                         kwargs = {'target':target,'fau':fau}
                         threads = []
                         for telescope in minerva.telescopes:
-                            thread = PropagatingThread(target=newauto.autofocus,args=(minerva,telescope.id,),kwargs=kwargs)
+                            thread = PropagatingThread(target=autofocus, args=(minerva,telescope.id,), kwargs=kwargs)
                             thread.name = str(telescope.id) + ' (rv_control->rv_observing->autofocus)'
                             threads.append(thread)
                         for thread in threads(): thread.start()
@@ -315,7 +316,7 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0, simulate=False):
 
         # autofocus
         minerva.logger.info("beginning autofocus")
-        try: newauto.autofocus(minerva, telid, simulate=simulate, slew=False, target=target, exptime=target['fauexptime'])
+        try: autofocus(minerva, telid, simulate=simulate, slew=False, target=target, exptime=target['fauexptime'])
         except: minerva.logger.exception("autofocus failed")
         if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("autofocus timed out")
