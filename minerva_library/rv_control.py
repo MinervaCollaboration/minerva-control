@@ -249,13 +249,19 @@ def doSpectra(minerva, target, tele_list, simulate=False):
         # if the dome isn't open, wait for it to open (why is this here? -- how would we have acquired?)
         if not simulate:
             for dome in minerva.domes:
-                while not dome.isOpen():
-                    minerva.logger.info("Waiting for dome to open")
-                    if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
-                        minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
-                        stopFAU(minerva,tele_list)
-                        return
-                    time.sleep(60)
+                if not dome.isOpen():
+                    minerva.logger.info("Dome closed during sequence, aborting target " + target['name'])
+                    stopFAU(minerva,tele_list)
+                    return
+                 
+                # JDE: changed 2021-11-29 to prevent thread clashing in bad weather. hopefully.
+                #while not dome.isOpen():
+                #    minerva.logger.info("Waiting for dome to open")
+                #    if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
+                #        minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
+                #        stopFAU(minerva,tele_list)
+                #        return
+                #    time.sleep(60)
 
         minerva.logger.info('taking spectrum')
         minerva.takeSpectrum(target)
@@ -354,8 +360,8 @@ def stopFAU(minerva,tele_list):
     for telid in tele_list:
         camera = utils.getCamera(minerva,telid)
         camera.fau.guiding = False
-    minerva.logger.info("Waiting 30 seconds for guiders to stop. Please revisit for efficiency")
-    time.sleep(30)
+    minerva.logger.info("Waiting 60 seconds for guiders to stop. Please revisit for efficiency")
+    time.sleep(60)
     
 
 def peakupflux(minerva, target, telid):
