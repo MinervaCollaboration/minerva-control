@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import glob
 import os
 
+import af_utils
+
 def plot_autofocus(night):
     img_filenames = []
     for j in range(1, 5):
@@ -26,7 +28,8 @@ def plot_autofocus(night):
             with open(autorecord) as f:
                 f.readline()
                 fm = f.readline()
-                fm = fm.split()
+                fm = fm.split('#')[1].split()
+
                 old_best_focus = int(fm[0])
                 try:
                     new_best_focus = int(fm[1])
@@ -34,10 +37,15 @@ def plot_autofocus(night):
                     new_best_focus = old_best_focus
                     fail = True
 
+
+                if new_best_focus == old_best_focus:
+                    fail = True
+
             plt.subplot(N_y, N_x, i + 1)
             ax = plt.gca()
 
-            af = np.loadtxt(autorecord, skiprows=3)
+            af = np.loadtxt(autorecord)
+
             poslist = af[:, 1]
             focusmeas_list = af[:, 2]
             goodind = np.where(np.logical_not(np.isnan(focusmeas_list)))[0]
@@ -47,16 +55,14 @@ def plot_autofocus(night):
             ax.set_ylim(np.min(focusmeas_list[goodind]) - np.max(focusmeas_list[goodind]) * 0.4, np.max(focusmeas_list[goodind]) + 1)
             ax.set_title('T' + str(j) + '.' + im0 + '.' + im1)
 
-            try:
-                coeff = np.polyfit(poslist[goodind], focusmeas_list[goodind], 2)
-            except:
-                continue
 
             pos = np.linspace(new_best_focus - 3000, new_best_focus + 3000)
-            quad = coeff[0] * pos ** 2 + coeff[1] * pos + coeff[2]
-
-
-            ax.plot(pos, quad, 'b--')
+            
+            coeff = af_utils.quadfit_rlsq(poslist[goodind], focusmeas_list[goodind])
+            if not np.any(np.isnan(coeff)):
+                quad = coeff[0] * pos ** 2 + coeff[1] * pos + coeff[2]
+                ax.plot(pos, quad, 'b--')
+            
             ax.vlines(old_best_focus, - 1, np.max(focusmeas_list[goodind]) + 1, 'red', linestyle=':',
                        label = 'Old best focus = {}'.format(old_best_focus))
             if fail:
