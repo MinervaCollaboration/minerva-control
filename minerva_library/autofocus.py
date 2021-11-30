@@ -210,10 +210,10 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                 telescope.logger.info('fitting to '+str(len(goodind))+' points.')
                 pos_bestfit, fwhm_bestfit = af_utils.do_quadfit(telescope, good_pos, good_fwhm)
 
-            if np.isnan(pos_bestfit) or len(goodind) <= 4:
-                best_pos = pos_bestmeas
-            else:
-                best_pos = pos_bestfit
+                if np.isnan(pos_bestfit) or len(goodind) <= 4:
+                    best_pos = pos_bestmeas
+                else:
+                    best_pos = pos_bestfit
 
             telescope.logger.info('checking that parabola is well-sampled on both sides of the minimum')
             pts_to_left = len(np.where( good_pos <  best_pos )[0])
@@ -323,8 +323,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
             telescope.recoverFocuser(telescope.focus[m3port], m3port)
             telescope.acquireTarget(af_target)
 
-        telescope.logger.info('Updating best focus for port '+str(m3port)
-                        ' to '+str(telescope.focus[m3port])+' (TM1='+tm1 +\
+        telescope.logger.info('Updating best focus for port '+str(m3port)+                          ' to '+str(telescope.focus[m3port])+' (TM1='+tm1 +\
                         ', TM2=' + tm2 + ', TM3=' + tm3 + ', Tamb=' + \
                         tamb + ', Tback=' + tback + ', alt=' + alt + ')' )
         telescope.logger.info('Finished autofocus')
