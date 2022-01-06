@@ -1,7 +1,7 @@
 ### ===========================================================================
 ### Written by Cayla Dedrick as a replacement for newauto.py
 ### Significant code stolen from newauto.py
-### Last updated 2021-12-01
+### Last updated 2021-01-06
 ### ===========================================================================
 
 import numpy as np
@@ -165,7 +165,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
 
         queue = init_steps
 
-        while len(pos_list) < 10:             # if routine hasn't worked after 10 steps, give up
+        while len(pos_list) < 15:             # if routine hasn't worked after 15 steps (CD: changed from 10 steps on 2021-01-06), give up
             while len(queue) > 0:              # loop through steps in queue 
                 # first, check if abort == True
                 if telescope.abort:
@@ -208,7 +208,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
 
             if len(goodind) > 4:
                 telescope.logger.info('fitting to '+str(len(goodind))+' points.')
-                pos_bestfit, fwhm_bestfit = af_utils.do_quadfit(telescope, good_pos, good_fwhm)
+                pos_bestfit, fwhm_bestfit = af_utils.do_quadfit(telescope, good_pos, good_fwhm, logger=telescope.logger)
 
                 if np.isnan(pos_bestfit):
                     best_pos = pos_bestmeas
@@ -216,6 +216,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
                     best_pos = pos_bestfit
             else:
                 best_pos = pos_bestmeas
+                pos_bestfit = np.nan
 
             telescope.logger.info('checking that parabola is well-sampled on both sides of the minimum')
             pts_to_left = len(np.where( good_pos <  best_pos )[0])
