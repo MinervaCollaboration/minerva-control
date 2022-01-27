@@ -647,9 +647,5 @@ def readsexcat(catname):
                 data[header[i]] = cata[i]
         except:
             pass
-<<<<<<< HEAD
-    
-=======
 
->>>>>>> b908752742d9bfe7b4f287d742de3c5284cc7163
     return data
