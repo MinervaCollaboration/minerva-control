@@ -1,0 +1,39 @@
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a
+# device; this may be used with UUID= as a more robust way to name devices
+# that works even if disks are added and removed. See fstab(5).
+#
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+proc            /proc           proc    nodev,noexec,nosuid 0       0
+# / was on /dev/sda1 during installation
+UUID=c1d1d2b4-52a0-4351-9dc5-bb63443ee926 /               ext4    errors=remount-ro 0       1
+# swap was on /dev/sda5 during installation
+UUID=42bf0205-222e-4c58-85b5-ea2b1b57c96d none            swap    sw              0       0
+//192.168.1.22/data/ /Data/kiwispec/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm 
+//192.168.1.22/log/ /Data/kiwilog/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm 
+//192.168.1.23/Logs/ /Data/thermallog/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm 
+192.168.1.29:/volume1/data/ /nas/ nfs
+# mount data directories
+//192.168.1.3/data/ /Data/t1/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.4/data/ /Data/t2/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.5/data/ /Data/t3/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.6/data/ /Data/t4/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+# mount log directories 
+//192.168.1.3/log/ /Data/serverlogs/t1/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.4/log/ /Data/serverlogs/t2/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.5/log/ /Data/serverlogs/t3/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.6/log/ /Data/serverlogs/t4/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+# mount Mount directories (for pointing models)
+//192.168.1.3/Mount/ /pwi/t1/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.4/Mount/ /pwi/t2/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.5/Mount/ /pwi/t3/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.6/Mount/ /pwi/t4/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+# MINERVA Red
+//192.168.1.9/data/ /Data/mred/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.9/Mount /pwi/mred/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.9/log/ /Data/serverlogs/mred/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm,vers=2.0 
+//192.168.1.21/data/ /Data/mredspec/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm 
+//192.168.1.21/log/ /Data/serverlogs/mredspec/ cifs credentials=/etc/cifspw,iocharset=utf8,sec=ntlm,nosetuids,noperm 
+
+

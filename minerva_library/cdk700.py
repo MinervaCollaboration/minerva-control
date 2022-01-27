@@ -27,6 +27,7 @@ from astropy.io import fits as pyfits
 
 from astropy import wcs
 import env
+from autofocus import autofocus
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
@@ -1306,6 +1307,105 @@ class CDK700:
 
 			pointsAdded += 1
 
+	def diagnoseFlexure(self, minerva, npoints=100, maxmag=4.0, fau=True,
+						exptime=1.0, filterName='V', shuffle=True, minalt=20,
+						maxalt=80.0, minaz=0.0, maxaz=360.0):
+
+		if minalt == -999:
+			minalt = self.horizon
+
+		camera = utils.getCamera(minerva, self.id)
+		datapath = self.datadir + self.night + '/'
+
+		if fau:
+			m3port = self.port['FAU']
+			platescale = camera.fau.platescale
+			derotate = False
+
+		else:
+			m3port = self.port['IMAGER']
+			platescale = camera.platescale
+			derotate = True
+
+		brightstars = utils.brightStars(maxmag=maxmag)
+		nstars = len(brightstars['dec'])
+
+		i = 0
+		
+		ndxs = []
+		good_ndxs = []
+		alts = np.array([])
+		foci = np.array([])
+
+		while i < npoints:
+
+			ndx = random.randrange(nstars)
+
+	        # apply proper motion to coordinates
+			raj2000 = float(brightstars['ra'][ndx])
+			decj2000 = float(brightstars['dec'][ndx])
+			pmra = float(brightstars['pmra'][ndx])
+			pmdec = float(brightstars['pmdec'][ndx])
+			ra, dec = self.starmotion(raj2000, decj2000, pmra, pmdec)
+
+			self.logger.info("J2000 " + str(raj2000) + ',' + str(decj2000) + " adding proper motion " + str(pmra) + "," + str(pmdec) + " is " + str(ra) + "," + str(dec))
+
+	    # check that star has not been tried before
+			if ndx in ndxs:
+				continue
+
+			ndxs.append(ndx)
+
+	    # if the star is not above the horizon, skip to the next one
+			alt, az = self.radectoaltaz(ra, dec)
+			if alt < minalt or alt > maxalt:
+				continue
+
+			target = {
+				'ra':ra,
+				'dec':dec,
+				'spectroscopy':fau,
+				'fauexptime':exptime,
+			        'name':'autofocus',
+				'endtime':datetime.datetime(2100,12,31),
+				}
+
+			focus = autofocus(minerva, self.id, target = target, exptime = exptime)
+			if focus == None:
+				self.logger.warning('Something went wrong with the autofocus')
+				continue
+
+			alts = np.append(alts, alt)
+			foci = np.append(foci, focus)
+
+			i += 1
+			good_ndxs.append(ndx)
+
+		vmags = brightstars['vmag'][good_ndxs]
+
+		filename = '{}.{}.flexure_autofocus'.format(self.night, self.id)
+		try:
+			if len(alts) == len(foci) == len(vmags):
+				data = np.array([alts, foci, vmags]).T
+				header = 'Altitude (deg)\tFocuser Position (mm)\tVmag'
+				np.savetxt(datapath + filename + '.txt', data, fmt='%s', header = header)
+			else:
+				self.logger.error('mismatch length in arrays when trying to save data')
+		except:
+			self.logger.exception('unhandled exception in data saving')
+
+		try:
+			plt.plot(alts, foci, 'bo')
+			plt.xlabel('Altitude (degrees)')
+			plt.ylabel('Focuser Position (mm)')
+			plt.savefig(datapath + filename + '.png')
+			plt.show()
+		except:
+			self.logger.exception('plotting failed :(')
+
+		return alts, foci
+
+
 	# this is designed to calibrate the rotator using a single bright star
 	def calibrateRotator(self, camera, fau=True, exptime=1):
 
@@ -1977,7 +2077,7 @@ class CDK700:
                 return self.send_to_computer("python C:/minerva-control/minerva_library/reboot.py")
 
 	def send_to_win10(self, cmd):
-		f = open(self.base_directory + '/credentials/authentication2.txt','r') # acquire password and username for the computer
+		f = open(self.base_directory + '/credentials/authentication.txt','r') # acquire password and username for the computer
 		username = f.readline().strip()
 		password = f.readline().strip()
 		f.close()

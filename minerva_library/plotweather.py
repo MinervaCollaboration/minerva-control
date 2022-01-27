@@ -17,7 +17,7 @@ from collections import OrderedDict
 import sys
 import ephem
 
-def plotweather(minerva,night=None):
+def plotweather(minerva, night=None):
 
     if night == None:
 #        minerva.night
@@ -57,7 +57,8 @@ def plotweather(minerva,night=None):
                             value = float(line.split('=')[-1].strip())
                             weatherstats[key]['values'].append((time,value))
                         except: pass
-                if re.search('DEBUG: aqawan.: Enclosure ',line):
+#                if re.search('DEBUG: aqawan.: Enclosure ',line):   # works fine when domes open and close together
+                if re.search('DEBUG: aqawan1: Enclosure ',line):    # temp fix for aqawan2 being broken now
                     try: time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S")
                     except: time = datetime.datetime.strptime(line.split()[0],"%Y-%m-%dT%H:%M:%S.%f")
                     domex.append(time)

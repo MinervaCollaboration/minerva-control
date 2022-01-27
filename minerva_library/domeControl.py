@@ -20,6 +20,7 @@ def domeControl(minerva,dome,day=False):
         # roll over the logs to a new day
         thisnight = datetime.datetime.strftime(t0,'n%Y%m%d')
         if thisnight != lastnight:
+            minerva.logger.info("Updating log path")
             minerva.update_logpaths(minerva.base_directory + '/log/' + thisnight)
             lastnight = thisnight
 
@@ -29,6 +30,9 @@ def domeControl(minerva,dome,day=False):
         # if the weather says it's not ok to open
         timeoutOverride = os.path.exists(minerva.base_directory + '/minerva_library/timeoutOverride.' + dome.id + '.txt')
 
+        minerva.logger.debug('Checking if ok to open for ' + dome.id)
+
+        # this double call to oktoopen creates two identical messages in the log when it's not ok to open
         if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen()):
             if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen(),ignoreSun=True):
                 # if it wouldn't be ok to open if we ignored the sun, reset the timeout
@@ -54,6 +58,7 @@ def domeControl(minerva,dome,day=False):
             else:
                 openthread = threading.Thread(target=dome.open_both,args=(reverse,))
             openthread.name = dome.id + '_OPEN'
+            minerva.logger.debug('Starting thread to open ' + dome.id)
             openthread.start()
             
             # only send heartbeats when we want it open
@@ -124,7 +129,6 @@ def domeControlThread(minerva,day=False):
         thread.join()        
 
 if __name__ == '__main__':
-
 
     parser = argparse.ArgumentParser(description='Observe with MINERVA')
     parser.add_argument('--red'  , dest='red'  , action='store_true', default=False, help='run with MINERVA red configuration')

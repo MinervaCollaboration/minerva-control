@@ -39,6 +39,7 @@ import newauto
 from fix_fits import fix_fits
 import rv_control
 from plotweather import plotweather
+from plot_autofocus import plot_autofocus
 import scheduler
 import plot_pointing_error
 import Plot_fits
@@ -122,10 +123,8 @@ class control:
 #			telescopes = [3,4]
 #			telescopes = [3,4]
 #			telescopes = [1,2,3,4]
-
-			telescopes = [1,2,4]
-			self.logger.error("*** T3 disabled***")
-
+			telescopes = [1,3,4]
+			self.logger.warning('*** T2 is disabled ***')
 
 #			self.logger.error("***only using T1 & T2***")
 #			telescopes = [1,2]
@@ -876,6 +875,7 @@ class control:
 			while (np.isnan(xstar) or np.isnan(ystar)) and not telescope.abort:
 
 				if nfailed > maxfail:
+					camera.fau.acquired = False
 					return False
 
 				self.logger.info("beginning image")
@@ -949,6 +949,7 @@ class control:
 
 			if telescope.abort:
 				self.logger.info("Telescope requested abort")
+				camera.fau.acquired = False
 				return True
 
 
@@ -3395,6 +3396,9 @@ class control:
 		try: fits_plot_name = Plot_fits.plot_fits(night)
 		except: fits_plot_name = ''
 
+		try: af_plot_names = plot_autofocus(night)
+		except: af_plot_names = []
+
 		# compose the observing report
 		body = "Dear humans,\n\n" + \
 		    "While you were sleeping, I observed:\n\n"
@@ -3452,6 +3456,7 @@ class control:
 		print filepath
 		print attachments
 		attachments.extend([weatherplotname,Pointing_plot_name,fits_plot_name,hvactempname])
+		attachments.extend(af_plot_names)
 		print attachments
 
 		# email observing report

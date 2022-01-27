@@ -14,7 +14,8 @@ import time
 import utils
 import numpy as np
 import math
-import newauto
+#import newauto
+from autofocus import autofocus
 from propagatingthread import PropagatingThread
 
 def rv_observing(minerva):
@@ -65,7 +66,7 @@ def rv_observing(minerva):
                         kwargs = {'target':target,'fau':fau}
                         threads = []
                         for telescope in minerva.telescopes:
-                            thread = PropagatingThread(target=newauto.autofocus,args=(minerva,telescope.id,),kwargs=kwargs)
+                            thread = PropagatingThread(target=autofocus, args=(minerva,telescope.id,), kwargs=kwargs)
                             thread.name = str(telescope.id) + ' (rv_control->rv_observing->autofocus)'
                             threads.append(thread)
                         for thread in threads(): thread.start()
@@ -249,13 +250,19 @@ def doSpectra(minerva, target, tele_list, simulate=False):
         # if the dome isn't open, wait for it to open (why is this here? -- how would we have acquired?)
         if not simulate:
             for dome in minerva.domes:
-                while not dome.isOpen():
-                    minerva.logger.info("Waiting for dome to open")
-                    if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
-                        minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
-                        stopFAU(minerva,tele_list)
-                        return
-                    time.sleep(60)
+                if not dome.isOpen():
+                    minerva.logger.info("Dome closed during sequence, aborting target " + target['name'])
+                    stopFAU(minerva,tele_list)
+                    return
+                 
+                # JDE: changed 2021-11-29 to prevent thread clashing in bad weather. hopefully.
+                #while not dome.isOpen():
+                #    minerva.logger.info("Waiting for dome to open")
+                #    if datetime.datetime.utcnow() > (target['endtime']-datetime.timedelta(seconds=target['exptime'][0])):
+                #        minerva.logger.info("Target " + target['name'] + " past its endtime (" + str(target['endtime']) + ") while waiting for the dome to open; skipping")
+                #        stopFAU(minerva,tele_list)
+                #        return
+                #    time.sleep(60)
 
         minerva.logger.info('taking spectrum')
         minerva.takeSpectrum(target)
@@ -309,7 +316,7 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0, simulate=False):
 
         # autofocus
         minerva.logger.info("beginning autofocus")
-        try: newauto.autofocus(minerva, telid, simulate=simulate, slew=False, target=target, exptime=target['fauexptime'])
+        try: autofocus(minerva, telid, simulate=simulate, slew=False, target=target, exptime=target['fauexptime'])
         except: minerva.logger.exception("autofocus failed")
         if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
             minerva.logger.error("autofocus timed out")
@@ -340,7 +347,8 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0, simulate=False):
         try: minerva.fauguide(target,telid, skiponfail=True, simulate=simulate)
         except: minerva.logger.exception("guiding failed")
         if (datetime.datetime.utcnow() - t0).total_seconds() > timeout or telescope.abort:
-            minerva.logger.error("guiding timed out")
+            if not telescope.abort:
+                minerva.logger.error("guiding timed out")
             return
 
     except:
@@ -353,8 +361,8 @@ def stopFAU(minerva,tele_list):
     for telid in tele_list:
         camera = utils.getCamera(minerva,telid)
         camera.fau.guiding = False
-    minerva.logger.info("Waiting 30 seconds for guiders to stop. Please revisit for efficiency")
-    time.sleep(30)
+    minerva.logger.info("Waiting 60 seconds for guiders to stop. Please revisit for efficiency")
+    time.sleep(60)
     
 
 def peakupflux(minerva, target, telid):
@@ -460,7 +468,10 @@ def find_fiber(imagename, camera, tolerance=10.0,control=None):
     # and a dictionary with empty lists if there are no targets
     # both will be caught (and missing key) by this try/except
     try: brightest = np.argmax(cat['FLUX_ISO'][good])
-    except: return None, None
+    except: 
+        camera.logger.warning("error finding brighest star")
+        return None, None
+
 
     try:
         xfiber = xpos[good[brightest]][0]
@@ -512,6 +523,7 @@ def find_fiber(imagename, camera, tolerance=10.0,control=None):
     except:
         camera.logger.exception("Error finding fiber position")
 
+    camera.logger.error("error finding fiber position 2")
     return None, None
 
 def rv_observing_catch(minerva):
@@ -563,6 +575,7 @@ def fiber_stability(minerva):
                     elapsedTime = (datetime.datetime.utcnow() - t0).total_seconds()
                 
             backlight(minerva)
+            # doesn't work if any telescope offline!
             for ind in np.arange(4):
                 path = '/Data/t%s/%s/%s'\
                     %(str(ind+1),minerva.night,\
