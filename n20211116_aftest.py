@@ -44,66 +44,68 @@ if __name__ == '__main__':
 	base_directory = '/home/minerva/minerva-control'
 	minerva = control.control('control.ini', base_directory)
 
-    t1 = minerva.telescopes[0]
-    datapath = t1.datadir + t1.night + '/'
+        t1 = minerva.telescopes[0]
+        datapath = t1.datadir + t1.night + '/'
 
     # try the autofocus once to see how that goes
-    target = random_bright_target(t1)
-    autofocus(minerva, 'T1', exptime=1.0, target = target)
+        target = random_bright_target(t1)
+        autofocus(minerva, 'T1', exptime=1.0, target = target)
 
-    ipdb.set_trace()
+        ipdb.set_trace()
 
     # plot it to see how it looks
-    fnames = glob.glob(datapath + '*autorecord*txt')
-    autorecord = fnames[-1]
-    af = np.loadtxt(autorecord, skiprows=3)
+        fnames = glob.glob(datapath + '*autorecord*txt')
+        ipdb.set_trace()
+        
+        af = np.loadtxt(autorecord, skiprows=3)
     
-    pos_list = af[:, 1]
-    fwhm_list = af[:, 2]
-    goodind = np.where(np.logical_not(np.isnan(fwhm_list)))[0]
+        pos_list = af[:, 1]
+        fwhm_list = af[:, 2]
+        goodind = np.where(np.logical_not(np.isnan(fwhm_list)))[0]
 
-    plt.plot(pos_list, fwhm_list, 'bo')
+        plt.plot(pos_list, fwhm_list, 'bo')
 
-    coeff = af_utils.quadfit_rlsq(pos_list, fwhm_list)
-    if not np.any(np.isnan(coeff)) and coeff[0] > 0:
-        best_focus = int(-coeff[0]/(2 * coeff[1]))
-    
-        pos = np.linspace(np.min(pos_list) - 200, np.max(pos_list) + 200)
-        quad = af_utils.quad(coeff, pos)
-        plt.plot(pos, quad, 'b--')
-        plt.vlines(best_focus, -1, 20, 'red')
-    plt.xlim(np.min(pos_list) - 200, np.max(pos_list) + 200)
-    plt.ylim(0, np.nanmax(fwhm_list) * 1.1)
-    plt.savefig(datapath + t1.night + '.T1.test.autorecord.png')
-    plt.show()
+        coeff = af_utils.quadfit_rlsq(pos_list, fwhm_list)
+        if not np.any(np.isnan(coeff)) and coeff[0] > 0:
+            best_focus = int(-coeff[0]/(2 * coeff[1]))
+            
+            pos = np.linspace(np.min(pos_list) - 200, np.max(pos_list) + 200)
+            quad = af_utils.quad(coeff, pos)
+            plt.plot(pos, quad, 'b--')
+            plt.vlines(best_focus, -1, 20, 'red')
+        plt.xlim(np.min(pos_list) - 200, np.max(pos_list) + 200)
+        plt.ylim(0, np.nanmax(fwhm_list) * 1.1)
+        plt.savefig(datapath + t1.night + '.T1.test.autorecord.png')
+        plt.show()
 
-    ipdb.set_trace()
+        ipdb.set_trace()
 
     # now do the bigger test for the flexure
     # and to see if the autofocus holds up robustly
-    alt_list = []
-    focus_list = []
+        alt_list = []
+        focus_list = []
 
-    c = 0
-    while c > 24:
-        target = random_bright_target(t1)
-        autofocus(minerva, 'T1', exptime=1.0, target = target)
+        c = 0
+        while c < 24:
+            target = random_bright_target(t1)
+            autofocus(minerva, 'T1', exptime=1.0, target = target)
         
-        status = t1.getStatus()
-        m3port = status.m3.port
-        focuser_status = t1.getFocuserStatus(m3port)
+            status = t1.getStatus()
+            m3port = status.m3.port
+            focuser_status = t1.getFocuserStatus(m3port)
 
-        alt = np.rad2deg(status.mount.alt_radian)
-        focus_position = focuser_status.position
-        alt_list.append(alt)
-        focus_list.append(focus_position)
-    
-    ipdb.set_trace()
+            alt = np.rad2deg(status.mount.alt_radian)
+            focus_position = focuser_status.position
+            alt_list.append(alt)
+            focus_list.append(focus_position)
+            c += 1
+        ipdb.set_trace()
 
-    data = np.array([alt_list, focus_list]).T
+        data = np.array([alt_list, focus_list]).T
 
-    np.savetxt(datapath + t1.night + '.T1.alt_vs_focus.txt', bbox_inches='tight', dpi = 72)
+        np.savetxt(datapath + t1.night + '.T1.alt_vs_focus.txt')
 
-    plt.plot(alt_list, focus_list, 'bo')
-    plt.xlabel('Altitude (Degrees)')
-    plt.ylabel('Focuser position (mm)')
+        plt.plot(alt_list, focus_list, 'bo')
+        plt.xlabel('Altitude (Degrees)')
+        plt.ylabel('Focuser position (mm)')
+        plt.savefig(datapath + 'flex.png')

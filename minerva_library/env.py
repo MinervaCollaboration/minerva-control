@@ -86,7 +86,8 @@ class site:
 
 		self.openLimits = {
 			'totalRain'           : [0.0,1000.0],
-			'wxt510Rain'          : [0.0,50.0],
+
+			'wxt510Rain'          : [0.0,999.0],
 			'barometer'           : [0,2000],
 			'windGustSpeed'       : [0.0,35.0],
 	#		'windGustSpeed'       : [0.0,999.0],
@@ -97,6 +98,7 @@ class site:
 			'windDirectionDegrees': [0.0,360.0],
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude'         : [-90,15],
+#			'MearthCloud'         : [-999, 999],
 			'MearthCloud'         : [-999, openCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
 			'HATCloud'            : [-999, openCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
 			'AuroraCloud'         : [-999, openCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
@@ -106,7 +108,8 @@ class site:
 
 		self.closeLimits = {
 			'totalRain'           : [0.0,1000.0],
-			'wxt510Rain'          : [0.0,50.0],
+#			'wxt510Rain'          : [0.0,50.0],		   
+			'wxt510Rain'          : [0.0, 999.0],
 			'barometer'           : [0,2000],
 			'windGustSpeed'       : [0.0,40.0],
 	#		'windGustSpeed'       : [0.0,999.0],
@@ -117,6 +120,7 @@ class site:
 			'windDirectionDegrees': [0.0,360.0],
 			'date'                : [datetime.datetime.utcnow()-datetime.timedelta(minutes=5),datetime.datetime(2200,1,1)],
 			'sunAltitude'         : [-90,15],
+#			'MearthCloud'         : [-999, 999],
 			'MearthCloud'         : [-999, closeCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
 			'HATCloud'            : [-999, closeCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
 			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
@@ -148,7 +152,10 @@ class site:
 		# convert mjd to datetime object
 		jd = float(data[0]) + 2400000.5
 		date = utils.jd2datetime(jd)
+		now = datetime.datetime.utcnow()
 
+		if date < (now - datetime.timedelta(minutes=10)):
+			return {}
 
 		weather = {'date':date, 
 			   'outsideTemp':float(data[3]), # C

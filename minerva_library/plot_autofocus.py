@@ -9,7 +9,7 @@ def plot_autofocus(night):
     img_filenames = []
     for j in range(1, 5):
         filepath = '/Data/t' + str(j) + '/' + night + '/'
-        autorecords = glob.glob(filepath + night + 'T' + str(j) +'.autorecord.*.txt')
+        autorecords = glob.glob(filepath + night + '.T' + str(j) +'.autorecord.*.txt')
         if len(autorecords) == 0:
             continue
         img_filename = filepath + night + '.T' + str(j) +'.autorecord.png'
@@ -30,9 +30,9 @@ def plot_autofocus(night):
                 fm = f.readline()
                 fm = fm.split('#')[1].split()
 
-                old_best_focus = int(fm[0])
+                old_best_focus = int(float(fm[0]))
                 try:
-                    new_best_focus = int(fm[1])
+                    new_best_focus = int(float(fm[1]))
                 except:
                     new_best_focus = old_best_focus
                     fail = True

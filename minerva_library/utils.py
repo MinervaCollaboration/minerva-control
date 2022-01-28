@@ -81,6 +81,7 @@ def readcsv(filename):
         for key in csv.keys():
             try: csv[key] = np.asarray(csv[key],dtype=np.float32)
             except: csv[key] = np.asarray(csv[key])
+
         return csv
 
 def brightStars(filename='bsc.csv',path='/home/minerva/minerva-control/dependencies/',maxmag=6.0):
@@ -398,6 +399,7 @@ def check_alt(site, target, horizon=21.0, max_alt = 85.0, timeof=None, logger=No
     '''
     docstring
     '''
+    if logger != None: logger.info('Checking altitude')
 
     site.obs.horizon = str(horizon)
 
@@ -406,17 +408,17 @@ def check_alt(site, target, horizon=21.0, max_alt = 85.0, timeof=None, logger=No
     body._dec = ephem.degrees(str(target['dec']))
     body._epoch = timeof
 
-    exptime = target['exptime'] / 60     # minutes
+    exptime = target['exptime'][0] / 60     # minutes
     obs_wind = np.append(np.arange(0, exptime, 1), exptime)
 
     for i in range(len(obs_wind)):
-         body.compute(timeof + datetime.timedelta(minutes=obs_wind[i]))
-         alt = np.rad2deg(body.alt)
-         if alt >= max_alt:
-             if logger != None:
-                 logger.info('Target altitude exceeds 85 degrees')
-             return False
-
+        site.obs.date = timeof + datetime.timedelta(minutes=obs_wind[i])
+        body.compute(site.obs)
+        alt = np.rad2deg(body.alt)
+        if alt >= max_alt: 
+            if logger != None: logger.info('Target altitude exceeds 85 degrees')
+            return False
+        
     return True
 
 # converts a sexigesimal string to a float
@@ -647,9 +649,4 @@ def readsexcat(catname):
                 data[header[i]] = cata[i]
         except:
             pass
-<<<<<<< HEAD
-    
-=======
-
->>>>>>> b908752742d9bfe7b4f287d742de3c5284cc7163
     return data

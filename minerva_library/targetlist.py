@@ -43,13 +43,13 @@ def downloadList(bstar=False, red=False):
             writer.writerows(sheet.get_all_values())
     
 
-def rdlist(bstar=False, update=True, red=False):
+def rdlist(bstar=False, update=True, red=False, logger=None):
 
     if update:
         try:
             downloadList(bstar=bstar, red=red)
         except:
-            print "unable to download target file, using old file"
+            if logger != None: logger.error("unable to download target file, using old file")
 
     if bstar:
         csvname = 'bstar.csv'
@@ -72,9 +72,9 @@ def rdlist(bstar=False, update=True, red=False):
 
 
 # make a list of target dictionaries for each (active) target based on the target spreadsheet
-def mkdict(name=None, bstar=False, includeInactive=False,red=False):
+def mkdict(name=None, bstar=False, includeInactive=False,red=False, logger=None):
 
-    targetlist = rdlist(bstar=bstar,red=red)
+    targetlist = rdlist(bstar=bstar,red=red, logger=logger)
 
     targets = []
     for i in range(len(targetlist['name'])):

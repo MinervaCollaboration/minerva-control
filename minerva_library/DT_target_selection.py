@@ -127,17 +127,22 @@ def choose_dt_target(timeof=None, remaining_time=86400.0, logger=None):     #tak
     #read in possible targets from url into dictionary
     dt_list=rdlist()
     
-    #unpack dictionary into lists by spreadsheet column
-    toi_list = ((dt_list["TOI"]))
-    ra_list = (dt_list["RA"])
-    dec_list = (dt_list["DEC"])
-    vmag_list = (dt_list["Vmag"])
-    tc_list = (dt_list["Tc"])
-    period_list = (dt_list["P"])
-    q_list = (dt_list["q"])
-    snr_list = (dt_list["snr"])
-    sg1_list = (dt_list["SG1 Disposition"])
-    vsini_list = (dt_list["vsini"])
+    try:
+        #unpack dictionary into lists by spreadsheet column
+        toi_list = ((dt_list["TOI"]))
+        ra_list = (dt_list["RA"])
+        dec_list = (dt_list["DEC"])
+        vmag_list = (dt_list["Vmag"])
+        tc_list = (dt_list["Tc"])
+        period_list = (dt_list["P"])
+        q_list = (dt_list["q"])
+        snr_list = (dt_list["snr"])
+        sg1_list = (dt_list["SG1 Disposition"])
+        vsini_list = (dt_list["vsini"])
+    except:
+        top_candidate='NONE'
+        DT_target={}
+        return DT_target
 
     #rename targets from 'xxx.x' to 'TOI xxx.x'
     for i in range(len(toi_list)):

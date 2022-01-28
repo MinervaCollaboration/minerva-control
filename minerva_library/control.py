@@ -97,7 +97,7 @@ class control:
 			self.pdus.append(pdu.pdu('apc_mred_cal.ini',self.base_directory))
 #			self.pdus.append(pdu.pdu('apc_mredrack.ini',self.base_directory))
 		        #S make the scheduler, which has the target list as an attribute
-			self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory,red=True)
+			self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory,red=True, logger=self.logger)
 			print 'done connecting to everything'
 		elif self.south:
 			pass
@@ -107,8 +107,8 @@ class control:
 			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
 
 
-#			self.logger.error("***Aqawan 1 disabled***")
-#			aqawans = [1]
+#			self.logger.error("***Aqawan 1 disabled due to chain issue***")
+#			aqawans = [2]
 			aqawans = [1,2]
 			for i in aqawans:
 #			for i in range(1):
@@ -119,15 +119,16 @@ class control:
 				except:
 					self.logger.exception("Failed to initialize Aqawan " +str(i))
 			# initialize the 4 telescopes
-#			self.logger.error("***T1 & T2 disabled due to FAU camera failure***")
+#			self.logger.error("***T3 & T4 disabled due to Aqawan failure***")
 #			telescopes = [3,4]
 #			telescopes = [3,4]
-#			telescopes = [1,2,3,4]
-			telescopes = [1,3,4]
-			self.logger.warning('*** T2 is disabled ***')
+			telescopes = [1, 2, 3, 4]
+#			self.logger.warning('*** T3 is disabled ***')
 
 #			self.logger.error("***only using T1 & T2***")
 #			telescopes = [1,2]
+#			self.logger.error("***only using T3 & T4***")
+#			telescopes = [3,4]
 			for i in telescopes:
 				try:
 					self.cameras.append(imager.imager('imager_t' + str(i) + '.ini',self.base_directory))
@@ -140,7 +141,7 @@ class control:
 			self.pdus.append(pdu.pdu('apc_bench.ini',self.base_directory))
 
 		        #S make the scheduler, which has the target list as an attribute
-			self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory)
+			self.scheduler = scheduler.scheduler('scheduler.ini',self.base_directory,logger=self.logger)
 
 	def load_config(self):
 
@@ -271,7 +272,7 @@ class control:
 				tele_list.append(telescope.id)
 
 		threads = []
-        for telid in tele_list:
+		for telid in tele_list:
 			telescope = utils.getTelescope(self,telid)
 			thread = PropagatingThread(target = telescope.mountGotoAltAz,args=(alt,az))
 			thread.name = telid + ' (control->telescope_mountGotoAltAz->mountGotoAltAz)'
@@ -3292,6 +3293,10 @@ class control:
 
 		# these messages contain variables; trim them down so they can be consolidated
 		toospecific = [('takeImage timed out', ''),
+			       ('aqawan1_OPEN: Failed to open shutter 1: Success=FALSE, Enclosure not in AUTO',''),			       
+			       ('aqawan2_OPEN: Failed to open shutter 1: Success=FALSE, Enclosure not in AUTO',''),			       
+			       ('aqawan1_OPEN: Failed to open shutter 2: Success=FALSE, Enclosure not in AUTO',''),			       
+			       ('aqawan2_OPEN: Failed to open shutter 2: Success=FALSE, Enclosure not in AUTO',''),			       
 			       ('Autofocus failed, using best measured focus', ''),
 			       ('The camera was unable to reach its setpoint','in the elapsed time'),
 			       ('No hfr in','cat'),

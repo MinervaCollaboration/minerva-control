@@ -29,16 +29,24 @@ def check_quadfit(telescope, c):
         return True
     return False
 
-def do_quadfit(telescope, pos, fwhm):
+def do_quadfit(telescope, pos, fwhm, logger=None):
 
+    if logger != None: logger.info("fitting focus points to a parabola with least squares method")
     coeff = quadfit_rlsq(pos, fwhm)
     
+    if logger != None: logger.info("checking fit")
     if check_quadfit(telescope, coeff):
         quad_min = int(-coeff[1]/(2*coeff[0]))
         if quad_min > np.min(pos) and quad_min < np.max(pos):
             pos_bestfoc = quad_min
             fwhm_bestfoc = quad(coeff, quad_min)
+            if logger != None: logger.info("best fit focus " + str(fwhm_bestfoc) + '" at ' + str(pos_bestfoc) + " microns is good")
+        else:
+            if logger != None: logger.info("quad_min out of range, returning NaNs")
+            pos_bestfoc = np.nan
+            fwhm_bestfoc = np.nan
     else:
+        if logger != None: logger.info("fit bad, returning NaNs")
         pos_bestfoc = np.nan
         fwhm_bestfoc = np.nan
 

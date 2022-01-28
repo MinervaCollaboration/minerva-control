@@ -1,5 +1,6 @@
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import sys
 sys.dont_write_bytecode = True
 from minerva_library import control
@@ -9,27 +10,32 @@ import ipdb, datetime, time, socket
 import threading
 import math
 import numpy as np
+import random
 from minerva_library import rv_control
 from minerva_library import newauto
 from minerva_library import utils
 from minerva_library import mail
+from minerva_library import env
+from minerva_library import measure_flexure as flex
+from minerva_library.autofocus import autofocus
 from minerva_library.propagatingthread import PropagatingThread
 from minerva_library.plotweather import plotweather
 from minerva_library.plot_autofocus import plot_autofocus
+from minerva_library import DT_target_selection
 import glob
 import subprocess
 import os
 
 def cleanUpNight(minerva, night=None):
 
-	for telescope in minerva.telescopes:
-		minerva.endNight(telescope, night=night)
+	for i in range(2):
+		minerva.endNight(minerva.telescopes[i], night=night)
 
 def redoSextract(night, sexfile):
 	
 	for i in range(1, 2):
 		datapath = '/Data/t' + str(i) + '/' + night + '/'
-                os.chdir(datapath)
+		os.chdir(datapath)
 		imagefiles = glob.glob('*autofocus*.fits')
 
 		for imagefile in imagefiles:
@@ -44,17 +50,110 @@ if __name__ == '__main__':
 #	redoSextract('n20210601', sexfile='autofocus.20210512.sex')
 #	data = utils.readsexcat('/Data/t1/n20210609/n20210609.T4.FAU.backlight.0002.cat')
 #	plot_autofocus('n20210611')
-#	ipdb.set_trace()
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
-#	minerva.telescopes[3].calibrateRotator(minerva.cameras[3], exptime=0.5)
-#	minerva.telescopes[3].makePointingModel(minerva, npoints=6)
+
+	ipdb.set_trace()
+
+
+	cleanUpNight(minerva)
+
+#	minerva.homeAll()
+
+
+
+	af_plotnames = plot_autofocus('n20211203')
+
+	ipdb.set_trace()
+
+	t1 = minerva.telescopes[0] 
+
+	brightstars = utils.brightStars()
+	nstars = len(brightstars['dec'])
+
+	foci = np.zeros(25)
+	alts = np.zeros(25)
+
+	for i in range(25):
+		alt = -999
+
+		while alt < 20:
+
+			ndx = random.randrange(nstars)
+
+			raj2000 = float(brightstars['ra'][ndx])
+			decj2000 = float(brightstars['dec'][ndx])
+			pmra = float(brightstars['pmra'][ndx])
+			pmdec = float(brightstars['pmdec'][ndx])
+			ra, dec = t1.starmotion(raj2000, decj2000, pmra, pmdec)
+
+			alt, az = t1.radectoaltaz(ra, dec)
+			target = {
+				'ra': ra,
+				'dec': dec,
+				'spectroscopy': True,
+				'endtime': datetime.datetime(2100, 1, 1)
+				}
+
+		autofocus(minerva, 'T1', exptime=1.0, target=target)
+		
+		status = t1.getStatus()
+		m3port = status.m3.port
+		focus = t1.focus[m3port]
+
+		foci[i] = focus
+		alts[i] = alt
+	
+		ipdb.set_trace()
+
+	plt.plot(alt, foci, 'bo')
+	plt.xlabel('Alt (degrees)')
+	plt.ylabel('Focuser position (mm)')
+	plt.savefig(t1.datadir + minerva.site.night + '/flexure_test.png')
+
+
+#	autofocus(minerva, 'T1', exptime=1.0, target=target, test=True)
+
+
+	ipdb.set_trace()
+
+#	minerva.homeAll()
+#	ipdb.set_trace()
+	minerva.telescopes[3].diagnoseFlexure(minerva, npoints=10, exptime=1)
+
+	ipdb.set_trace()
+
+	cleanUpNight(minerva,night='n20210920')
+	
+	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 0.01,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
+	minerva.takeFauImage(target,minerva.telescopes[1].id)
+
+
+	ipdb.set_trace()
+	
+	timeof = datetime.datetime(2021,9,13,8,1,30)
+	remaining_time = 10000
+	DT_Target = DT_target_selection.choose_dt_target(timeof = timeof, remaining_time=remaining_time, logger=minerva.logger)
+	ipdb.set_trace()
+
+
+#	telescope = utils.getTelescope(minerva,'T2')
+#	flex.diagnose_flexure(minerva, telescope)
+#	ipdb.set_trace()
+
+
+
+	#autofocus(minerva, 'T1')
+	ipdb.set_trace()
+
+	rv_control.backlight(minerva)
+
+
 #	x,y = rv_control.find_fiber('/Data/t1/n20210609/n20210609.T1.FAU.backlight.0002.fits', minerva.cameras[0])
 #	print (x,y)
 #	minerva.homeAll()
-	cleanUpNight(minerva, night = 'n20210628')
 
 	ipdb.set_trace()
 
@@ -75,11 +174,10 @@ if __name__ == '__main__':
 
 #	t0 = datetime.datetime.utcnow()
 #	parangle = minerva.telescopes[0].parangle(useCurrent=True,status=status)
-#	print (datetime.datetime.utcnow() - t0).total_seconds()
+#	print((datetime.datetime.utcnow() - t0).total_seconds())
 
 
 
-	rv_control.backlight(minerva)
 
 
 
@@ -88,11 +186,11 @@ if __name__ == '__main__':
 		telid = telescope.id
 #		telescope = utils.getTelescope(minerva,telescope.id)
 		camera = utils.getCamera(minerva,telid)
-		print '***' + camera.guider_file_name + '***'
+		print('***' + camera.guider_file_name + '***')
 #		ipdb.set_trace()
 		xfiber, yfiber = rv_control.find_fiber(telescope.datadir + minerva.night + '/' + camera.guider_file_name, camera, control=minerva)
 #		ipdb.set_trace()
-		print xfiber, ' ', yfiber
+		print(xfiber, ' ', yfiber)
 
 
 #	minerva.cameras[1].expose(guider=True)
@@ -111,9 +209,9 @@ if __name__ == '__main__':
 	t0 = datetime.datetime.utcnow()
 	minerva.takeFauImage(target,minerva.telescopes[1].id)
 	time.sleep(5)
-	print minerva.cameras[1].getGuideStar()
+	print(minerva.cameras[1].getGuideStar())
 
-	print (datetime.datetime.utcnow() - t0).total_seconds()
+	print((datetime.datetime.utcnow() - t0).total_seconds())
 	
 
 
@@ -135,9 +233,9 @@ if __name__ == '__main__':
 	minerva.fauguide(target, 'T2')
 	ipdb.set_trace()
 
-	print minerva.cameras[0].getGuideStar()
+	print(minerva.cameras[0].getGuideStar())
 	minerva.takeFauImage(target,minerva.telescopes[0].id)
-	print minerva.cameras[0].getGuideStar()
+	print(minerva.cameras[0].getGuideStar())
 	ipdb.set_trace()
 
 
@@ -150,11 +248,11 @@ if __name__ == '__main__':
 
 	cmd = './minerva_library/runidl.sh /Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.fits'
 	process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-	print cmd
+	print(cmd)
 	process.wait()
 	attachments = glob.glob('/Data/kiwispec/' + minerva.night + '/' + minerva.night + '.H*.????.png')
 
-	print attachments
+	print(attachments)
 	ipdb.set_trace()
 
 	hvactempname = ''
@@ -203,7 +301,7 @@ if __name__ == '__main__':
 	
 	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0}')
 	utils.truncate_observable_window(minerva.site,target,timeof=datetime.datetime(2018,9,25,2,9,55),logger=minerva.logger)
-	print target['starttime'], target['endtime']
+	print(target['starttime'], target['endtime'])
 
 	ipdb.set_trace()
 	
@@ -214,14 +312,14 @@ if __name__ == '__main__':
 		next(targetfile) # skip the calibration headers                                                                                                                                        
 		for line in targetfile:
 			target = utils.parseTarget(line, logger=minerva.logger)
-			if target <> -1:
+			if target != -1:
 
 
 				ipdb.set_trace()
 
 				# truncate the start and end times so it's observable                                                                                                                  
 				utils.truncate_observable_window(minerva.site,target, timeof=datetime.datetime(2018,9,23,2,15))
-				print target['starttime'], target['endtime']
+				print(target['starttime'], target['endtime'])
 
 				if target['starttime'] < target['endtime'] and datetime.datetime.utcnow() < minerva.site.NautTwilBegin():
 					pass
@@ -434,9 +532,9 @@ if __name__ == '__main__':
 	sep = math.acos( math.sin(telalt*math.pi/180.0)*math.sin(alt*math.pi/180.0)+math.cos(telalt*math.pi/180.0)*math.cos(alt*math.pi/180.0)\
 				 *math.cos((telaz-az)*math.pi/180.0) )*(180.0/math.pi)*3600.0
 
-	print telalt, alt
-	print telaz, az
-	print sep
+	print(str(telalt) + ' ' + str(alt))
+	print(str(telaz) + ' ' + str(az))
+	print(sep)
 
 	ipdb.set_trace()
 
@@ -461,8 +559,8 @@ if __name__ == '__main__':
 		"name" : "HD19373", 
 		"ra" : 3.15111666667, 
 		"dec" : 49.6132777778, 
-		"starttime" : datetime.datetime(2015,01,01,0,0,0), 
-		"endtime" : datetime.datetime(2018,01,01,0,0,0), 
+		"starttime" : datetime.datetime(2015,1,1,0,0,0), 
+		"endtime" : datetime.datetime(2018,1,1,0,0,0), 
 		"spectroscopy": True, 
 		"filter": ["rp"], 
 		"num": [1], 
@@ -486,8 +584,8 @@ if __name__ == '__main__':
 		"name" : "HD125455", 
 		"ra" : 20.5,#14.3263513,
 		"dec" : -5.15119,
-		"starttime" : datetime.datetime(2015,01,01,0,0,0), 
-		"endtime" : datetime.datetime(2018,01,01,0,0,0), 
+		"starttime" : datetime.datetime(2015,1,1,0,0,0), 
+		"endtime" : datetime.datetime(2018,1,1,0,0,0), 
 		"spectroscopy": True, 
 		"filter": ["rp"], 
 		"num": [1], 
@@ -564,15 +662,15 @@ if __name__ == '__main__':
 
 #	minerva.endNight(num=2,email=True)
 	ipdb.set_trace()
-	print minerva.telescopes[0].getStatus()
+	print(minerva.telescopes[0].getStatus())
 	minerva.telescope_initialize(1,tracking=True)
 	minerva.telescope_mountGotoAltAz(25,0,tele_list=1)
 	status = minerva.telescopes[0].getStatus()
 	while minerva.telescopes[0].getStatus().rotator.goto_complete == 'False':
-		print minerva.telescopes[0].getStatus().rotator.position
+		print(minerva.telescopes[0].getStatus().rotator.position)
 		time.sleep(.5)
 	ipdb.set_trace()
-        time.sleep(5)
+	time.sleep(5)
         
 #        minerva.spectrograph.get_vacuum_pressure()
 #        ipdb.set_trace()
@@ -586,9 +684,9 @@ if __name__ == '__main__':
         #ipdb.set_trace()
 	minerva.telescope_initialize(tele_list = ['T3','T4'])
 	
-        minerva.takeSpectrum(60.0,'test',expmeter=1000000.0)
+	minerva.takeSpectrum(60.0,'test',expmeter=1000000.0)
 
-        ipdb.set_trace()
+	ipdb.set_trace()
 	tel = 4
 	
 	minerva.telescopes[tel-1].home()

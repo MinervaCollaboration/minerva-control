@@ -178,15 +178,10 @@ def new_get_hfr(catfile,fau=False,telescope=None,min_stars=10,ellip_lim=0.66):
     return hfr_med, hfr_std, numstars
 
 def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
-<<<<<<< HEAD
-    
     #S if given a list of stadard deviations, we need to do the inverse of 
     #S that for the weight in np.polyfit per the documentation it minimizes 
-=======
-
     #S if given a list of stadard deviations, we need to do the inverse of
     #S that for the wieght in np.polyfit per the documentation it minimizes
->>>>>>> b908752742d9bfe7b4f287d742de3c5284cc7163
     #S sum(w**2(y-y_mod)**2), where w is the weight provided.
     if len(np.where(weight_list==0.)[0])>0:
         weight_list = None
@@ -231,9 +226,8 @@ def fitquadfindmin(poslist, fwhmlist, weight_list=None,logger=None):
         oldcoeffs = coeffs.copy()
         #S get the new
        # if weight_list != None:
-        coeffs = np.polyfit(poslist[inds],fwhmnp[inds],2,w=weight_list[inds])
-       # else:
-       #   coeffs = np.polyfit(poslist[inds],fwhmnp[inds],2)
+       # coeffs = np.polyfit(poslist[inds],fwhmnp[inds],2,w=weight_list[inds])
+        coeffs = np.polyfit(poslist[inds],fwhmnp[inds],2)
         #S evaluate quad with new coeffs
         quad = coeffs[0]*poslist**2 + coeffs[1]*poslist + coeffs[2]
         #S find the std of the residuals
@@ -293,6 +287,7 @@ def autofocus_step(control,telescope,newfocus,af_target, simulate=False):
     if af_target['spectroscopy']:
         telescope.logger.info("taking FAU image")
         imagename = control.takeFauImage(af_target,telescope.id)
+        telescope.logger.info("done taking FAU image")
     else:
         telescope.logger.info("taking image")
         imagename = control.takeImage(af_target,telescope.id)

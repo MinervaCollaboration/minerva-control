@@ -315,10 +315,13 @@ def omniObserve(minerva, states):
 
             if observe_DT and remaining_time <= 0.0:
                 # observe our DT target!
+                minerva.logger.info('observing DT target')
                 RV_target = DT_Target
             else:
                 # grab a regular RV target
+                minerva.logger.info('getting RV target')
                 RV_target = minerva.scheduler.choose_target(remaining_time=remaining_time,logger=minerva.logger, timeof=datetime.datetime.utcnow())
+                minerva.logger.info('done getting RV target')
 
             if minerva.spectrograph == None:
                 minerva.logger.error("***The spectrograph is disabled!***")
