@@ -27,7 +27,10 @@ from astropy.io import fits as pyfits
 
 from astropy import wcs
 import env
-from autofocus import autofocus
+
+# this doesn't work on windows (scipy version hell), but we don't need it
+try: from autofocus import autofocus
+except: pass
 
 from configobj import ConfigObj
 #import pwihelpers as pwi
