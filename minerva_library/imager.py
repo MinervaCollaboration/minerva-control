@@ -663,6 +663,10 @@ class imager:
 		return ret_val
 
 	def send_to_win10(self,cmd):
+		if sys.platform == 'win32':
+			os.system(cmd)
+			return True
+
 		f = open(self.base_directory + '/credentials/authentication.txt','r') # acquire password and username for the computer                      
                 username = f.readline().strip()
                 password = f.readline().strip()
