@@ -664,6 +664,7 @@ class imager:
 
 	def send_to_win10(self,cmd):
 		if sys.platform == 'win32':
+			self.logger.info('sending command locally. cmd=' + cmd)
 			os.system(cmd)
 			return True
 
