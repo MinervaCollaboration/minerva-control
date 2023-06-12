@@ -28,8 +28,8 @@ import os
 
 def cleanUpNight(minerva, night=None):
 
-	for i in range(2):
-		minerva.endNight(minerva.telescopes[i], night=night)
+	for tel in minerva.telescopes:
+		minerva.endNight(tel, night=night)
 
 def redoSextract(night, sexfile):
 	
@@ -51,68 +51,144 @@ if __name__ == '__main__':
 #	data = utils.readsexcat('/Data/t1/n20210609/n20210609.T4.FAU.backlight.0002.cat')
 #	plot_autofocus('n20210611')
 
+
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
 	minerva = control.control('control.ini',base_directory)
 
+#	minerva.cameras[1].expose(guider=True)
+
+#	cleanUpNight(minerva,night='n20230531')
+
+
+#	minerva.specCalib(checkiftime=False)
+#	sys.exit()
+#	rv_control.backlight(minerva)
+
+
+
+
+	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 0.01,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
+
+
+	minerva.takeFauImage(target,'T2')
 	ipdb.set_trace()
 
 
-	cleanUpNight(minerva)
+#	minerva.scheduler.record_observation(target)
+#	ipdb.set_trace()
+
+	threads = []
+	for i in range(1):
+		kwargs = {'tele_list':['T1','T2','T3','T4']}
+		thread = PropagatingThread(target=minerva.takeSpectrum, args=(target,), kwargs=kwargs)
+		thread.name = str(i)
+		threads.append(thread)
+	for thread in threads: thread.start()
+	for thread in threads: thread.join()
+	ipdb.set_trace()
+
+	cleanUpNight(minerva,night='n20221026')
+
+	print(minerva.site.getSkyLimit())
+
+#	cleanUpNight(minerva)
+#	cleanUpNight(minerva,night='n20220519')
+#	cleanUpNight(minerva,night='n20220520')
+#	cleanUpNight(minerva,night='n20220521')
+#	cleanUpNight(minerva,night='n20220523')
+#	cleanUpNight(minerva,night='n20220524')
+#	cleanUpNight(minerva,night='n20220525')
+#	cleanUpNight(minerva,night='n20220528')
+#	cleanUpNight(minerva,night='n20220529')
+
+	ipdb.set_trace()
+
+
+#	ipdb.set_trace()
+
+
+	threads = []
+	for telescope in minerva.telescopes:
+		kwargs = {'maxalt':85.0,'minalt':30.0,'npoints':100}
+		thread = PropagatingThread(target=telescope.focusVsAlt, args=(minerva,), kwargs=kwargs)
+		thread.name = str(telescope.id) + ' (test->focusVsAlt)'
+		threads.append(thread)
+	for thread in threads: thread.start()
+	for thread in threads: thread.join()
+
+	# run mainNew.py
+	DEVNULL = open(os.devnull, 'w')
+	subprocess.Popen(['python', 'mainNew.py'], stdin=DEVNULL, stdout = open('nohup.out', 'w'), stderr=subprocess.STDOUT)
+	ipdb.set_trace()
+
+	ipdb.set_trace()
+
+
 
 #	minerva.homeAll()
 
 
 
-	af_plotnames = plot_autofocus('n20211203')
 
-	ipdb.set_trace()
 
-	t1 = minerva.telescopes[0] 
 
-	brightstars = utils.brightStars()
-	nstars = len(brightstars['dec'])
 
-	foci = np.zeros(25)
-	alts = np.zeros(25)
+#
 
-	for i in range(25):
-		alt = -999
 
-		while alt < 20:
+#	af_plotnames = plot_autofocus('n20211203')
 
-			ndx = random.randrange(nstars)
 
-			raj2000 = float(brightstars['ra'][ndx])
-			decj2000 = float(brightstars['dec'][ndx])
-			pmra = float(brightstars['pmra'][ndx])
-			pmdec = float(brightstars['pmdec'][ndx])
-			ra, dec = t1.starmotion(raj2000, decj2000, pmra, pmdec)
 
-			alt, az = t1.radectoaltaz(ra, dec)
-			target = {
-				'ra': ra,
-				'dec': dec,
-				'spectroscopy': True,
-				'endtime': datetime.datetime(2100, 1, 1)
-				}
+	tels = minerva.telescopes 
 
-		autofocus(minerva, 'T1', exptime=1.0, target=target)
+	for tel in tels:
+
+		brightstars = utils.brightStars()
+		nstars = len(brightstars['dec'])
+
+		foci = np.zeros(25)
+		alts = np.zeros(25)
+
+		for i in range(25):
+			alt = -999
+
+			while alt < 30:
+
+				ndx = random.randrange(nstars)
+
+				raj2000 = float(brightstars['ra'][ndx])
+				decj2000 = float(brightstars['dec'][ndx])
+				pmra = float(brightstars['pmra'][ndx])
+				pmdec = float(brightstars['pmdec'][ndx])
+				ra, dec = tel.starmotion(raj2000, decj2000, pmra, pmdec)
+
+				alt, az = tel.radectoaltaz(ra, dec)
+				target = {
+					'ra': ra,
+					'dec': dec,
+					'spectroscopy': True,
+					'endtime': datetime.datetime(2100, 1, 1)
+					}
+
+			autofocus(minerva, tel.id, exptime=1.0, target=target)
 		
-		status = t1.getStatus()
-		m3port = status.m3.port
-		focus = t1.focus[m3port]
+			status = tel.getStatus()
+			m3port = status.m3.port
+			focus = tel.focus[m3port]
 
-		foci[i] = focus
-		alts[i] = alt
+			foci[i] = focus
+			alts[i] = alt
 	
+#			ipdb.set_trace()
+		data = np.transpose([alts, foci])
+		np.savetxt('alt_focus.txt', data)
+		plt.plot(alts, foci, 'bo')
+		plt.xlabel('Alt (degrees)')
+		plt.ylabel('Focuser position (mm)')
+		plt.savefig(tel.datadir + minerva.site.night + '/flexure_test.png')
 		ipdb.set_trace()
-
-	plt.plot(alt, foci, 'bo')
-	plt.xlabel('Alt (degrees)')
-	plt.ylabel('Focuser position (mm)')
-	plt.savefig(t1.datadir + minerva.site.night + '/flexure_test.png')
-
 
 #	autofocus(minerva, 'T1', exptime=1.0, target=target, test=True)
 
@@ -127,8 +203,6 @@ if __name__ == '__main__':
 
 	cleanUpNight(minerva,night='n20210920')
 	
-	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 0.01,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
-	minerva.takeFauImage(target,minerva.telescopes[1].id)
 
 
 	ipdb.set_trace()

@@ -544,7 +544,8 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
     return success
 
 # run sextractor on an image
-def sextract(datapath,imagefile,sexfile='autofocus.20210512.sex',paramfile=None,convfile=None,catfile=None):
+#def sextract(datapath,imagefile,sexfile='autofocus.20210512.sex',paramfile=None,convfile=None,catfile=None,checktype=None,checkfile=None):
+def sextract(datapath,imagefile,sexfile='autofocus.20220503.sex',paramfile=None,convfile=None,catfile=None,checktype=None,checkfile=None):
     #S Path on MinervaMAIN where all the .sex, .param, etc. files will be
     #S located
     sexpath = '/usr/share/sextractor/'
@@ -569,8 +570,11 @@ def sextract(datapath,imagefile,sexfile='autofocus.20210512.sex',paramfile=None,
     #S Datapath is the path where the image is (hopefully), but can be anywhere
     #S you want it to go.
     if catfile == None:
-        catfile = imagefile.split('.fits')[0] + '.cat'
-        sexcommand += ' -CATALOG_NAME ' + datapath+catfile
+        catfile = imagefile.split('.fits')[0] + '.cat' 
+    sexcommand += ' -CATALOG_NAME ' + datapath+catfile
+    
+    if checkfile != None:
+        sexcommand += ' -CHECKIMAGE_TYPE OBJECTS -CHECKIMAGE_NAME ' + datapath + checkfile 
 
     #S so we a have sexcommand, which has all of its components split by
     #S spaces ideally, which will allow for just a .split to put in a list
@@ -631,12 +635,15 @@ def readsexcat(catname):
 
     cata = np.loadtxt(catname)
     
+
+    flag_ind = np.where(np.array(header) == 'FLAGS')[0][0]
+    r_ind = np.where(np.array(header) == 'FLUX_RADIUS')[0][0]
     if np.ndim(cata) > 1:
-        flag_ind = np.where(np.array(header) == 'FLAGS')[0][0]
-        r_ind = np.where(np.array(header) == 'FLUX_RADIUS')[0][0]
-        cata = cata[np.where(cata[:, flag_ind] <= 4)]
-        cata = cata[np.where(cata[:, r_ind] > 1)]
-    
+        cata = cata[np.where(cata[:, flag_ind] < 4)] # Need to revisit this - CD, 20220331
+#        cata = cata[np.where(cata[:, r_ind] > 1)]
+    elif len(cata) > 0:
+        if cata[flag_ind] > 1:
+            cata = np.array([])
     cata = cata.T
 
     for i in range(len(header)):

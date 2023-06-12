@@ -10,7 +10,7 @@ import ipdb
 import glob
 import warnings
 
-def fix_fits(filename, newfilename=None, newpath=None):
+def fix_fits(filename, newfilename=None, newpath=None, logger=None):
 
     # Load in "raw" data
     t0 = datetime.datetime.utcnow()

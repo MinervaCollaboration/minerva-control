@@ -22,9 +22,9 @@ def quadfit_rlsq(pos, fwhm, loss = 'soft_l1', f_scale=0.1):
 
 def check_quadfit(telescope, c):
     if np.any(np.isnan(c)):
-        telescope.logger.error('Quadratic fit failed')
+        if telescope != None: telescope.logger.error('Quadratic fit failed')
     elif c[0] < 0:
-        telescope.logger.error('Fit upside down quadratic')
+        if telescope != None: telescope.logger.error('Fit upside down quadratic')
     else:
         return True
     return False
@@ -99,7 +99,7 @@ def new_get_hfr(catfile, fau = False, telescope = None, min_stars = 10, ellip_li
 
     # Check if the stars are too elliptical => windy or not stars; don't use for autofocus
     if len(circ_ind) == 0:
-        if telescope != None: telescope.logger.error("Stars are too elliptical, can't use " + catfile)
+        if telescope != None: telescope.logger.error("Stars are too elliptical, can't use " + catfile + "(" + str(ellip)+ ")" )
         return np.nan, np.inf, 0
 
     if fau:
@@ -195,3 +195,23 @@ def autofocus_step(control, telescope, newfocus, af_target):
 
     median, stddev, numstar = new_get_hfr(catalog, telescope=telescope, fau=af_target['spectroscopy'])
     return median, stddev, numstar, imnum
+
+def queue_up(pos_list, fwhm_list, stepsize, best_pos = None):
+    if best_pos == None:
+        best_pos = pos_list[np.nanargmin(fwhm_list)]
+    
+    left = len(np.where(pos_list < best_pos)[0])
+    right = len(np.where(pos_list > best_pos)[0])
+
+    if left < right:
+        return np.min(pos_list) - stepsize 
+    elif left > right:
+        return np.max(pos_list) + stepsize
+    else: 
+        fwhm_left = fwhm_list[np.nanargmin(pos_list)]
+        fwhm_right = fwhm_list[np.nanargmax(pos_list)]
+        if fwhm_left < fwhm_right:
+            return np.min(pos_list) - stepsize 
+        else:
+            return np.max(pos_list) + stepsize
+

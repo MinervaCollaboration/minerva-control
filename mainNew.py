@@ -339,6 +339,10 @@ def omniObserve(minerva, states):
                     RV_target['i2'] = False
                     RV_target['exptime'] = [1800]
                     RV_target['num'] = [99]
+                if RV_target['name'] == 'HIP41378':
+                    RV_target['i2'] = False
+                    RV_target['exptime'] = [1800]
+                    RV_target['num'] = [99]
 
                 minerva.logger.info('Taking spectrum of ' + RV_target['name'])
     
@@ -398,6 +402,14 @@ def observe(red=False, south=False):
 
     base_directory = '/home/minerva/minerva-control'
     minerva = control.control('control.ini',base_directory, red=red, south=south)
+
+    if os.path.exists(base_directory + '/manualDecision.txt'):
+        body = "Dear benevolent humans,\n\n" + \
+            'I have begun observations for the night, but the domes will not open without being manually approved. '+\
+            'Please check the webcam and weather. If good, delete ' + base_directory + '/manualDecision.txt \n\n'+\
+            "Love,\n" + \
+            "MINERVA"
+        mail.send("Manual Decision Required",body,level='serious',directory=minerva.directory)
 
     threads = []
 

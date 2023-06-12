@@ -14,6 +14,7 @@ import pdu
 
 from si.client import SIClient
 from si.imager import Imager
+#from si.commands import *
 import dynapower
 import ipdb
 import utils
@@ -24,11 +25,16 @@ class spectrograph:
 	def __init__(self,config, base ='', red=False, directory=None):
 
 		self.lock = threading.Lock()
+		self.si_lock = threading.Lock()
 		self.config_file = config
 		self.base_directory = base
 		self.red = red
 		self.load_config()
 		self.logger = utils.setup_logger(self.base_directory,self.night(),self.logger_name)
+		self.recovery=False
+		self.skip_safe_close=False
+		self.nfailed = 0.0
+
 		self.create_class_objects()
 		self.status_lock = threading.RLock()
 		self.file_name = ''
@@ -37,6 +43,9 @@ class spectrograph:
                        if red: self.directory = 'directory_red.txt'
                        else: self.directory = 'directory.txt'
                 else: self.directory=directory
+		
+		# configures camera
+		self.initialize_si()
 
 
 		# threading.Thread(target=self.write_status_thread).start()
@@ -92,8 +101,6 @@ class spectrograph:
 			self.benchpdu = pdu.pdu('apc_bench.ini',self.base_directory)
 			self.cell_heater_on()
 			#self.connect_si_imager()
-                
-                
 		
 	#return a socket object connected to the camera server
 	def connect_server(self):
@@ -102,41 +109,95 @@ class spectrograph:
 			s.settimeout(3)
 			s.connect((self.ip, self.port))
 			self.logger.info('successfully connected to spectrograph server')
+			self.nfailed=0
+
 		except:
-			self.logger.exception('failed to connect to spectrograph server')
+			self.logger.error('failed to connect to spectrograph server')
+
+			# this stops infinite recursion
+			if not self.recovery:
+				self.logger.error('beginning recovery')
+				self.nfailed += 1
+				if self.nfailed > 3:
+					mail.send("The kiwispec server failed to connect","Dear Benevolent humans,\n\n"+
+						  "The kiwspec server failed to connect 3 times in a row and I have no recovery procedure for this. Good luck!\n\n"+
+						  "Love,\nMINERVA",level='serious', directory=self.directory)
+					return s
+
+				self.recovery=True
+				self.skip_safe_close=True
+				self.recover()
+				self.logger.info('recovery attempt complete, trying to reconnect')
+				result = self.connect_server()
+				self.recovery=False
+				self.skip_safe_close=False
+				return result
+				
+
 			#ipdb.set_trace()
 		return s
 	#send commands to camera server running on telcom that has direct control over instrument
 	def send(self,msg,timeout):
 		self.logger.info("Beginning serial communications with the spectrograph server to send " + msg)
-		with self.lock:
+		
+		if self.recovery: 
+			self.logger.info("in recovery; overriding lock")
+			try: self.lock.release()
+			except:	self.logger.info("no lock to override")
+		
+		self.logger.info("acquiring lock")
+		self.lock.acquire()
 
-			try:
-				s = self.connect_server()
-				s.settimeout(3)
-				s.sendall(msg)
-			except:
-				self.logger.error("connection lost")
-				self.logger.exception("connection lost")
-				return 'fail'
-			try:
-				s.settimeout(timeout)
-				data = s.recv(1024)
-				s.close()
-			except:
-				self.logger.error("connection timed out")
-				self.logger.exception("connection timed out")
-				return 'fail'
-			data = repr(data).strip("'")
+#		with self.lock:
 
-			if len(data.split()) == 0:
-				self.logger.error(msg.split()[0] + " command failed")
-			elif data.split()[0] == 'success':
-				self.logger.info(msg.split()[0] + " command completed")
-			else:
-				self.logger.error(msg.split()[0] + " command failed")
-			return data
+		self.logger.info("trying to connect")
+		s = self.connect_server()
+		self.logger.info("connected")
 
+		try:
+			self.logger.info("setting timeout")
+			s.settimeout(5)
+			self.logger.info("sending msg: " + msg)
+			s.sendall(msg)
+			self.logger.info("done sending msg: " + msg)
+		except:
+			self.logger.error("connection lost")
+			self.logger.info("releasing lock")
+			try: self.lock.release()
+			except: pass
+			return 'fail'
+
+		try:
+			s.settimeout(timeout)
+			data = s.recv(1024)
+			s.close()
+		except:
+			self.logger.error("connection timed out")
+			self.logger.exception("connection timed out")
+			self.logger.info("releasing lock")
+			try: self.lock.release()
+			except: pass
+			return 'fail'
+
+
+		data = repr(data).strip("'")
+		
+		if len(data.split()) == 0:
+			self.logger.error(msg.split()[0] + " command failed")
+		elif data.split()[0] == 'success':
+			self.logger.info(msg.split()[0] + " command completed")
+		else:
+			self.logger.error(msg.split()[0] + " command failed")
+
+		self.logger.info("releasing lock")
+
+		# JDE 2023-01-24
+		# this is a hack! We need to find out why it's already released!
+		try: self.lock.release()
+		except: pass
+
+		return data
+		
 	#get camera status and write into a json file with name == (self.logger_name + '.json')
 	def write_status(self):
 		res = self.send('get_status none',5).split(None,1)
@@ -236,83 +297,16 @@ class spectrograph:
 		self.logger.info('Killing SI Imager SGL E on Kiwispec')
 		response = self.send('kill_si_image None',10)
 		return response
-		
 
-	def si_imager_connect(self):
-		host = self.ip
-		port = self.camera_port
-		
-		client = SIClient (host, port)
-                self.logger.info("Connected to SI client")
-
-                imager = Imager(client)
-                self.logger.info("Connected to SI imager")
-
-		return imager
-				      
-	def si_imager_cooler_on(self):
-		imager = self.si_imager_connect()
-		imager.coolerON()
-		self.logger.info('Turning SI Imager cooler ON')
-
-	def si_imager_cooler_off(self):
-		imager = self.si_imager_connect()
-		imager.coolerOFF()
-		self.logger.warning('Turning SI Imager cooler OFF. '+\
-					    'BE SURE YOU MEANT TO DO THIS')
-		
-	def si_imager_set_format_params(self):
-		serori = int(self.si_settings['SERIALORIGIN'])
-		serlen = int(self.si_settings['SERIALLENGTH'])
-		serbin = int(self.si_settings['SERIALBINNING'])
-		parori = int(self.si_settings['PARALLELORIGIN'])
-		parlen = int(self.si_settings['PARALLELLENGTH'])
-		parbin = int(self.si_settings['PARALLELBINNING'])
-
-		imager = self.si_imager_connect()
-		self.logger.info\
-		    ('Setting SI imager format params '+\
-			     '(%i,%i,%i,%i,%i,%i)'%\
-			     (serori,serlen,serbin,parori,parlen,parbin))
-		imager.setCCDFormatParameters\
-		    (serori,serlen,serbin,parori,parlen,parbin)
-
-	def si_imager_set_readoutmode(self):
-		imager = self.si_imager_connect()
-		imager.setReadoutMode(int(self.si_settings['READOUT_MODE']))
-		self.logger.info('Setting CCD readout mode to ' +\
-					 self.si_settings['READOUT_MODE'])
-
-
-	def si_imager_init(self):
-		self.si_imager_cooler_on()
-		self.si_imager_set_format_parameters()
-		self.si_imager_set_readout_mode()
-
+	# this will restart the SI imager. 
+	# The cooler will turn off for ~15 seconds and take several minutes to cool back down
 	def si_image_restart(self,sleeptime=1,timeout=30):
 		self.logger.info('Restarting SI Image')
 		self.kill_si_image()
 		time.sleep(sleeptime)
 		self.start_si_image()
-		#S give it some time to start up, read readout modes, etc
-		connection_refused = True
-		time.sleep(15)
-		t0 = datetime.datetime.utcnow()
-		while connection_refused and (datetime.datetime.utcnow()-t0).total_seconds()<timeout:
-			try:
-				self.si_imager_cooler_on()
-				connection_refused = False
-			except:
-				time.sleep(5)
-				pass
-		
-		if (datetime.datetime.utcnow()-t0).total_seconds()>timeout:
-			self.logger.error('Timeout exceeded in si imager recovery')
-			return False
-			# add an email
-
-		self.si_imager_set_readoutmode()
-		self.si_imager_set_format_params()
+		time.sleep(10)
+		self.initialize_si()
 		return True
 
 
@@ -343,7 +337,7 @@ class spectrograph:
 
 	def expose_with_timeout(self,exptime=1.0, exptype=1, expmeter=None, timeout=None):
 		if timeout == None:
-			timeout = exptime + 60.0
+			timeout = exptime + 120.0
 
 		kwargs = {"exptime":exptime,"exptype":exptype,"expmeter":expmeter}
 		thread = threading.Thread(target=self.expose,kwargs=kwargs)
@@ -354,7 +348,7 @@ class spectrograph:
 			mail.send("The SI imager timed out","Dear Benevolent Humans,\n\n" + 
 				  "The SI imager has timed out while exposing. This is usually "+
 				  "due to an improperly aborted exposure, in which case someone "+
-				  "needs to log into KIWISPEC-PC, click ok, and restart main.py\n\n"
+				  "needs to log into KIWISPEC-PC, click ok, and restart mainNew.py\n\n"
 				  "Love,\n,MINERVA",level='serious', directory=self.directory)
 			self.logger.error("SI imager timed out")
 			sys.exit()
@@ -363,13 +357,14 @@ class spectrograph:
 
 
 	#start exposure
-	def expose(self, exptime=1.0, exptype=1, expmeter=None):
+	def expose_bad(self, exptime=1.0, exptype=1, expmeter=None):
 		
 #		imager = self.si_imager
 #		"""
         	host = self.ip
                 port = self.camera_port
 
+		self.si_lock.acquire()
                 client = SIClient (host, port)
                 self.logger.info("Connected to SI client")
 
@@ -416,12 +411,43 @@ class spectrograph:
 			#S I don't know if this is true.. i think if we terminate it still might leave the imager.do thread alive..
 			#TODO, or did you test this?
 			if thread.isAlive():
-				self.logger.error("SI imaging thread timed out")
+				self.logger.error("SI imaging thread timed out. Releasing lock")
+				# I think this is problematic. Do we need to kill it?
+				self.si_imager.interrupt()
+				self.si_lock.release()
 				return False
                         
 		else:
                         self.si_imager.do()
 		#client.disconnect()
+		self.si_lock.release()
+                return self.save_image(self.file_name)
+
+	#start exposure
+	def expose(self, exptime=1.0, exptype=1, expmeter=None):
+		
+		self.si_lock.acquire()
+                client = SIClient (self.ip, self.camera_port)
+                self.logger.info("Connected to SI client")
+
+                imager = Imager(client)
+                self.logger.info("Connected to SI imager")
+
+		# set up exposure
+                imager.nexp = 1		        # number of exposures
+                imager.texp = exptime		# exposure time, float number
+                imager.nome = "image"		# file name to be saved
+		if exptype == 0: imager.dark = True
+		else: imager.dark = False
+                imager.frametransfer = False	        # frame transfer?
+                imager.getpars = False		# Get camera parameters and print on the screen
+
+                self.logger.info("Exposing")
+		imager.do()
+
+                self.logger.info("Image done; disconnecting")
+		client.disconnect()
+		self.si_lock.release()
                 return self.save_image(self.file_name)
  
 	#block until image is ready, then save it to file_name
@@ -453,14 +479,91 @@ class spectrograph:
                         self.logger.error("write_header_done command failed")
 			return False
 
+	def send_to_computer(self, cmd):
+
+                f = open(self.base_directory + '/credentials/authentication.txt','r')
+                username = f.readline().strip()
+                password = f.readline().strip()
+                f.close()
+
+                cmdstr = "cat </dev/null | winexe -U HOME/" + username + "%" + password + " //" + self.ip + " '" + cmd + "'"
+                os.system(cmdstr)
+#                self.logger.info('cmd=' + cmdstr + ', out=' + out + ', err=' + err)
+                self.logger.info(cmdstr)
+
+		'''
+                if 'NT_STATUS_HOST_UNREACHABLE' in out:
+                        self.logger.error('host not reachable')
+                        mail.send(self.telid + ' is unreachable',
+                                  "Dear Benevolent Humans,\n\n"+
+                                  "I cannot reach " + self.telid + ". Can you please check the power and internet connection?\n\n" +
+                                  "Love,\nMINERVA",level="serious")
+                        return False
+                elif 'NT_STATUS_LOGON_FAILURE' in out:
+                        self.logger.error('Invalid credentials')
+                        mail.send("Invalid credentials for " + self.telid,
+                                  "Dear Benevolent Humans,\n\n"+
+                                  "The credentials in " + self.base_directory +
+                                  '/credentials/authentication.txt (username=' + username +
+                                  ', password=' + password + ') appear to be outdated. Please fix it.\n\n' +
+                                  'Love,\nMINERVA',level="serious")
+                        return False
+                elif 'ERROR: The process' in err:
+                        self.logger.info('Task already dead')
+                        return True
+		'''
+                return True
+	def safe_close(self):
+		if not self.skip_safe_close:
+			if self.send('safe_close None',10) == 'success': return True
+			else: return False
+		return True
+
+	def kill_remote_task(self,taskname):
+		return self.send_to_computer("taskkill /IM " + taskname + " /f")
+	def kill_server(self):
+		self.safe_close()	
+		return self.kill_remote_task('python.exe')
+	def start_server(self):
+                ret_val = self.send_to_computer('schtasks /Run /TN "spectrograph_server"')
+                time.sleep(120)
+		self.initialize_si()
+                return ret_val
+
+	def recover_server(self):
+		self.logger.error("Spectrograph recovery called.")
+
+		self.logger.info("Acquiring SI lock in recover_server (waiting up to 32 minutes for previous exposure to complete)")
+
+		if self.si_lock.acquire(1920):
+			self.logger.info("SI lock acquired; releasing")
+		else:
+			self.logger.error("We're probably gonna get some problematic popups here")
+		self.si_lock.release()
+
+		self.logger.info("Killing server!")
+		self.kill_server()
+		time.sleep(10)
+		self.logger.error("Restarting server!")
+
+		# this is always going to be true (?)
+		return self.start_server()
+
         def recover(self):
+		self.logger.info("Restarting SI Imager")
+		self.si_recover()
+
+		if self.recover_server(): return 'success'
+
+		# never get here?	
+		self.logger.info("I don't think I'll ever get here. Is this true?")
 		self.logger.error("Called the recovery but we have no recovery procedure!")
 		if self.red: specname = 'MRED'
 		else: specname = 'Kiwispec'
 		mail.send(specname + " spectrograph software crashed","Dear Benevolent humans,\n\n"+
 			  "The " + specname + " spectrograph software has crashed and I have no recovery procedure for this. Good luck!\n\n"+
 			  "Love,\nMINERVA",level='serious', directory=self.directory)
-                sys.exit()
+		return 'fail'
 
 	def take_bias(self):
 		self.take_dark(exptime=0)
@@ -476,8 +579,11 @@ class spectrograph:
 		ndx = self.get_index()
 		if ndx == -1:
 			self.logger.error("Error getting the filename index")
-			self.recover()
-			return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter, red=red)
+			self.file_name = ''
+			return
+			# already tried to recover. unrecoverable, infinite loop
+			#self.recover()
+			#return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter)
 
 		self.file_name = self.night() + "." + objname + "." + str(ndx).zfill(4) + ".fits"
 		self.logger.info('Start taking image: ' + self.file_name)
@@ -516,9 +622,9 @@ class spectrograph:
 			else: 
 				self.logger.error('Failed to save image: ' + self.file_name)
 				self.file_name = ''
-				self.recover()
+				#self.recover()
 				# self.si_recover()
-				return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter) 
+				#return self.take_image(exptime=exptime,objname=objname,expmeter=expmeter) 
 
         ###
         # FIBER SWITCHER FUNCTIONS (MRED only)
@@ -720,8 +826,27 @@ class spectrograph:
 	
 	#S Home the iodine stage. This will return a certain ValueError(?), which
 	#S should be handled on the spectrograph server side. 
-	def i2stage_home(self):
-		response = self.send('i2stage_home None',10)
+	def i2stage_home(self, timeout=60):
+		response = 'fail'
+		t0 = datetime.datetime.now()
+		elapsedTime = (datetime.datetime.now() - t0).total_seconds()
+		while response=='fail' and elapsedTime < timeout:
+			elapsedTime = (datetime.datetime.now() - t0).total_seconds()
+			response = self.send('i2stage_home None',10)
+			if response=='fail': time.sleep(1)
+
+		if response=='fail': 
+			self.nfailed += 1
+			self.recover()
+			if self.nfailed > 3:
+				mail.send("The iodine stage failed","Dear Benevolent humans,\n\n"+
+					  "The iodine stage failed to home 3 times in a row and I have no recovery procedure for this. Good luck!\n\n"+
+					  "Love,\nMINERVA",level='serious', directory=self.directory)
+				return 'fail'
+
+			return i2stage_home()
+
+		self.nfailed = 0.0
 		return response
 
         #S Query the position of the i2stage. 
@@ -740,7 +865,13 @@ class spectrograph:
                 #TODO Can and should be gone about in a better way
                 self.lastI2MotorLocation = locationstr
                 response = self.send('i2stage_move '+locationstr,10)
+
+		# potential infinite loop
+		if response == 'fail': 
+			self.recover()
+			return self.i2stage_move(locationstr)
                 return response
+
 	# move the stage to an arbitrary position
         def i2stage_movef(self,position):
                 self.lastI2MotorLocation = 'UNKNOWN'
@@ -760,8 +891,6 @@ class spectrograph:
                 response = self.send('thar_turn_off None',10)
                 return response
 
-
-
         #S Functions for toggling the flat lamp
         def flat_turn_on(self):
                 response = self.send('flat_turn_on None',10)
@@ -773,10 +902,20 @@ class spectrograph:
 
         def backlight_on(self):
                 response = self.send('backlight_on None',10)
+		if response == 'fail':
+			self.backlight_power_cycle()
+			response = self.send('backlight_on None',10)
 		return response
 
         def backlight_off(self):
                 response = self.send('backlight_off None',10)
+		if response == 'fail':
+			self.backlight_power_cycle()
+			response = self.send('backlight_off None',10)
+		return response
+
+	def backlight_power_cycle(self):
+		response = self.send('backlight_power_cycle',60)
 		return response
 
         def led_turn_on(self):
@@ -839,21 +978,26 @@ class spectrograph:
                 self.dynapower2_status = json.loads(status_str)
 	"""
 
-        #S si_imager object
-	def connect_si_imager(self):
+	def initialize_si(self):
+		self.si_lock.acquire()
 		client = SIClient(self.ip, self.camera_port)
-                self.logger.info("Connected to SI client")
+		imager = Imager(client)
+		imager.setReadoutMode(3)
+		imager.setCCDFormatParameters(50,2090,1,0,2052,1)
+		imager.coolerON() # doesn't work (just not reflected in the GUI?)
+		client.disconnect()
+		self.si_lock.release()
 
-                imager = Imager(client)
-                self.logger.info("Connected to SI imager")
-
-		self.si_imager = imager
 if __name__ == '__main__':
 	
 	base_directory = '/home/minerva/minerva-control'
         if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
-	test_spectrograph = spectrograph('spectrograph.ini',base_directory)
-#        test_spectrograph.pump()
+	spec = spectrograph('spectrograph.ini',base_directory)
+#        spec.pump()
+
+	client = SIClient(spec.ip, spec.camera_port)
+	imager = Imager(client)
+
 	ipdb.set_trace()
 	while True:
 		print 'spectrograph_control test program'
@@ -872,19 +1016,19 @@ if __name__ == '__main__':
 		if choice == 'a':
 			pass
 		elif choice == 'b':
-			test_spectrograph.expose()
+			spec.expose()
 		elif choice == 'c':
-			test_spectrograph.set_data_path()
+			spec.set_data_path()
 		elif choice == 'd':
-			test_spectrograph.set_binning()
+			spec.set_binning()
 		elif choice == 'e':
-			test_spectrograph.set_size()
+			spec.set_size()
 		elif choice == 'f':
-			test_spectrograph.settle_temp()
+			spec.settle_temp()
 		elif choice == 'g':
-			print test_spectrograph.get_vacuum_pressure()
+			print spec.get_vacuum_pressure()
 		elif choice == 'h':
-			print test_spectrograph.get_atmospheric_pressure()
+			print spec.get_atmospheric_pressure()
 		else:
 			print 'invalid choice'
 			

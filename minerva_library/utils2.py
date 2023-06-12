@@ -1,9 +1,6 @@
 # this file contains a set of generally useful utility functions for MINERVA operations
 import re
 import subprocess, psutil, os, signal
-#try:
-#    import pyfits
-#except:
 from astropy.io import fits as pyfits
 import numpy as np
 import ephem
@@ -14,13 +11,14 @@ import unicodecsv
 import json
 import mail
 from astropy.stats import sigma_clipped_stats
+import scipy
 #from photutils import DAOStarFinder
 #from photutils import centroid_com
 from get_all_centroids import threshold_pyguide, centroid_brightest_blob, centroid_all_blobs
 
 def get_stars_cv(image, filename=None):
     if filename != None:
-        image = pyfits.getdata(filename) 
+        image = pyfits.getdata(filename)
 
     d = np.array(image, dtype='float')
     th = threshold_pyguide(d, level = 4)
@@ -31,6 +29,60 @@ def get_stars_cv(image, filename=None):
 
     imtofeed = np.array(np.round((d*th)/np.max(d*th)*255), dtype='uint8')
     return centroid_all_blobs(imtofeed)
+
+def get_stars_com(image,filename=None,logger=None):
+    if filename != None:
+        image = pyfits.getdata(filename)
+
+    xy = get_stars_cv(image,filename=filename)
+        
+    xsize = image.shape[1]
+    ysize = image.shape[0]
+    boxsize = 8
+    x1 = int(round(xsize/2.0-boxsize/2.0))
+    x2 = int(round(xsize/2.0+boxsize/2.0))
+    y1 = int(round(ysize/2.0-boxsize/2.0))
+    y2 = int(round(ysize/2.0+boxsize/2.0))
+    bkg = np.average(image[y1:y2,x1:x2])
+    if logger != None: logger.info("background is " + str(bkg))
+
+    data_sub = image - bkg
+
+    # if not above threshold, return nothing
+    rms = np.std(data_sub)
+
+    threshold = 10
+    n_high_pixels = len(data_sub[data_sub > (threshold*rms)])
+    if logger != None: 
+        logger.info("background rms is " + str(rms) + '. ' +\
+                        str(n_high_pixels) +\
+                        ' pixels above ' + str(threshold) + "*rms")
+
+    # this is just for future reference and can be deleted to save time during the guide loop
+    total_counts = np.sum(data_sub)
+    if logger != None: 
+        logger.info("total counts after subtracting background is " + str(total_counts))
+
+    minarea = 10
+    if n_high_pixels < minarea:
+        if logger != None: logger.info("too few pixels above threshold (< " + str(minarea) + "), no star detected")
+        return []
+
+    # if not above threshold, return nothing
+    threshold = 1000
+    if total_counts < threshold:
+        if logger != None: logger.info("too few total counts (< " + str(threshold) + "), no star detected")
+        return []
+
+    # compute the center of mass
+    ycom,xcom = scipy.ndimage.measurements.center_of_mass(data_sub)
+    if logger != None: logger.info("xcom=" + str(xcom) + " ycom=" + str(ycom))
+    if xcom < 0 or xcom > data_sub.shape[1] or ycom < 0 or ycom > data_sub.shape[0]:
+        if logger != None: logger.info("Center of mass outside of image. No star detected")
+        return []
+
+    return(np.transpose(np.vstack((xcom+1,ycom+1,total_counts))))
+
 
 def get_stars_brightest(image, filename=None):
 
@@ -71,13 +123,10 @@ def get_stars_sex(image, filename=None):
     ipdb.set_trace()
 
 def get_stars_dao(image, filename=None):
-
     if filename != None:
         image = pyfits.getdata(filename)
-
 #    t0 = datetime.datetime.utcnow()
-
-    stars = get_stars_brightest(image) 
+    stars = get_stars_brightest(image)
     if len(stars) < 1: return []
     xc = stars[0,0]
     yc = stars[0,1]
@@ -89,7 +138,7 @@ def get_stars_dao(image, filename=None):
     ymax = yc + boxsize
     mean, median, std = sigma_clipped_stats(image[ymin:ymax,xmin:xmax], sigma = 3.0)
 #    print "image stats in " + str((datetime.datetime.utcnow() - t0).total_seconds()) + ' seconds'
-   
+    return []
     daofind = DAOStarFinder(fwhm=4.0, threshold=10.0*std, ratio=0.3)
     sources = daofind(image[ymin:ymax,xmin:xmax] - median)
 #    sources = daofind(image - median)
@@ -98,14 +147,10 @@ def get_stars_dao(image, filename=None):
         return []
 
 #    print "extracted stars in " + str((datetime.datetime.utcnow() - t0).total_seconds()) + ' seconds'
-
 #    ipdb.set_trace()
-
     stars = np.vstack((sources['xcentroid']+xmin, sources['ycentroid']+ymin, sources['flux'])).T
     #stars = np.vstack((sources['xcentroid'], sources['ycentroid'], sources['flux'])).T
-
     #print stars, stars.T
-
     return stars
 
 # this kills main.py if running (use before runninging to ensure a clean start)
@@ -738,44 +783,6 @@ def get_stars_sex(image, filename=None):
     #print "read catalog in " + str((datetime.datetime.utcnow() - t0).total_seconds()) + ' seconds'
 
     ipdb.set_trace()
-
-def get_stars_dao(image, filename=None):
-
-    if filename != None:
-        image = pyfits.getdata(filename)
-
-#    t0 = datetime.datetime.utcnow()
-
-    stars = get_stars_brightest(image) 
-    if len(stars) < 1: return []
-    xc = stars[0,0]
-    yc = stars[0,1]
-
-    boxsize = 50
-    xmin = xc - boxsize
-    xmax = xc + boxsize
-    ymin = yc - boxsize
-    ymax = yc + boxsize
-    mean, median, std = sigma_clipped_stats(image[ymin:ymax,xmin:xmax], sigma = 3.0)
-#    print "image stats in " + str((datetime.datetime.utcnow() - t0).total_seconds()) + ' seconds'
-   
-    daofind = DAOStarFinder(fwhm=4.0, threshold=10.0*std, ratio=0.3)
-    sources = daofind(image[ymin:ymax,xmin:xmax] - median)
-#    sources = daofind(image - median)
-
-    if len(sources) == 0:
-        return []
-
-#    print "extracted stars in " + str((datetime.datetime.utcnow() - t0).total_seconds()) + ' seconds'
-
-#    ipdb.set_trace()
-
-    stars = np.vstack((sources['xcentroid']+xmin, sources['ycentroid']+ymin, sources['flux'])).T
-    #stars = np.vstack((sources['xcentroid'], sources['ycentroid'], sources['flux'])).T
-
-    #print stars, stars.T
-
-    return stars
 
 # this kills main.py if running (use before runninging to ensure a clean start)
 def killmain(red=False,south=False):

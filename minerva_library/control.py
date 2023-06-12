@@ -76,6 +76,7 @@ class control:
 		#S See below, lots of new objects created here.
 		self.create_class_objects()
 		self.logger_lock = threading.Lock()
+		self.spectrograph_lock = threading.Lock()
 
 	#create class objects needed to control Minerva system
 	def create_class_objects(self):
@@ -119,11 +120,15 @@ class control:
 				except:
 					self.logger.exception("Failed to initialize Aqawan " +str(i))
 			# initialize the 4 telescopes
-#			self.logger.error("***T3 & T4 disabled due to Aqawan failure***")
+			self.logger.error("*** T4 disabled for clearstarao testing, T2 disabled for ZWO?***")
+			telescopes = [1,2,3]
 #			telescopes = [3,4]
 #			telescopes = [3,4]
-			telescopes = [1, 2, 3, 4]
-#			self.logger.warning('*** T3 is disabled ***')
+#			telescopes = [1,2,3,4]
+#			telescopes = [1,2,4]#
+#			self.logger.error("*** T3 disabled for focuser issue***")
+#			telescopes = [4]
+#			self.logger.warning('*** T3 is disabled due to commutation error***')
 
 #			self.logger.error("***only using T1 & T2***")
 #			telescopes = [1,2]
@@ -1496,7 +1501,7 @@ class control:
                 #S corresponding location string.
 		if position <> None:
 			ndx = 0
-			self.spectrograph.i2stage_movef(position)
+			response = self.spectrograph.i2stage_movef(position)
 			location = position
 		else:
 			ndx = 1
@@ -1554,6 +1559,7 @@ class control:
                 #S some sleep time hidden here (~seconds) to give the stage some time to start up.
                 self.spectrograph.i2stage_disconnect()
                 self.spectrograph.i2stage_connect()
+
                 #S Same logic as above.
 		if position <> None:
 			self.spectrograph.i2stage_movef(position)
@@ -1567,6 +1573,25 @@ class control:
                 if self.spectrograph.i2stage_get_pos()[ndx] == location:
                         self.logger.info('I2 stage successfully moved to '+str(location)+' after third attempt.')
                         return
+		
+		# do it again! sometimes it's too far away and the home times out in the thorlabs driver
+                self.spectrograph.i2stage_disconnect()
+                self.spectrograph.i2stage_connect()
+
+                #S Same logic as above.
+		if position <> None:
+			self.spectrograph.i2stage_movef(position)
+		else:
+			self.spectrograph.i2stage_move(locationstr)
+                start = datetime.datetime.utcnow()
+                elapsed_time = 0
+                while (self.spectrograph.i2stage_get_pos()[ndx] <> location) and (elapsed_time < timeout):
+                        time.sleep(1)
+                        elapsed_time = (datetime.datetime.utcnow() - start).total_seconds()
+                if self.spectrograph.i2stage_get_pos()[ndx] == location:
+                        self.logger.info('I2 stage successfully moved to '+str(location)+' after third attempt.')
+                        return
+
                 #S Exhausted all known solutions so far, so let's send an email.
                 self.logger.error("I2 stage did not move to destination after three attempts, sending email.")
                 body = 'Dear humans,\n\n'\
@@ -1584,6 +1609,7 @@ class control:
         def spec_equipment_check(self,target):
 
 		# make sure the back light is off and out of the way
+		time.sleep(1)
 		self.spectrograph.backlight_off()
 
 		kwargs = {
@@ -1626,7 +1652,7 @@ class control:
                         #S Move the I2 stage out of the way of the slit.
 			kwargs['locationstr'] = 'out'
                         i2stage_move_thread = PropagatingThread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-			i2stage_move_thread.name = "Kiwispec (control->spec_equipmentcheck->ctrl_i2sage_move (ThAr))"
+			i2stage_move_thread.name = "Kiwispec (control->spec_equipmentcheck->ctrl_i2stage_move (ThAr))"
                         i2stage_move_thread.start()
 
                         #self.spectrograph.i2stage_move('out')
@@ -1659,7 +1685,7 @@ class control:
 			kwargs['locationstr'] = 'flat'
 			if not self.red:
 				i2stage_move_thread = PropagatingThread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-				i2stage_move_thread.name = "Kiwispec (control->spec_equipmentcheck->ctrl_i2sage_move (slitflat))"
+				i2stage_move_thread.name = "Kiwispec (control->spec_equipmentcheck->ctrl_i2tsage_move (slitflat))"
 				i2stage_move_thread.start()
 
                         # Configure the lamps
@@ -1694,7 +1720,7 @@ class control:
 				kwargs['locationstr'] = 'out'
 			if not self.red:
 				i2stage_move_thread = PropagatingThread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-				i2stage_move_thread.name = "Kiwispec (control->spec_equipmentcheck->ctrl_i2sage_move (fiberflat))"
+				i2stage_move_thread.name = "Kiwispec (control->spec_equipmentcheck->ctrl_i2stage_move (fiberflat))"
 				i2stage_move_thread.start()
 
 
@@ -1737,7 +1763,7 @@ class control:
 			if not self.red:
 				kwargs['locationstr'] = 'in'
 				i2stage_move_thread = PropagatingThread(target = self.ctrl_i2stage_move,kwargs=kwargs)
-				i2stage_move_thread.name = "Kiwispec (control->spec_equipmentcheck->ctrl_i2sage_move (bias/dark))"
+				i2stage_move_thread.name = "Kiwispec (control->spec_equipmentcheck->ctrl_i2stage_move (bias/dark))"
 				i2stage_move_thread.start()
 				#TODO Calibration shutter closed
 				self.logger.info('Waiting on i2stage_move_thread')
@@ -1811,6 +1837,9 @@ class control:
 			self.takeSpectrum(target, tele_list = [])
 
         def takeSpectrum(self,target,tele_list=0):#exptime,objname,template=False, expmeter=None,filterwheel=None):
+		
+		self.logger.info('Acquiring spectrograph lock')
+		self.spectrograph_lock.acquire()
 
                 #S This is a check to ensure that everything is where/how it's supposed to be
                 #S based on objname.
@@ -1828,6 +1857,7 @@ class control:
 		if self.red: imaging_thread.name = "MRED"
 		else: imaging_thread.name = "Kiwispec"
 		imaging_thread.name += ' (control->takeSpectrum->spectrograph->take_image)'
+		self.logger.info('Starting spectrograph imaging thread')
 		imaging_thread.start()
 
 		alltels = []
@@ -1840,19 +1870,18 @@ class control:
 
 		header = json.dumps(f)
 
-		self.spectrograph.logger.info('Waiting for spectrograph imaging thread')
+		self.logger.info('Waiting for spectrograph imaging thread')
 		# wait for imaging process to complete
 		imaging_thread.join()
 		time.sleep(1)
 
 		# write header for image
 		if self.spectrograph.write_header(header):
-			self.spectrograph.logger.info('Finished writing spectrograph header')
-
+			self.logger.info('Finished writing spectrograph header')
 
 			if not self.red:
 				# rewrite the image to make it standard
-				self.spectrograph.logger.info("Standardizing the FITS image")
+				self.logger.info("Standardizing the FITS image")
 				night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 				dataPath = '/Data/kiwispec/' + night + '/'
 
@@ -1861,17 +1890,25 @@ class control:
 				fix_fits_thread.name = 'Kiwispec (control->take_spectrum->fix_fits)'
 				fix_fits_thread.start()
 
+
 			# tell the scheduler if we successfully observed a B star
 			try:
-				if target['bstar']: self.scheduler.bstarobserved=True
-				self.scheduler.record_observation(target,telescopes=tele_list,timeof=tstart)
+				self.logger.info("Recording observation")
+				try: 
+					if target['bstar']: self.scheduler.bstarobserved=True
+				except: pass
+				self.scheduler.record_observation(target,telescopes=tele_list,timeof=tstart,logger=self.logger)
 			except:
-				pass
+				self.logger.info("Recording observation failed")
 
+			self.logger.info('Releasing spectrograph lock')
+			self.spectrograph_lock.release()
 			return self.spectrograph.file_name
                 #ipdb.set_trace()
 
-		self.spectrograph.logger.error('takeSpectrum failed: ' + self.spectrograph.file_name)
+		self.logger.error('takeSpectrum failed: ' + self.spectrograph.file_name)
+		self.logger.info('Releasing spectrograph lock')
+		self.spectrograph_lock.release()
 		return 'error'
 
 	#take one image based on parameter given, return name of the image, return 'error' if fail
@@ -2176,6 +2213,18 @@ class control:
 		except:
 			f['XFIBER4'] = ('UNKNOWN','X position of fiber on FAU')
 			f['YFIBER4'] = ('UNKNOWN','Y position of fiber on FAU')
+
+#		# JDE 2023-04-24 -- The above code is idiotic, but this for loop replacement is untested
+#		for i in range(1,4):
+#			try:
+#				c = utils.getCamera(self,'T'+str(i))
+#				f['XFIBER' + str(i)] = (c.fau.xfiber,'X position of fiber on FAU')
+#				f['YFIBER' + str(i)] = (c.fau.xfiber,'Y position of fiber on FAU')
+#			except:
+#				f['XFIBER' + str(i)] = ('UNKNOWN','X position of fiber on FAU')
+#				f['YFIBER' + str(i)] = ('UNKNOWN','Y position of fiber on FAU')
+
+
 
 		return f
 
@@ -3655,7 +3704,7 @@ class control:
 			mail.send(telescope.id + " thread died",body,level='serious',directory=self.directory)
 			sys.exit()
 
-	def specCalib(self,nbias=11,ndark=11,nflat=11,darkexptime=300.0,flatexptime=1.0,checkiftime=True):
+	def specCalib(self,nbias=11,ndark=11,nflat=0,darkexptime=300.0,flatexptime=1.0,checkiftime=True):
 		#S seconds for reading out si imager
 		ro_time = 22.0
 		#S seconds needed for biases
@@ -3676,7 +3725,8 @@ class control:
 			self.takeFiberFlat(nflat,1.5)
 			self.takeFiberArc(nflat,90.0)
 		else:
-			self.takeSlitFlat(nflat, flatexptime)
+			self.logger.warning('***Slat flat lamp is dead, skipping slit flats***')
+			#self.takeSlitFlat(nflat, flatexptime)
 
 	def takeFiberFlat(self,nflat,flatexptime, warmup=5.0):
 		self.pdus[0].flatlamp.on()

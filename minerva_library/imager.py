@@ -487,6 +487,8 @@ class imager:
 	def getGuideStar(self):
 		time = datetime.datetime.utcnow()
 		xy = utils2.get_stars_cv(None,filename=self.datadir + '/' + self.night + '/' + self.guider_file_name)
+		# JDE 2023-02-06 -- Change centroid algorithm
+#		xy = utils2.get_stars_brightest(None,filename=self.datadir + '/' + self.night + '/' + self.guider_file_name)
 		if len(xy) != 0:
 			brightestndx = np.argmax(xy[:,2])
 			x = xy[brightestndx][0]

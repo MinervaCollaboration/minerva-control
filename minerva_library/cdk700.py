@@ -1,3 +1,7 @@
+import matplotlib
+matplotlib.use('Agg',warn=False)
+import matplotlib.pyplot as plt
+
 import urllib
 import urllib2
 import datetime
@@ -20,6 +24,8 @@ import subprocess
 import ephem
 import utils
 import random
+from autofocus import autofocus
+
 #try:
 #        import pyfits
 #except:
@@ -1067,6 +1073,57 @@ class CDK700:
 
 	def addPointToModel():
 		pass
+
+
+	def focusVsAlt(self,minerva, npoints=25, minalt=30, maxalt=85):
+
+		brightstars = utils.brightStars(filename='bsc_rand.csv')
+                nstars = len(brightstars['dec'])
+
+                foci = np.zeros(npoints)
+                alts = np.zeros(npoints)
+		success = np.zeros(npoints)
+
+		ndx = 0
+                for i in range(npoints):
+                        alt = -999
+
+                        while alt < minalt or alt > maxalt:
+
+
+                                #ndx = random.randrange(nstars)
+                                raj2000 = float(brightstars['ra'][ndx])
+                                decj2000 = float(brightstars['dec'][ndx])
+                                pmra = float(brightstars['pmra'][ndx])
+                                pmdec = float(brightstars['pmdec'][ndx])
+                                ra, dec = self.starmotion(raj2000, decj2000, pmra, pmdec)
+
+                                alt, az = self.radectoaltaz(ra, dec)
+                                target = {
+                                        'ra': ra,
+                                        'dec': dec,
+                                        'spectroscopy': True,
+                                        'endtime': datetime.datetime(2100, 1, 1)
+                                        }
+				ndx += 1
+
+       			if autofocus(minerva, self.id, exptime=1.0, target=target):
+				success[i] = 1
+
+                        status = self.getStatus()
+                        m3port = status.m3.port
+                        focus = self.focus[m3port]
+
+                        foci[i] = focus
+                        alts[i] = alt
+
+                data = np.transpose([alts, foci, success])
+                np.savetxt(self.datadir + minerva.site.night + '/alt_focus.' + self.id + '.txt', data)
+                plt.plot(alts, foci, 'bo')
+                plt.xlabel('Alt (degrees)')
+                plt.ylabel('Focuser position (mm)')
+                plt.savefig(self.datadir + minerva.site.night + '/flexure_test.' + self.id + '.png')
+
 
 	'''
 	makes a pointing model

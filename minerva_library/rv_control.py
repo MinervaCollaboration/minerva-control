@@ -408,7 +408,10 @@ def backlight(minerva, tele_list=0, exptime=0.01, name='backlight'):
 
     # turn on the backlight LED and move the motor to cover the input optics
     minerva.logger.info("Turning on the backlight")
-    minerva.spectrograph.backlight_on()
+    response = minerva.spectrograph.backlight_on()
+    if response == 'fail': 
+        minerva.logger.error("Turning on the backlight failed")
+
     t0 = datetime.datetime.utcnow()
 
 #    # wait for the LED to warm up
