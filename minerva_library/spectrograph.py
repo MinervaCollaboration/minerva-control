@@ -979,6 +979,7 @@ class spectrograph:
 	"""
 
 	def initialize_si(self):
+		self.logger.info("initializing the SI imager")
 		self.si_lock.acquire()
 		client = SIClient(self.ip, self.camera_port)
 		imager = Imager(client)
@@ -987,6 +988,8 @@ class spectrograph:
 		imager.coolerON() # doesn't work (just not reflected in the GUI?)
 		client.disconnect()
 		self.si_lock.release()
+		self.logger.info("done initializing the SI imager")
+
 
 if __name__ == '__main__':
 	

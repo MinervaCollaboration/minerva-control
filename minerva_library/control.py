@@ -105,6 +105,7 @@ class control:
 		else:
 #			self.logger.error("***Spectrograph disabled!***")
 #			self.spectrograph = None
+			self.logger.info("Starting the spectrograph")
 			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
 
 

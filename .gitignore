@@ -17,7 +17,9 @@
 *.pyc
 *.stat
 *.error
+redtargets.csv
 targets.csv
+targets_*.csv
 bstar.csv
 *~
 *pywinauto*
