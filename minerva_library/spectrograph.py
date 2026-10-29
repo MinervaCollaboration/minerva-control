@@ -345,13 +345,20 @@ class spectrograph:
 		thread.start()
 		thread.join(timeout)
 		if thread.isAlive():
+			try:
+				self.logger.error("SI imager timed out; trying interrupt")
+				self.si_imager.interrupt()
+			except:
+				self.logger.error("SI imager timed out; interrupt failed")
+
 			mail.send("The SI imager timed out","Dear Benevolent Humans,\n\n" + 
 				  "The SI imager has timed out while exposing. This is usually "+
 				  "due to an improperly aborted exposure, in which case someone "+
 				  "needs to log into KIWISPEC-PC, click ok, and restart mainNew.py\n\n"
 				  "Love,\n,MINERVA",level='serious', directory=self.directory)
 			self.logger.error("SI imager timed out")
-			sys.exit()
+			# this silently kills the thread and may cause the communication problems we're trying to catch
+			sys.exit() 
 			return False
 		return True
 
@@ -439,13 +446,13 @@ class spectrograph:
                 imager.nome = "image"		# file name to be saved
 		if exptype == 0: imager.dark = True
 		else: imager.dark = False
-                imager.frametransfer = False	        # frame transfer?
+                imager.frametransfer = False	# frame transfer?
                 imager.getpars = False		# Get camera parameters and print on the screen
 
-                self.logger.info("Exposing")
+                self.logger.info("SI exposing for " + str(exptime) + " seconds")
 		imager.do()
 
-                self.logger.info("Image done; disconnecting")
+                self.logger.info("SI exposure done; disconnecting")
 		client.disconnect()
 		self.si_lock.release()
                 return self.save_image(self.file_name)

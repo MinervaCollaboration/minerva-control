@@ -4,6 +4,7 @@ import matplotlib
 matplotlib.use('Agg')
 import sys, os
 sys.dont_write_bytecode = True
+
 from minerva_library import control  
 from minerva_library import rv_control
 from minerva_library import utils
@@ -23,13 +24,13 @@ import argparse
 #  At 4:00 run this script.
 
 
-def SetupTech(minerva, telescope, camera):
+def SetupTech(minerva, telescope, camera, skip_home):
 
-    if not telescope.initialize(tracking=False, derotate=False):
+    if not telescope.initialize(tracking=False, derotate=False, load_pointing_model=True):
         telescope.recover(tracking=False, derotate=False)
 
     #minerva.logger.error("**** homing disabled****")
-    telescope.homeAndPark()
+    if not skip_home: telescope.homeAndPark()
     
     # wait for the camera to cool down
     #minerva.logger.error("**** cooling disabled****")
@@ -293,7 +294,9 @@ def omniObserve(minerva, states):
             DT_Target = {}
         else:
             remaining_time = (time_to_state_change - datetime.datetime.utcnow()).total_seconds()
+            minerva.logger.info("choosing dt target")
             DT_Target = DT_target_selection.choose_dt_target(timeof = datetime.datetime.utcnow(), remaining_time=remaining_time, logger=minerva.logger)
+            minerva.logger.info("chose dt target")
             #DT_Target = {}
 
         if len(DT_Target) > 0:
@@ -395,7 +398,7 @@ def omniObserve(minerva, states):
     return
 
 
-def observe(red=False, south=False):
+def observe(red=False, south=False, skip_home=False):
 
     try: utils.killmain(red=red, south=south)
     except: pass
@@ -423,7 +426,7 @@ def observe(red=False, south=False):
         utils.scheduleIsValid(scheduleFile, email=True, logger=minerva.logger,directory=minerva.directory)
 
         # Setup tech thread
-        thread = PropagatingThread( target = SetupTech, args=(minerva, telescope, camera) ) 
+        thread = PropagatingThread( target = SetupTech, args=(minerva, telescope, camera, skip_home) ) 
         thread.name = telescope.id
         thread.start()
         threads.append(thread)       
@@ -610,10 +613,11 @@ if __name__ == '__main__':  # do a bunch of threading stuff
     parser = argparse.ArgumentParser(description='Observe with MINERVA')
     parser.add_argument('--red'  , dest='red'  , action='store_true', default=False, help='run with MINERVA red configuration')
     parser.add_argument('--south', dest='south', action='store_true', default=False, help='run with MINERVA Australis configuration')
+    parser.add_argument('--skip_home', dest='skip_home', action='store_true', default=False, help='skip the homing at the beginning (for realtime debugging)')
     opt = parser.parse_args()
 
     try:
-        observe(red=opt.red, south=opt.south)
+        observe(red=opt.red, south=opt.south, skip_home=opt.skip_home)
     except Exception as e:
         #minerva.logger.exception(str(e.message) )
         body = "Dear benevolent humans,\n\n" + \

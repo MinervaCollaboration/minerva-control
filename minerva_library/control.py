@@ -52,7 +52,7 @@ class control:
 
 #============Initialize class===============#
 	#S The standard init
-	def __init__(self,config,base, red=False, south=False, directory=None):#telescope_list=0,dome_control=1):
+	def __init__(self,config,base, red=False, south=False, directory=None,telescope_list=None, start_spectrograph=True):
 
 		self.config_file = config
 		self.base_directory = base
@@ -74,12 +74,12 @@ class control:
                 self.gitNum = subprocess.check_output(['git', "rev-list", "HEAD", "--count"]).strip()
 
 		#S See below, lots of new objects created here.
-		self.create_class_objects()
+		self.create_class_objects(telescope_list=telescope_list, start_spectrograph=start_spectrograph)
 		self.logger_lock = threading.Lock()
 		self.spectrograph_lock = threading.Lock()
 
 	#create class objects needed to control Minerva system
-	def create_class_objects(self):
+	def create_class_objects(self, telescope_list=None, start_spectrograph=True):
                 self.domes = []
                 self.telescopes = []
                 self.cameras = []
@@ -88,11 +88,13 @@ class control:
 		self.thermalenclosureemailsent = False
 
 		if self.red:
-			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory, red=True)
+			print(self.base_directory)
+#			self.spectrograph = spectrograph.spectrograph('spectrograph_mred.ini',self.base_directory, red=True)
 			self.domes.append(astrohaven.astrohaven('astrohaven_red.ini',self.base_directory))
 			self.telescopes.append(cdk700.CDK700('telescope_mred.ini',self.base_directory, red=True))
-			self.cameras.append(imager_ascom.imager('imager_mred.ini',self.base_directory))
-			#self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
+#			self.cameras.append(imager_ascom.imager('imager_mred.ini',self.base_directory))
+#			self.cameras.append(imager.imager('imager_mred.ini',self.base_directory))
+			self.cameras.append(imager.imager('imager_mred_ir.ini',self.base_directory))
 
 #			self.cameras.append(imager.imager('imager_mredc14.ini',self.base_directory))
 			self.pdus.append(pdu.pdu('apc_mred_cal.ini',self.base_directory))
@@ -105,13 +107,17 @@ class control:
 		else:
 #			self.logger.error("***Spectrograph disabled!***")
 #			self.spectrograph = None
-			self.logger.info("Starting the spectrograph")
-			self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+			if start_spectrograph:
+				self.logger.info("Starting the spectrograph")
+				self.spectrograph = spectrograph.spectrograph('spectrograph.ini',self.base_directory)
+			else:
+				self.logger.info("Spectrograph not requested")
 
 
 #			self.logger.error("***Aqawan 1 disabled due to chain issue***")
 #			aqawans = [2]
-			aqawans = [1,2]
+			aqawans = [1, 2]
+#			aqawans = [1]
 			for i in aqawans:
 #			for i in range(1):
 				try:
@@ -121,12 +127,11 @@ class control:
 				except:
 					self.logger.exception("Failed to initialize Aqawan " +str(i))
 			# initialize the 4 telescopes
-			self.logger.error("*** T4 disabled for clearstarao testing, T2 disabled for ZWO?***")
-			telescopes = [1,2,3]
-#			telescopes = [3,4]
-#			telescopes = [3,4]
-#			telescopes = [1,2,3,4]
-#			telescopes = [1,2,4]#
+			self.logger.error("***T3 disabled for  bad collimation***")
+			if telescope_list == None: telescopes = [1,2,3,4]#,4] 
+			else: telescopes = telescope_list
+			# CD: 2026-04-01: turned T4 back on so lets hope it doesnt april fool me 
+			telescopes = [1,2,4]             
 #			self.logger.error("*** T3 disabled for focuser issue***")
 #			telescopes = [4]
 #			self.logger.warning('*** T3 is disabled due to commutation error***')
@@ -773,13 +778,13 @@ class control:
 	# search for an object in an outward spiral from current location
 	# used for acquiring targets on FAU when pointing is bad
 	# this is an inefficient hack treating the symptom, not the problem
-	def spiralSearch(self, telid, step=120, maxx=10,maxy=10, timeout=86400.0):
+	def spiralSearch(self, telid, step=180, maxx=10,maxy=10, timeout=86400.0, exptime=1.0, fauexptime=1.0):
 
 		target = {
 			"name":"spiral",
 			"objname":"spiral",
-			'exptime':5,
-			'fauexptime':5,
+			'exptime':exptime,
+			'fauexptime':fauexptime,
 			'fau':True,
 			}
 
@@ -1885,6 +1890,10 @@ class control:
 				self.logger.info("Standardizing the FITS image")
 				night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
 				dataPath = '/Data/kiwispec/' + night + '/'
+				
+#				ipdb.set_trace()
+
+#				fix_fits(os.path.join(dataPath,self.spectrograph.file_name), logger=self.logger)
 
 				#fix_fits(os.path.join(dataPath,self.spectrograph.file_name))
 				fix_fits_thread = PropagatingThread(target = fix_fits, args = (os.path.join(dataPath,self.spectrograph.file_name),))
@@ -2162,22 +2171,28 @@ class control:
 			if self.thermalenclosureemailsent:
 				mail.send("Thermal enclosure logging died","Please restart me! Note that you must be logged in as the temp users, not as minerva",directory=self.directory)
 			self.thermalenclosureemailsent = True
-
-		# iodine temperature and set point
-                f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
-                f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
+			
+		try:
+			# iodine temperature and set point
+			f['I2TEMPA'] = (self.spectrograph.cell_heater_temp(),'Iodine Cell Actual Temperature (C)')
+			f['I2TEMPS'] = (self.spectrograph.cell_heater_get_set_temp(),'Iodine Cell Set Temperature (C)')
+		except:
+			pass
 
 		# iodine stage positions
-		i2stagepos = self.spectrograph.i2stage_get_pos()
 		try:
+			i2stagepos = self.spectrograph.i2stage_get_pos()
 			f['I2POSAF'] = (i2stagepos[0],'Iodine Stage Actual Position (mm)')
 			f['I2POSAS'] = (i2stagepos[1],'Iodine Stage Actual Position [string]')
                 except:
 			f['I2POSAF'] = ('UNKNOWN','Iodine Stage Actual Position (mm)')
 			f['I2POSAS'] = ('UNKNOWN','Iodine Stage Actual Position [string]')
 
-		f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
-                f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+		try:
+			f['I2POSSS'] = (self.spectrograph.lastI2MotorLocation,'Iodine Stage Set Position [string]')
+			f['SFOCPOS'] = ('UNKNOWN','KiwiSpec Focus Stage Position')
+		except:
+			pass
 
 		# is the exposure meter and slit flat LED on?
 		try: f['EXPMETER'] = (self.pdus[4].expmeter.status(),'Exposure meter powered?')
@@ -3177,15 +3192,15 @@ class control:
 
 		# turn off shutter heaters
 		if not self.red and not self.south:
-			self.logger.info('Turning off shutter heaters')
-			try: self.pdus[0].heater.off()
-			except: self.logger.exception("Turning off heater 1 failed")
-			try: self.pdus[1].heater.off()
-			except: self.logger.exception("Turning off heater 2 failed")
-			try: self.pdus[2].heater.off()
-			except: self.logger.exception("Turning off heater 3 failed")
-			try: self.pdus[3].heater.off()
-			except: self.logger.exception("Turning off heater 4 failed")
+			#self.logger.info('Turning off shutter heaters')
+			#try: self.pdus[0].heater.off()
+			#except: self.logger.warning("Turning off heater 1 failed")
+			#try: self.pdus[1].heater.off()
+			#except: self.logger.warning("Turning off heater 2 failed")
+			#try: self.pdus[2].heater.off()
+			#except: self.logger.warning("Turning off heater 3 failed")
+			#try: self.pdus[3].heater.off()
+			#except: self.logger.warning("Turning off heater 4 failed")
 
 			for aqawan in self.domes:
 				self.logger.info('Turning off lights in aqawan ' + str(aqawan.num))

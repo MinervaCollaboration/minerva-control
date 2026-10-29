@@ -115,6 +115,7 @@ class scheduler:
     def update_list(self,bstar=False,includeInactive=False, logger=None):
         #S need to update list potentially
         try:
+            #ipdb.set_trace()
             self.target_list = targetlist.mkdict(includeInactive=includeInactive,red=self.red,logger=logger) + targetlist.mkdict(bstar=True,includeInactive=includeInactive,logger=logger)
         except:
             if logger != None: logger.error("Error updating target list")

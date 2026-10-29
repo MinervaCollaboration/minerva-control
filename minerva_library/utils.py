@@ -379,16 +379,16 @@ def truncate_observable_window(site, target, sunalt = -12.0, horizon=21.0, timeo
     # the end time should be the earliest of the requested end time, when the target sets, or when the sun rises
     endtime = min(target['endtime'], sunrise, settime)
 
-    if logger <> None:
-        logger.info('Time of calculation is ' + str(timeof))
-        logger.info('Target start time is ' + str(target['starttime']))
-        logger.info('Target rise time is ' + str(risetime))
-        logger.info('The new start time is ' + str(starttime))
-        logger.info('Sun set time is '  + str(sunset))
-        logger.info('Target end time is ' + str(target['endtime']))
-        logger.info('Target set time is '  + str(settime))
-        logger.info('Sun rise time is '  + str(sunrise))
-        logger.info('The new end time is ' + str(endtime))
+    if logger != None:
+        logger.debug('Time of calculation is ' + str(timeof))
+        logger.debug('Target start time is ' + str(target['starttime']))
+        logger.debug('Target rise time is ' + str(risetime))
+        logger.debug('The new start time is ' + str(starttime))
+        logger.debug('Sun set time is '  + str(sunset))
+        logger.debug('Target end time is ' + str(target['endtime']))
+        logger.debug('Target set time is '  + str(settime))
+        logger.debug('Sun rise time is '  + str(sunrise))
+        logger.debug('The new end time is ' + str(endtime))
 
     target['starttime'] = starttime
     target['endtime'] = endtime

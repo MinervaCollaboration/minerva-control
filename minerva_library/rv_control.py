@@ -123,13 +123,13 @@ def doSpectra(minerva, target, tele_list, simulate=False):
         kwargs = {'tracking':True, 'derotate':False, 'm3port':m3port}
         minerva.logger.info("Starting acquisition for " + telid)
         thread = PropagatingThread(target = telescope.acquireTarget,args=(target,),kwargs=kwargs)
-        thread.name = telescope.id + ' (rv_control->doSpectra->acquireTarget)'
+        thread.name = telid + ' (rv_control->doSpectra->acquireTarget)'
         thread.start()
         threads.append(thread)
 
 #        telescope.acquireTarget(target,tracking=True,derotate=False,m3port=m3port)
 
-    minerva.logger.info("got here")
+    minerva.logger.info("Acquired target")
 
     # wait for all telescopes to get to the target
     # TODO: some telescopes could get in trouble and drag down the rest; keep an eye out for that
@@ -200,7 +200,7 @@ def doSpectra(minerva, target, tele_list, simulate=False):
                 camera.fau.guiding=True
 
             # switch all ports back to the FAU asynchronously
-            minerva.m3port_switch_list('FAU',tele_list)
+            # minerva.m3port_switch_list('FAU',tele_list)
     
             # acquire the target, run autofocus, then start guiding
             minerva.logger.info("Beginning acquisition, autofocus, and guiding")
@@ -333,6 +333,7 @@ def acquireFocusGuide(minerva, target, telid, timeout=300.0, simulate=False):
                 minerva.logger.info("focus offset of " + str(camera.fau.focusOffset) + " being applied")
                 telescope.focuserMoveAndWait(telescope.focus[m3port]+camera.fau.focusOffset, m3port)
             except: minerva.logger.exception("focusing failed")
+        minerva.logger.info("autofocus done")
 
 #        # put the target on the fiber
 #        minerva.logger.info("beginning fine acquisition")

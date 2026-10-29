@@ -17,19 +17,28 @@ from minerva_library import utils
 from minerva_library import mail
 from minerva_library import env
 from minerva_library import measure_flexure as flex
+from minerva_library import cdk700
+from minerva_library import aqawan
+from minerva_library import imager
+from minerva_library import scheduler
+from minerva_library import DT_target_selection
 from minerva_library.autofocus import autofocus
 from minerva_library.propagatingthread import PropagatingThread
 from minerva_library.plotweather import plotweather
 from minerva_library.plot_autofocus import plot_autofocus
 from minerva_library import DT_target_selection
+from minerva_library import fix_fits
 import glob
 import subprocess
 import os
 
-def cleanUpNight(minerva, night=None):
-
-	for tel in minerva.telescopes:
-		minerva.endNight(tel, night=night)
+def cleanUpNight(minerva, night=None, tels=None):
+	if tels is None:
+		for tel in minerva.telescopes:
+			minerva.endNight(tel, night=night)
+	else:
+		for i in tels:
+			minerva.endNight(minerva.telescopes[i], night=night)
 
 def redoSextract(night, sexfile):
 	
@@ -54,12 +63,85 @@ if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
+
+	minerva = control.control('control.ini',base_directory) #,start_spectrograph=False)
+
+	ipdb.set_trace()
+
+	target = {'name':'test',
+		  'ra': 17.0,
+		  'dec': 31.0,
+                  'exptime':[3],
+                  'fauexptime':1,#.1,
+                  'filter':["V"],
+                  'expmeter':3000,
+                  'tracking':False,
+                  'spectroscopy':True,
+                  'i2': True,
+                  }
+
+#	target = {'name':'fiberflat_T3','ra':0,'dec':0,'i2':True,'exptime':[15]}
+
+
+	minerva.takeSpectrum(target)
+	night = 'n' + datetime.datetime.utcnow().strftime('%Y%m%d')
+	dataPath = '/Data/kiwispec/' + night + '/'
+	ipdb.set_trace()
+
+	fix_fits(os.path.join(dataPath, minerva.spectrograph.file_name))
+	ipdb.set_trace()
+
+	minerva.telescopes[2].acquireTarget(target, tracking=True, derotate=True, m3port='2')
+#	minerva.telescopes[1].acquireTarget(target, tracking=True, derotate=True, m3port='1')
+
+#	sched = scheduler.scheduler('scheduler.ini', base_directory)
+	timeof = datetime.datetime(2026, 3, 23, 0, 22, 0)
+#	sched.calculate_weights(remaining_time=86400, timeof=timeof)
+#	sched.sort_target_list(key='weight')
+	
+	dt_target = DT_target_selection.choose_dt_target(timeof=timeof)
+	print(dt_target)
+
+	ipdb.set_trace()
+
+	minerva.telescopes.append(cdk700.CDK700('telescope_4.ini', base_directory))
+	minerva.cameras.append(imager.imager('imager_t4.ini', base_directory))
+	minerva.domes.append(aqawan.aqawan('aqawan_2.ini', base_directory))
+
+	ipdb.set_trace()
+
+#	minerva.telescopes[2].calibrateRotator(minerva.cameras[2],exptime=0.05)
+
+	minerva.telescopes[2].makePointingModel(minerva, npoints=50)
+	
+
+	ipdb.set_trace()
+
+	target = {'name':'newexpmetertest',
+                  'exptime':[3],
+                  'fauexptime':1,#.1,
+                  'filter':["V"],
+                  'expmeter':3000,
+                  'tracking':False,
+                  'spectroscopy':True,
+                  'i2': True,
+                  }
+        minerva.takeSpectrum(target)
+
+#	minerva.spiralSearch('T4')
+#
+	ipdb.set_trace()
+
 	minerva = control.control('control.ini',base_directory)
+
+#	ipdb.set_trace()
 
 #	minerva.cameras[1].expose(guider=True)
 
-#	cleanUpNight(minerva,night='n20230531')
-
+#	cleanUpNight(minerva, night='n20240422')
+	target = utils.parseTarget('{"name": "barnardsstar", "ra":9.410902, "dec": 26.181897, "starttime": "2017-10-12 02:00:00", "endtime": "2024-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 0.01,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
+	minerva.cameras[2].fau.guiding = True
+	minerva.fauguide(target, 'T3')
 
 #	minerva.specCalib(checkiftime=False)
 #	sys.exit()
@@ -68,11 +150,11 @@ if __name__ == '__main__':
 
 
 
-	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 0.01,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
+#	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 0.01,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
 
 
-	minerva.takeFauImage(target,'T2')
-	ipdb.set_trace()
+#	minerva.takeFauImage(target,'T2')#
+#	ipdb.set_trace()
 
 
 #	minerva.scheduler.record_observation(target)
@@ -275,7 +357,7 @@ if __name__ == '__main__':
 
 	
 
-	target = utils.parseTarget('{"name": "barnardsstar", "ra": 17.963471675, "dec": 4.693391, "starttime": "2017-10-12 02:00:00", "endtime": "2019-10-12 04:00:00", "filter": ["ip"], "num": [100], "exptime": [10.0], "defocus": 0.0, "selfguide": true, "guide": false, "cycleFilter": false, "positionAngle": 0.0, "fauexptime": 0.01,  "i2": false, "acquisition_offset_north":10, "acquisition_offset_east":7}')
+
 #	utils.truncate_observable_window(minerva.site,target,timeof=datetime.datetime(2018,9,25,2,9,55),logger=minerva.logger)
 
 
@@ -290,8 +372,6 @@ if __name__ == '__main__':
 
 
 
-	ipdb.set_trace()
-	minerva.telescopes[0].calibrateRotator(minerva.cameras[0])
 
 	minerva.takeFauImage(target,minerva.telescopes[0].id)
 	minerva.takeFauImage(target,minerva.telescopes[1].id)

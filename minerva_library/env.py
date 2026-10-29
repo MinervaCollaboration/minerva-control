@@ -86,8 +86,8 @@ class site:
 			'minerva' : (0.74102145,0.058437186)
 #			'minerva' : (1.34948860,0.058437186)
 			}
-		openCloudLimit = -30
-		closeCloudLimit = -28
+		openCloudLimit = -40
+		closeCloudLimit = -38
 
 
 		self.openLimits = {
@@ -110,7 +110,8 @@ class site:
 			'HATCloud'            : [-999, openCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
 			#'AuroraCloud'         : [-999, openCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
 			'AuroraCloud'         : [-999, -32],
-			'MINERVACloud'        : [-999, openCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
+			'MINERVACloud'        : [-999, -24],
+			#'MINERVACloud'        : [-999, openCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
 			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
 
@@ -134,7 +135,8 @@ class site:
 			'HATCloud'            : [-999, closeCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
 #			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
 			'AuroraCloud'         : [-999, -31],
-			'MINERVACloud'        : [-999, closeCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
+			'MINERVACloud'        : [-999, -23],
+			#'MINERVACloud'        : [-999, closeCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
 			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
 
@@ -192,9 +194,6 @@ class site:
 	def getWeatherRidge(self):
 		# the URL for the machine readable weather page for the Ridge
 		url = "http://linmax.sao.arizona.edu/weather/weather.cur_cond"
-
-
-		
 
 		# read the webpage
 		self.logger.debug('Requesting URL: ' + url)
@@ -268,7 +267,7 @@ class site:
 					#S Assign as specified.
 					# if the connection is lost, it returns 0
 					weather['MearthCloud'] = float(cloudstr[2])
-					if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
+					if weather['MearthCloud'] == 0.0 or weather['MearthCloud'] == -999.9: weather['MearthCloud'] = 999
 					weather['HATCloud'] = float(cloudstr[3])
 					if weather['HATCloud'] == 0.0: weather['HATCloud'] = 999
 					weather['AuroraCloud'] = float(cloudstr[4])
@@ -281,7 +280,7 @@ class site:
 					#S Assign as specified.
 					# if the connection is lost, it returns 0
 					weather['MearthCloud'] = float(cloudstr[2])
-					if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
+					if weather['MearthCloud'] == 0.0 or weather['MearthCloud'] == -999.9: weather['MearthCloud'] = 999
 					weather['AuroraCloud'] = float(cloudstr[3])
 					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
 					weather['MINERVACloud'] = float(cloudstr[4])
@@ -293,7 +292,7 @@ class site:
 					#S Assign as specified.
 					# if the connection is lost, it returns 0
 					weather['MearthCloud'] = float(cloudstr[2])
-					if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
+					if weather['MearthCloud'] == 0.0 or weather['MearthCloud'] == -999.9: weather['MearthCloud'] = 999
 					weather['AuroraCloud'] = float(cloudstr[3])
 					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
 					weather['HATCloud'] = 999
@@ -370,7 +369,7 @@ class site:
 			return False
 
 
-	def oktoopen(self, domeid, domeopen=False, ignoreSun=False):
+	def oktoopen(self, domeid, domeopen=False, ignoreSun=False, sky_limit=None):
 
 		retval = True
 		decisionFile = self.base_directory + '/manualDecision.txt'
@@ -444,17 +443,23 @@ class site:
 #				weatherLimits['MINERVACloud'] = sky_limit
 
 			if domeopen:
-				weatherLimits['MearthCloud'] = self.closeLimits['MearthCloud']
+				if sky_limit is not None:
+					weatherLimits['MearthCloud'][1] = sky_limit
+				else:
+					weatherLimits['MearthCloud'] = self.closeLimits['MearthCloud']
 				weatherLimits['HATCloud'] = self.closeLimits['HATCloud']
 				weatherLimits['AuroraCloud'] = self.closeLimits['AuroraCloud']
 				weatherLimits['MINERVACloud'] = self.closeLimits['MINERVACloud']
 			else:
-				weatherLimits['MearthCloud'] = self.openLimits['MearthCloud']
+				if sky_limit is not None:
+					weatherLimits['MearthCloud'][1] = sky_limit - 2
+				else:
+					weatherLimits['MearthCloud'] = self.openLimits['MearthCloud']
 				weatherLimits['HATCloud'] = self.openLimits['HATCloud']
 				weatherLimits['AuroraCloud'] = self.openLimits['AuroraCloud']
 				weatherLimits['MINERVACloud'] = self.openLimits['MINERVACloud']
 
-
+		#self.logger.info('MearthCloud =' + str(self.weather['MearthCloud']) + '; Limits are ' + str(weatherLimits['MearthCloud'][0]) + ',' + str(weatherLimits['MearthCloud'][1]))
 
 		if weatherLimits['sunAltitude'][1] == 90:
 			if not ignoreSun: self.logger.info("Sun override in place!")
@@ -464,14 +469,14 @@ class site:
 			self.logger.info("open limits have been modified; this shouldn't happen!")
 
 		# MearthCloud reports 998.0 when it's raining and is much more reliable than wxt510Rain
-		#if self.weather['MearthCloud'] == 998.0:
-		#	self.lastRain += 0.001
-		#	self.rainChangeDate = datetime.datetime.utcnow()
+		if self.weather['MearthCloud'] == 998.0:
+			self.lastRain += 0.001
+			self.rainChangeDate = datetime.datetime.utcnow()
 
 		# wxt510Rain uses an impact sensor and can be triggered by wind (unreliable)
-		if self.weather['wxt510Rain'] > self.lastRain:
-			self.lastRain = self.weather['wxt510Rain']
-			self.rainChangeDate = datetime.datetime.utcnow()
+		#if self.weather['wxt510Rain'] > self.lastRain:
+		#	self.lastRain = self.weather['wxt510Rain']
+		#	self.rainChangeDate = datetime.datetime.utcnow()
 
 		# if it has rained in the last hour, it's not ok to open
 		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 1800.0:
@@ -500,23 +505,24 @@ class site:
 		#S External temperature check, want to use Mearth, then HAT if Mearth not available, and then
 		#S Aurora, and finally MINERVA. Currently, we are assuming a value of 999 means disconnected
 		#S for any of the four sensors.
-		if self.weather['MearthCloud'] <> 999:
+
+		if self.weather['MearthCloud'] != 999:
 			key = 'MearthCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False
-		elif self.weather['HATCloud'] <> 999:
+		elif self.weather['HATCloud'] != 999:
 			key = 'HATCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False
-		elif self.weather['AuroraCloud'] <> 999:
+		elif self.weather['MINERVACloud'] != 999:
+			key = 'MINERVACloud'
+			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
+				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
+				retval = False
+		elif self.weather['AuroraCloud'] != 999:
 			key = 'AuroraCloud'
-			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
-				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
-				retval = False
-		elif self.weather['MINERVACloud'] <> 999:
-			key = 'HATCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False

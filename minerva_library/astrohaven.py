@@ -81,7 +81,11 @@ class astrohaven:
             self.ser.close()
         
         def nudgeshutter(self, direction, shutter, desiredcounts=1):
-                        
+
+            if os.path.exists("astrohaven_manual_override.txt"):
+                self.logger.error("Manual override in place, ignoring requested astrohaven move")
+		return
+        
             if direction == 'open':
                 if shutter == 1: cmd = 'a'
                 elif shutter == 2: cmd = 'b'
@@ -91,53 +95,61 @@ class astrohaven:
                 elif shutter == 2: cmd = 'B'
                 else: print "shutter" + str(shutter) + "not allowed"
             else: print "direction" +str(direction) + "not defined"
-            self.ser.open()
-            currentcount = 0
-            while (currentcount < desiredcounts):
-                self.ser.write(cmd)
-                currentcount = currentcount + 1 
-                time.sleep(0.6)
-                status = ''
 
-                while self.ser.inWaiting() > 0: status = self.ser.read(1)
-                #print status, direction, shutter
-                if direction == 'open':
-                    if shutter == 1 and status == 'x': break
-                    elif shutter == 2 and status == 'y': break
-                if direction == 'close':
-                    if shutter == 1 and status == 'X': break
-                    elif shutter == 2 and status == 'Y': break
+	    with self.lock:
+                if not self.ser.isOpen():
+		    self.ser.open()
+                currentcount = 0
+                while (currentcount < desiredcounts):
+                    self.ser.write(cmd)
+		    currentcount = currentcount + 1 
+		    time.sleep(0.6)
+		    status = ''
 
-            if status == '0':
-                self.status['Shutter1'] = 'CLOSED' 
-                self.status['Shutter2'] = 'CLOSED' 
-            elif status == '1':
-                self.status['Shutter1'] = 'CLOSED' 
-                self.status['Shutter2'] = 'NOT CLOSED' 
-            elif status == '2':
-                self.status['Shutter1'] = 'NOT CLOSED' 
-                self.status['Shutter2'] = 'CLOSED' 
-            elif status == '3':
-                self.status['Shutter1'] = 'NOT CLOSED' 
-                self.status['Shutter2'] = 'NOT CLOSED' 
-            elif status == 'a':
-                self.status['Shutter1'] = 'OPENING' 
-            elif status == 'A':
-                self.status['Shutter1'] = 'CLOSING' 
-            elif status == 'b':
-                self.status['Shutter2'] = 'OPENING' 
-            elif status == 'B':
-                self.status['Shutter2'] = 'CLOSING' 
-            elif status == 'X':
-                self.status['Shutter1'] = 'CLOSED' 
-            elif status == 'x':
-                self.status['Shutter1'] = 'OPEN' 
-            elif status == 'Y':
-                self.status['Shutter2'] = 'CLOSED' 
-            elif status == 'y':
-                self.status['Shutter2'] = 'OPEN' 
+		    while self.ser.inWaiting() > 0: status = self.ser.read(1)
+                    #print status, direction, shutter
+		    if direction == 'open':
+                        if shutter == 1 and status == 'x': break
+                        elif shutter == 2 and status == 'y': break
                 
-            self.ser.close()
+		    if direction == 'close':
+                        if shutter == 1 and status == 'X': break
+                        elif shutter == 2 and status == 'Y': break
+
+		    if currentcount >= 20: 
+                        mail.send("Astrohaven hit max nudges and did not " + direction + ", manual check required",body2,level="critical")
+                        os.mknod("astrohaven_manual_override.txt")
+
+                if status == '0':
+                    self.status['Shutter1'] = 'CLOSED' 
+                    self.status['Shutter2'] = 'CLOSED' 
+                elif status == '1':
+                    self.status['Shutter1'] = 'CLOSED' 
+                    self.status['Shutter2'] = 'NOT CLOSED' 
+                elif status == '2':
+                    self.status['Shutter1'] = 'NOT CLOSED' 
+                    self.status['Shutter2'] = 'CLOSED' 
+                elif status == '3':
+                    self.status['Shutter1'] = 'NOT CLOSED' 
+                    self.status['Shutter2'] = 'NOT CLOSED' 
+                elif status == 'a':
+                    self.status['Shutter1'] = 'OPENING' 
+                elif status == 'A':
+                    self.status['Shutter1'] = 'CLOSING' 
+                elif status == 'b':
+                    self.status['Shutter2'] = 'OPENING' 
+                elif status == 'B':
+                    self.status['Shutter2'] = 'CLOSING' 
+                elif status == 'X':
+                    self.status['Shutter1'] = 'CLOSED' 
+                elif status == 'x':
+                    self.status['Shutter1'] = 'OPEN' 
+                elif status == 'Y':
+                    self.status['Shutter2'] = 'CLOSED' 
+                elif status == 'y':
+                    self.status['Shutter2'] = 'OPEN' 
+                
+                self.ser.close()
          
         def open_shutter(self,shutter, desiredcounts = 20):
             self.nudgeshutter('open',shutter,desiredcounts=desiredcounts)

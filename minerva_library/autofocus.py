@@ -38,7 +38,7 @@ def autofocus(control, telid, num_steps = 3, defocus_step = 0.3,
 
     if not simulate:
 
-        control.logger.info('Beginning autofocus')
+        control.logger.info(telid + ': Beginning autofocus')
         telescope = utils.getTelescope(control, telid)
         camera = utils.getCamera(control, telid)
         dome = utils.getDome(control, telid)

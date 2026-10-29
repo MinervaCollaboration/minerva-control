@@ -17,6 +17,7 @@
 *.pyc
 *.stat
 *.error
+*.out
 redtargets.csv
 targets.csv
 targets_*.csv

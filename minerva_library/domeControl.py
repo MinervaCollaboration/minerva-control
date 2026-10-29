@@ -7,13 +7,15 @@ import datetime, time
 import sys, os
 import utils
 import argparse
-
+import env
 
 # check weather condition; close if bad, open and send heartbeat if good; update dome status
 def domeControl(minerva,dome,day=False):
 
     minerva.logger.info("Starting domeControl")
     lastnight = ''
+    sky_limit = -38
+    lastskyupdate = datetime.datetime(2000, 1, 1)
     while True:
         t0 = datetime.datetime.utcnow()
 
@@ -23,6 +25,17 @@ def domeControl(minerva,dome,day=False):
             minerva.logger.info("Updating log path")
             minerva.update_logpaths(minerva.base_directory + '/log/' + thisnight)
             lastnight = thisnight
+        if (t0 - lastskyupdate).total_seconds() > 1800: 
+            minerva.logger.info('Updating sky limit')
+            lastskyupdate = t0
+            try:
+                old_sky_limit = sky_limit
+                sky_limit = minerva.site.getSkyLimit()
+                if sky_limit == False: 
+                    sky_limit = old_sky_limit
+                    minerva.logger.error('Error updating sky limit')
+            except:
+                minerva.logger.error('Error updating sky limit')
 
         openRequested = os.path.isfile(minerva.base_directory + '/minerva_library/' + dome.id + '.request.txt')
         day = os.path.isfile(minerva.base_directory + '/minerva_library/sunOverride.' + dome.id + '.txt')
@@ -33,8 +46,8 @@ def domeControl(minerva,dome,day=False):
         minerva.logger.debug('Checking if ok to open for ' + dome.id)
 
         # this double call to oktoopen creates two identical messages in the log when it's not ok to open
-        if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen()):
-            if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen(),ignoreSun=True):
+        if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen(), sky_limit=sky_limit):
+            if not minerva.site.oktoopen(dome.id, domeopen=dome.isOpen(),ignoreSun=True, sky_limit=sky_limit):
                 # if it wouldn't be ok to open if we ignored the sun, reset the timeout
                 minerva.logger.info('Weather not ok to open; resetting 30 minute timeout')
                 minerva.site.lastClose = datetime.datetime.utcnow()
@@ -140,5 +153,5 @@ if __name__ == '__main__':
 
     base_directory = '/home/minerva/minerva-control'
     if socket.gethostname() == 'Kiwispec-PC': base_directory = 'C:/minerva-control'
-    minerva = control.control('control.ini',base_directory,red=opt.red,south=opt.south)
+    minerva = control.control('control.ini',base_directory,red=opt.red,south=opt.south, start_spectrograph=False)
     domeControlThread(minerva)

@@ -222,7 +222,8 @@ class ascomcam:
 	def get_temperature(self):
 		return self.camera.CCDTemperature               
 
-	def cool(self, temp=None, wait=False, settleTime=1200.0, oscillationTime=120.0, maxdiff = 1.0):
+#	def cool(self, temp=None, wait=False, settleTime=1200.0, oscillationTime=120.0, maxdiff = 1.0):
+	def cool(self, temp=None, wait=False, settleTime=0.0, oscillationTime=0.0, maxdiff = 100.0):
                 if not self.camera.CanSetCCDTemperature:
                         self.logger.error("Camera does not support cooling")
                         return False
