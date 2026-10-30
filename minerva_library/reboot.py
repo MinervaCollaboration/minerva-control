@@ -32,7 +32,7 @@ for p in psutil.process_iter():
             except:
                 print 'failed to kill maxim'
                 pass
-        elif p.name() == 'PWI.exe':
+        elif p.name() in ('PWI.exe', 'PWI4.exe'):
             try:
                 # create a telescope object
                 telescope = cdk700.CDK700(telescope_config, base_directory)
