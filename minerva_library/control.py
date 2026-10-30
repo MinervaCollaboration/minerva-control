@@ -116,7 +116,10 @@ class control:
 
 #			self.logger.error("***Aqawan 1 disabled due to chain issue***")
 #			aqawans = [2]
-			aqawans = [1, 2]
+			# JDE 2026-10-30: Aqawan 2 dark since ~2026-08-10 (lightning); re-enable after site repair
+			self.logger.error("***Aqawan 2 disabled: down since 2026-08-10, needs site repair***")
+#			aqawans = [1, 2]
+			aqawans = [1]
 #			aqawans = [1]
 			for i in aqawans:
 #			for i in range(1):
@@ -131,7 +134,10 @@ class control:
 			if telescope_list == None: telescopes = [1,2,3,4]#,4] 
 			else: telescopes = telescope_list
 			# CD: 2026-04-01: turned T4 back on so lets hope it doesnt april fool me 
-			telescopes = [1,2,4]             
+#			telescopes = [1,2,4]             
+			# JDE 2026-10-30: T4 is in Aqawan 2, which is down; re-enable after site repair
+			self.logger.error("***T4 disabled: Aqawan 2 is down***")
+			telescopes = [1,2]
 #			self.logger.error("*** T3 disabled for focuser issue***")
 #			telescopes = [4]
 #			self.logger.warning('*** T3 is disabled due to commutation error***')
