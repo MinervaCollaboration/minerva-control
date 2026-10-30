@@ -1,3 +1,7 @@
+import matplotlib
+matplotlib.use('Agg',warn=False)
+import matplotlib.pyplot as plt
+
 import urllib
 import urllib2
 import datetime
@@ -20,10 +24,14 @@ import subprocess
 import ephem
 import utils
 import random
+from autofocus import autofocus
+
 #try:
 #        import pyfits
 #except:
 from astropy.io import fits as pyfits
+from astropy.coordinates import SkyCoord
+from astropy import units as u
 
 from astropy import wcs
 import env
@@ -74,7 +82,7 @@ def elementTreeToObject(elementTreeNode):
 
 
 class CDK700:
-	def __init__(self, config, base='', red=False, south=False, thach=False, directory=None):
+	def __init__(self, config, base='', red=False, south=False, thach=False, directory=None, tunnel=False):
 
 		#S Set config file
 		self.config_file = config
@@ -85,6 +93,7 @@ class CDK700:
                 self.thach = thach
 		self.focusMoving = False
 		self.rotatorMoving = False
+		self.tunnel=tunnel
 #		self.mountMoving = False
 
 		if directory == None:
@@ -203,7 +212,7 @@ class CDK700:
 
 	# by default, set tracking and derotating
 	# it's much worse to have it off when it should be on than vice versa
-	def initialize(self,tracking=True, derotate=True):
+	def initialize(self,tracking=True, derotate=True, extra_sleep=0.0, load_pointing_model=False):
 
 #		while self.threadActive:
 #			time.sleep(0.1)
@@ -214,35 +223,39 @@ class CDK700:
 		# connect to the mount if not connected
 		if telescopeStatus.mount.connected <> 'True':
 			self.logger.info('Connecting to mount')
-			if not self.mountConnect(): return False
-			time.sleep(10.00)
+			if not self.mountConnect(extra_sleep=extra_sleep): return False
+			time.sleep(10.00 + extra_sleep)
 			telescopeStatus = self.getStatus()
 
 		# enable motors if not enabled
 		if telescopeStatus.mount.alt_enabled <> 'True' or telescopeStatus.mount.azm_enabled <> 'True':
 			self.logger.info('Enabling motors')
-			if not self.mountEnableMotors(): return False
-			time.sleep(5.25)
+			if not self.mountEnableMotors(extra_sleep=extra_sleep): return False
+			time.sleep(5.25 + extra_sleep)
 			telescopeStatus = self.getStatus()
 
 		# connect to the focuser if not connected
 		if telescopeStatus.focuser1.connected <> 'True' or telescopeStatus.rotator1.connected <> 'True':
 			self.logger.info('Connecting to focuser')
 			if not self.focuserConnect('1'): return False
-			time.sleep(5.25)
+			time.sleep(5.25 + extra_sleep)
 			telescopeStatus = self.getStatus()
 
 		# connect to the focuser if not connected
 		if telescopeStatus.focuser2.connected <> 'True' or telescopeStatus.rotator2.connected <> 'True':
 			self.logger.info('Connecting to focuser')
 			if not self.focuserConnect('2'): return False
-			time.sleep(5.25)
+			time.sleep(5.25 + extra_sleep)
 			telescopeStatus = self.getStatus()
+		
 
-		# reload the pointing model
-		self.logger.info('re-loading pointing model for the current port')
 		m3port = telescopeStatus.m3.port
-		self.m3port_switch(m3port,force=True)
+		# reload the pointing model
+		
+		if load_pointing_model:
+			self.logger.info('re-loading pointing model for the current port')
+			
+			self.m3port_switch(m3port,force=True)
 		telescopeStatus = self.getStatus()
 
 		# turning on/off mount tracking, rotator tracking if not already on/off
@@ -250,19 +263,23 @@ class CDK700:
 			if telescopeStatus.mount.tracking <> 'True':
 				self.logger.info('Turning mount tracking on')
 				self.mountTrackingOn()
+				time.sleep(1.0+extra_sleep)
 		else:
 			if telescopeStatus.mount.tracking <> 'False':
 				self.logger.info('Turning mount tracking off')
 				self.mountTrackingOff()
+				time.sleep(1.0+extra_sleep)
 
 		if derotate:
 			if telescopeStatus.rotator.altaz_derotate <> 'True':
 				self.logger.info('Turning rotator tracking on')
 				self.rotatorStartDerotating(m3port)
+				time.sleep(1.0+extra_sleep)
 		else:
 			if telescopeStatus.rotator.altaz_derotate <> 'False':
 				self.logger.info('Turning rotator tracking off')
 				self.rotatorStopDerotating(m3port)
+				time.sleep(1.0+extra_sleep)
 
 		return self.isInitialized(tracking=tracking,derotate=derotate)
 
@@ -270,8 +287,13 @@ class CDK700:
 
 		try:
 			config = ConfigObj(self.base_directory + '/config/' + self.config_file)
+#			if self.tunnel:
+#				self.HOST = 'localhost'
+#				self.NETWORKPORT = config['Setup']['TUNNEL_PORT']
+#			else:
 			self.HOST = config['Setup']['HOST']
 			self.NETWORKPORT = config['Setup']['NETWORKPORT']
+
 			self.imager = config['Setup']['IMAGER']
 			self.guider = config['Setup']['GUIDER']
 			self.fau = config['Setup']['FAU']
@@ -797,12 +819,12 @@ class CDK700:
 
 
 	### MOUNT ###
-	def mountConnect(self):
+	def mountConnect(self, extra_sleep=0.0):
 		status = self.pwiRequestAndParse(device="mount", cmd="connect")
 		if status == False: return False
 		if status.mount.connected == 'False':
 			# after a power cycle, this takes longer than PWI allows -- try again
-			time.sleep(5.0)
+			time.sleep(5.0+extra_sleep)
 			status = self.pwiRequestAndParse(device="mount", cmd="connect")
 			if status.mount.connected == 'False':
 				self.logger.error('Failed to connect to mount')
@@ -812,11 +834,11 @@ class CDK700:
 	def mountDisconnect(self):
 		return self.pwiRequestAndParse(device="mount", cmd="disconnect")
 
-	def mountEnableMotors(self):
+	def mountEnableMotors(self,extra_sleep=0.0):
 		status = self.pwiRequestAndParse(device="mount", cmd="enable")
 		if status.mount.azm_enabled == 'False' or status.mount.alt_enabled == 'False':
 			# after a power cycle, this takes longer than PWI allows -- try again
-			time.sleep(5.0)
+			time.sleep(5.0+extra_sleep)
 			status = self.pwiRequestAndParse(device="mount", cmd="enable")
 			if status.mount.azm_enabled == 'False' or status.mount.alt_enabled == 'False':
 				self.logger.error('Failed to enable motors')
@@ -968,7 +990,7 @@ class CDK700:
 			try: self.shutdown()
 			except: pass
 
-			if self.initialize(tracking=tracking, derotate=derotate):
+			if self.initialize(tracking=tracking, derotate=derotate, extra_sleep=self.nfailed*10):
 				self.logger.info('recovered after reconnecting')
 				return True
 			else: self.nfailed += 1
@@ -980,7 +1002,7 @@ class CDK700:
 			except: pass
 			self.restartPWI()
 
-			if self.initialize(tracking=tracking, derotate=derotate):
+			if self.initialize(tracking=tracking, derotate=derotate, extra_sleep=self.nfailed*10):
 				self.logger.info('recovered after restarting PWI')
 				return True
 			else: self.nfailed += 1
@@ -992,7 +1014,7 @@ class CDK700:
 			except: pass
 			self.restartPWI()
 
-			if self.initialize(tracking=tracking, derotate=derotate):
+			if self.initialize(tracking=tracking, derotate=derotate, extra_sleep=self.nfailed*10):
 				self.logger.info('recovered after restarting PWI a second time')
 				return True
 			else: self.nfailed += 1
@@ -1004,7 +1026,7 @@ class CDK700:
 				self.logger.warning('restarting PWI failed, homing telescope')
 				self.home()
 				time.sleep(0.25)
-				if self.initialize(tracking=tracking, derotate=derotate):
+				if self.initialize(tracking=tracking, derotate=derotate, extra_sleep=self.nfailed*10):
 					self.logger.info('recovered after homing')
 					return True
 				else: self.nfailed += 1
@@ -1022,12 +1044,16 @@ class CDK700:
 			self.startPWI()
 			time.sleep(10)
 
-			if self.initialize(tracking=tracking, derotate=derotate):
+			# you can't turn the tracking on before you home the telescope after power cycling the whole thing
+			if self.initialize(tracking=False, derotate=derotate, extra_sleep=self.nfailed*10):
 				self.logger.info('recovered after power cycling the mount')
+				self.logger.info('homing telescope')
 				self.home()
 				if self.initialize(tracking=tracking, derotate=derotate):
 					return True
-				else: self.nfailed += 1
+				else:
+					self.nfailed += 1
+					self.logger.info('could not initialize telescope after power cycling and homing :(')
 			else: self.nfailed += 1
 
 
@@ -1068,6 +1094,57 @@ class CDK700:
 	def addPointToModel():
 		pass
 
+
+	def focusVsAlt(self,minerva, npoints=25, minalt=30, maxalt=85):
+
+		brightstars = utils.brightStars(filename='bsc_rand.csv')
+                nstars = len(brightstars['dec'])
+
+                foci = np.zeros(npoints)
+                alts = np.zeros(npoints)
+		success = np.zeros(npoints)
+
+		ndx = 0
+                for i in range(npoints):
+                        alt = -999
+
+                        while alt < minalt or alt > maxalt:
+
+
+                                #ndx = random.randrange(nstars)
+                                raj2000 = float(brightstars['ra'][ndx])
+                                decj2000 = float(brightstars['dec'][ndx])
+                                pmra = float(brightstars['pmra'][ndx])
+                                pmdec = float(brightstars['pmdec'][ndx])
+                                ra, dec = self.starmotion(raj2000, decj2000, pmra, pmdec)
+
+                                alt, az = self.radectoaltaz(ra, dec)
+                                target = {
+                                        'ra': ra,
+                                        'dec': dec,
+                                        'spectroscopy': True,
+                                        'endtime': datetime.datetime(2100, 1, 1)
+                                        }
+				ndx += 1
+
+       			if autofocus(minerva, self.id, exptime=1.0, target=target):
+				success[i] = 1
+
+                        status = self.getStatus()
+                        m3port = status.m3.port
+                        focus = self.focus[m3port]
+
+                        foci[i] = focus
+                        alts[i] = alt
+
+                data = np.transpose([alts, foci, success])
+                np.savetxt(self.datadir + minerva.site.night + '/alt_focus.' + self.id + '.txt', data)
+                plt.plot(alts, foci, 'bo')
+                plt.xlabel('Alt (degrees)')
+                plt.ylabel('Focuser position (mm)')
+                plt.savefig(self.datadir + minerva.site.night + '/flexure_test.' + self.id + '.png')
+
+
 	'''
 	makes a pointing model
 	'''
@@ -1077,7 +1154,7 @@ class CDK700:
 			      minalt=-999, maxalt=80.0,minaz=0.0,maxaz=360.0):
 
 		# can't set defaults using self...
-		if minalt == -999: minalt = self.horizon
+		if minalt == -999: minalt = self.horizon+1
 
 		camera = utils.getCamera(minerva,self.id)
 		datapath = self.datadir + self.night + '/'
@@ -1201,6 +1278,14 @@ class CDK700:
 			output,err = p.communicate()
 			racen = utils.ten(output.split()[0])
 			deccen = utils.ten(output.split()[1])
+
+			coord1 = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+			coord2 = SkyCoord(ra=racen*u.degree, dec=deccen*u.degree, frame='icrs')
+			separation = coord1.separation(coord2)
+			self.logger.info("Point found " + str(separation.arcsec) + " away from its nominal location")
+			if separation.arcsec > 3600*5:
+				self.logger.error("Separation exceeds 5 degrees; skipping")
+				continue
 
 
 			'''
@@ -1485,7 +1570,7 @@ class CDK700:
 		self.logger.info("The Rotator position is " + str(rotpos) + ' degrees')
 		self.logger.info("The parallactic angle is " + str(parang) + ' degrees')
 		self.logger.info("Enter the sky position angle (" + str(skypa) + ") into the calibrate field")
-		self.logger.info("The field rotation offset is " + str(rotoff))
+		self.logger.info("The field rotation offset (which needs to be input into the telescope.ini file) is " + str(rotoff))
 
 		# update self.rotatoroffset
 		self.rotatoroffset[m3port] = rotoff
@@ -1788,6 +1873,10 @@ class CDK700:
 			return False
 
 		self.m3port_switch(m3port)
+		time.sleep(1.0)
+		if not self.isInitialized(tracking=True, derotate=False):
+			self.initialize(tracking=True, derotate=False)
+
 		self.logger.info('Starting slew to J2000 ' + str(ra_corrected) + ',' + str(dec_corrected))
 		if self.isMoving():
 			self.logger.error("Telescope moving when another move requested, aborting acquireTarget")
@@ -1870,21 +1959,33 @@ class CDK700:
 				if os.path.isfile(modelfile):
 					self.logger.info('changing model file')
 					self.mountSetPointingModel(self.model[m3port])
+					self.logger.info('done changing model file')
 					# this turns tracking off; turn it back on
+					time.sleep(0.5)
 					if tracking: self.mountTrackingOn()
+					self.logger.info('turning tracking on')
+
 				else:
 					self.logger.error('model file (%s) does not exist; using current model'%(modelfile))
 					mail.send('model file (%s) does not exist; using current model'%(modelfile),'',level='serious', directory=self.directory)
 
-				telescopeStatus = self.m3SelectPort(m3port)
-				time.sleep(0.5)
-
-				telescopeStatus = self.m3SelectPort(m3port)
-
-				# TODO: add a timeout here!
-				while telescopeStatus.m3.moving_rotate == 'True':
-					time.sleep(0.1)
-					telescopeStatus = self.getStatus()
+				timeout = 10
+				elapsed_time = 0.0
+				error = True
+				t0 = datetime.datetime.utcnow()
+				while error and elapsed_time < timeout:
+					time.sleep(0.5)
+					telescopeStatus = self.m3SelectPort(m3port)
+					try:
+						error = telescopeStatus.m3.moving_rotate == 'True'
+					except:
+						self.logger.error('m3SelectPort status returned False, trying again')
+						time_elapsed = (datetime.datetime.utcnow() - t0).total_seconds()
+						
+#				# TODO: add a timeout here!
+#				while telescopeStatus.m3.moving_rotate == 'True':
+#					time.sleep(0.1)
+#					telescopeStatus = self.getStatus()
 
 
 		#S If a bad port is specified (e.g. 3) or no port (e.g. None)
@@ -1897,7 +1998,7 @@ class CDK700:
 			#S This is not smart, need to work in a recovery process some how
 			while not self.initialize(tracking=tracking):
 				pass
-		self.inPostion()
+		self.inPosition()
 		status = self.getStatus()
 		if port == None:
 			self.logger.info('No M3 port specified, using current port(%s)'%(status.m3.port))
@@ -2060,13 +2161,20 @@ class CDK700:
 			self.logger.info('Done homing telescope (elapsed time = ' + str(elapsedTime) + ')')
 			return True
 
-	def startPWI(self,email=True):
+	def startPWI(self,email=True,extra_sleep=0.0):
 		self.send_to_computer('schtasks /Run /TN "Start PWI"')
-		time.sleep(10.0)
+		time.sleep(10.0+extra_sleep)
+		self.logger.info('changing model file')
+		telescopeStatus = self.getStatus()
+		m3port = telescopeStatus.m3.port
+		self.mountSetPointingModel(self.model[m3port])
+		time.sleep(1.0)
+		self.logger.info('done changing model file')
 
-	def restartPWI(self,email=True):
+
+	def restartPWI(self,email=True,extra_sleep=0.0):
 		self.killPWI()
-		time.sleep(5.0)
+		time.sleep(5.0+extra_sleep)
 		return self.startPWI(email=email)
 
         def killPWI(self):
@@ -2141,7 +2249,7 @@ if __name__ == "__main__":
 
 	if socket.gethostname() == 'Main':
 		base_directory = '/home/minerva/minerva-control'
-		config_file = 'telescope_mred.ini'
+		config_file = 'telescope_1.ini'
         else:
 		base_directory = 'C:/minerva-control/'
 		config_file = 'telescope_' + socket.gethostname()[1] + '.ini'

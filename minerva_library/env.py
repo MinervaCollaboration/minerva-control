@@ -19,6 +19,12 @@ import copy
 import utils
 from weather_thach import get_current_weather
 from astropy.time import Time
+import requests
+
+import shlex
+from subprocess import Popen, PIPE
+from threading import Timer
+
 
 class site:
 
@@ -48,8 +54,8 @@ class site:
 
 		self.observing = True
 		self.weather = -1
-		self.rainChangeDate = datetime.datetime.utcnow() - datetime.timedelta(hours=2.0)
-		self.lastRain = 0.
+		self.rainChangeDate = datetime.datetime.utcnow() - datetime.timedelta(hours=25.0)
+		self.lastRain = 0.0
 		self.mailSent = False
 		self.coldestTemp = 100.0
 
@@ -80,14 +86,14 @@ class site:
 			'minerva' : (0.74102145,0.058437186)
 #			'minerva' : (1.34948860,0.058437186)
 			}
-		openCloudLimit = -30
-		closeCloudLimit = -28
+		openCloudLimit = -40
+		closeCloudLimit = -38
 
 
 		self.openLimits = {
-			'totalRain'           : [0.0,1000.0],
+			'totalRain'           : [0.0,999999.0],
 
-			'wxt510Rain'          : [0.0,999.0],
+			'wxt510Rain'          : [0.0,99999.0],
 			'barometer'           : [0,2000],
 			'windGustSpeed'       : [0.0,35.0],
 	#		'windGustSpeed'       : [0.0,999.0],
@@ -100,16 +106,19 @@ class site:
 			'sunAltitude'         : [-90,15],
 #			'MearthCloud'         : [-999, 999],
 			'MearthCloud'         : [-999, openCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
+#			'MearthCloud'         : [-999, -38],
 			'HATCloud'            : [-999, openCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
-			'AuroraCloud'         : [-999, openCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
-			'MINERVACloud'        : [-999, openCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
+			#'AuroraCloud'         : [-999, openCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
+			'AuroraCloud'         : [-999, -32],
+			'MINERVACloud'        : [-999, -24],
+			#'MINERVACloud'        : [-999, openCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
 			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
 
 		self.closeLimits = {
-			'totalRain'           : [0.0,1000.0],
+			'totalRain'           : [0.0,100000.0],
 #			'wxt510Rain'          : [0.0,50.0],		   
-			'wxt510Rain'          : [0.0, 999.0],
+			'wxt510Rain'          : [0.0, 99999.0],
 			'barometer'           : [0,2000],
 			'windGustSpeed'       : [0.0,40.0],
 	#		'windGustSpeed'       : [0.0,999.0],
@@ -122,9 +131,12 @@ class site:
 			'sunAltitude'         : [-90,15],
 #			'MearthCloud'         : [-999, 999],
 			'MearthCloud'         : [-999, closeCloudLimit*cloudScale['mearth'][0] +cloudScale['mearth'][1]],
+#			'MearthCloud'         : [-999, -37],
 			'HATCloud'            : [-999, closeCloudLimit*cloudScale['hat'][0] +cloudScale['hat'][1]],
-			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
-			'MINERVACloud'        : [-999, closeCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
+#			'AuroraCloud'         : [-999, closeCloudLimit*cloudScale['aurora'][0]    +cloudScale['aurora'][1]],
+			'AuroraCloud'         : [-999, -31],
+			'MINERVACloud'        : [-999, -23],
+			#'MINERVACloud'        : [-999, closeCloudLimit*cloudScale['minerva'][0]+cloudScale['minerva'][1]],
 			'cloudDate'           : [datetime.datetime.utcnow()-datetime.timedelta(minutes=6),datetime.datetime(2200,1,1)]
 			}
 
@@ -157,23 +169,26 @@ class site:
 		if date < (now - datetime.timedelta(minutes=10)):
 			return {}
 
-		weather = {'date':date, 
-			   'outsideTemp':float(data[3]), # C
-			   'windSpeed':float(data[2]), #km/h
-			   'windGustSpeed':float(data[14]),# (km/h?)
-			   'windDirectionDegrees':float(data[1]), # degrees (I assume)
-			   'barometer':float(data[6]) * 1.33322,  # mmHg ->  hPa
-			   'outsideHumidity':float(data[5]), # % (I assume)
-			   'wxt510Rain':float(data[7]), # mm
-			   'totalRain':0.0,
-			   'outsideDewPt':float(data[4]), # C (I assume)
-			   'rainDuration':float(data[8]), # seconds
-			   'rainIntensity':float(data[9]), # mm/hr
-			   'hailAccumulation':float(data[10]), # mm
-			   'hailDuration':float(data[11]), # seconds
-			   'hailIntensity':float(data[12]), # mm/hr
-			   'skyTemp':float(data[13]) # mm/hr
-			   }
+		try:
+			weather = {'date':date, 
+				   'outsideTemp':float(data[3]), # C
+				   'windSpeed':float(data[2]), #km/h
+				   'windGustSpeed':float(data[14]),# (km/h?)
+				   'windDirectionDegrees':float(data[1]), # degrees (I assume)
+				   'barometer':float(data[6]) * 1.33322,  # mmHg ->  hPa
+				   'outsideHumidity':float(data[5]), # % (I assume)
+				   'wxt510Rain':float(data[9]), # mm
+				   'totalRain':0.0,
+				   'outsideDewPt':float(data[4]), # C (I assume)
+				   'rainDuration':float(data[8]), # seconds
+				   'rainIntensity':float(data[9]), # mm/hr
+				   'hailAccumulation':float(data[10]), # mm
+				   'hailDuration':float(data[11]), # seconds
+				   'hailIntensity':float(data[12]), # mm/hr
+				   'skyTemp':float(data[13]) # mm/hr
+				   }
+		except:
+			return {}
 		return weather
 
 	def getWeatherRidge(self):
@@ -182,20 +197,32 @@ class site:
 
 		# read the webpage
 		self.logger.debug('Requesting URL: ' + url)
-		request = urllib2.Request(url)
+#		request = urllib2.Request(url)
 		try:
-			response = urllib2.urlopen(request)
+			f = open(self.base_directory + '/credentials/webpage.txt')
+			username = f.readline().strip()
+			password = f.readline().strip()
+			f.close()
+			response = requests.get(url,auth=(username,password)).text
+			data = response.split('\n')
+#			response = urllib2.urlopen(request)#
+#			data = response.read().split('\n')
 		except:
 			self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
 			return {}
 
-		data = response.read().split('\n')
+
 		if data[0] == '':
+			self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
 			return {}
 
 		# convert the date into a datetime object
-		weather = {
-			'date':datetime.datetime.strptime(data[0],'%Y, %m, %d, %H, %M, %S, %f')}
+		try:
+			weather = {
+				'date':datetime.datetime.strptime(data[0],'%Y, %m, %d, %H, %M, %S, %f')}
+		except:
+			self.logger.error('Error reading the weather page: ' + str(sys.exc_info()[0]))
+			return {}
 
 		# populate the weather dictionary from the webpage
 		for parameter in data[1:-1]:
@@ -211,11 +238,14 @@ class site:
 
 		if self.logger_name == 'site_mtHopkins':
 
+			# 2022-10-20 JDE: MEarth weather station down, don't bother checking
 			# use MEarth weather station, backup of Ridge weather station
-			weather = self.getWeatherMearth()
-			if len(weather) == 0:
-				self.logger.warning("MEarth weather failed. Getting weather from ridge sensor.")
-				weather = self.getWeatherRidge()
+			#weather = self.getWeatherMearth()
+			#if len(weather) == 0:
+			#	self.logger.warning("MEarth weather failed. Getting weather from ridge sensor.")
+			#       weather = self.getWeatherRidge()
+
+			weather = self.getWeatherRidge()
 
 			#S Acquire readings from the three cloud monitors at the address below. Order at
 			#S website is Date, Mearth, HAT, Aurora, MINERVA.
@@ -224,7 +254,12 @@ class site:
 			#S Try everything, but if anyhting fails we really want to stay closed.
 			try:
 				#S Read the last line from the url above, and split it at the spaces.
-				cloudstr = os.popen('curl -s ' + url).read().split(' ')
+#				cloudstr = os.popen('curl -s ' + url).read().split(' ')
+				f = open(self.base_directory + '/credentials/webpage.txt')
+				username = f.readline().strip()
+				password = f.readline().strip()
+				f.close()
+				cloudstr = requests.get(url,auth=(username,password)).text.split()
 
 				if len(cloudstr) == 6:
 				        #S Get the date from the line by concatenating the first split, then add 7 hours to put in UTC.
@@ -232,24 +267,37 @@ class site:
 					#S Assign as specified.
 					# if the connection is lost, it returns 0
 					weather['MearthCloud'] = float(cloudstr[2])
-					if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
+					if weather['MearthCloud'] == 0.0 or weather['MearthCloud'] == -999.9: weather['MearthCloud'] = 999
 					weather['HATCloud'] = float(cloudstr[3])
 					if weather['HATCloud'] == 0.0: weather['HATCloud'] = 999
 					weather['AuroraCloud'] = float(cloudstr[4])
 					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
 					weather['MINERVACloud'] = float(cloudstr[5])
 					if weather['MINERVACloud'] == 0.0: weather['MINERVACloud'] = 999
+				elif len(cloudstr) == 5:
+				        #S Get the date from the line by concatenating the first split, then add 7 hours to put in UTC.
+					weather['cloudDate'] = datetime.datetime.strptime(" ".join(cloudstr[0:2]),'%b-%d-%Y %H:%M:%S') + datetime.timedelta(hours=7)
+					#S Assign as specified.
+					# if the connection is lost, it returns 0
+					weather['MearthCloud'] = float(cloudstr[2])
+					if weather['MearthCloud'] == 0.0 or weather['MearthCloud'] == -999.9: weather['MearthCloud'] = 999
+					weather['AuroraCloud'] = float(cloudstr[3])
+					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
+					weather['MINERVACloud'] = float(cloudstr[4])
+					if weather['MINERVACloud'] == 0.0: weather['MINERVACloud'] = 999
+					weather['HATCloud'] = 999
 				elif len(cloudstr) == 4:
 				        #S Get the date from the line by concatenating the first split, then add 7 hours to put in UTC.
 					weather['cloudDate'] = datetime.datetime.strptime(" ".join(cloudstr[0:2]),'%b-%d-%Y %H:%M:%S') + datetime.timedelta(hours=7)
 					#S Assign as specified.
 					# if the connection is lost, it returns 0
 					weather['MearthCloud'] = float(cloudstr[2])
-					if weather['MearthCloud'] == 0.0: weather['MearthCloud'] = 999
+					if weather['MearthCloud'] == 0.0 or weather['MearthCloud'] == -999.9: weather['MearthCloud'] = 999
 					weather['AuroraCloud'] = float(cloudstr[3])
 					if weather['AuroraCloud'] == 0.0: weather['AuroraCloud'] = 999
 					weather['HATCloud'] = 999
 					weather['MINERVACloud'] = 999					
+					weather['MearthCloud']=999 # MEarth disabled as of 2022-02-03
 				else:
 					self.logger.error("Error reading the cloud page; line is: " + " ".join(cloudstr))
 
@@ -310,7 +358,18 @@ class site:
 		for key in weather.keys():
 			self.logger.debug(key + '=' + str(weather[key]))
 
-	def oktoopen(self, domeid, domeopen=False, ignoreSun=False):
+	def getSkyLimit(self,timeout=3.0):
+
+		cmd = self.base_directory + '/minerva_library/getskylimit.sh' 
+		proc = Popen([cmd], stdout=PIPE, stderr=PIPE)
+		try:
+			stdout,stderr = proc.communicate()
+			return float(stdout.split('=')[1].replace('"',''))	
+		except:
+			return False
+
+
+	def oktoopen(self, domeid, domeopen=False, ignoreSun=False, sky_limit=None):
 
 		retval = True
 		decisionFile = self.base_directory + '/manualDecision.txt'
@@ -366,6 +425,7 @@ class site:
 
 		if self.sunOverride: weatherLimits['sunAltitude'] = [-90,90]
 		else: weatherLimits['sunAltitude'] = [-90,6]
+		
 
 		if self.cloudOverride:
 			weatherLimits['MearthCloud'] = [-999,999]
@@ -373,18 +433,33 @@ class site:
 			weatherLimits['AuroraCloud'] = [-999,999]
 			weatherLimits['MINERVACloud'] = [-999,999]
 		else:
+                       # JDE 2022-10-20: Automatically update sky limit from FLWO48 observers
+			# leave commented because of connection flakiness
+#			sky_limit = self.getSkyLimit()
+#			if sky_limit:
+#				weatherLimits['MearthCloud'] = sky_limit
+#				weatherLimits['HATCloud'] = sky_limit
+#				weatherLimits['AuroraCloud'] = sky_limit
+#				weatherLimits['MINERVACloud'] = sky_limit
+
 			if domeopen:
-				weatherLimits['MearthCloud'] = self.closeLimits['MearthCloud']
+				if sky_limit is not None:
+					weatherLimits['MearthCloud'][1] = sky_limit
+				else:
+					weatherLimits['MearthCloud'] = self.closeLimits['MearthCloud']
 				weatherLimits['HATCloud'] = self.closeLimits['HATCloud']
 				weatherLimits['AuroraCloud'] = self.closeLimits['AuroraCloud']
 				weatherLimits['MINERVACloud'] = self.closeLimits['MINERVACloud']
 			else:
-				weatherLimits['MearthCloud'] = self.openLimits['MearthCloud']
+				if sky_limit is not None:
+					weatherLimits['MearthCloud'][1] = sky_limit - 2
+				else:
+					weatherLimits['MearthCloud'] = self.openLimits['MearthCloud']
 				weatherLimits['HATCloud'] = self.openLimits['HATCloud']
 				weatherLimits['AuroraCloud'] = self.openLimits['AuroraCloud']
 				weatherLimits['MINERVACloud'] = self.openLimits['MINERVACloud']
 
-
+		#self.logger.info('MearthCloud =' + str(self.weather['MearthCloud']) + '; Limits are ' + str(weatherLimits['MearthCloud'][0]) + ',' + str(weatherLimits['MearthCloud'][1]))
 
 		if weatherLimits['sunAltitude'][1] == 90:
 			if not ignoreSun: self.logger.info("Sun override in place!")
@@ -399,12 +474,12 @@ class site:
 			self.rainChangeDate = datetime.datetime.utcnow()
 
 		# wxt510Rain uses an impact sensor and can be triggered by wind (unreliable)
-#		if self.weather['wxt510Rain'] > self.lastRain:
-#			self.lastRain = self.weather['wxt510Rain']
-#			self.rainChangeDate = datetime.datetime.utcnow()
+		#if self.weather['wxt510Rain'] > self.lastRain:
+		#	self.lastRain = self.weather['wxt510Rain']
+		#	self.rainChangeDate = datetime.datetime.utcnow()
 
 		# if it has rained in the last hour, it's not ok to open
-		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 3600.0:
+		if (datetime.datetime.utcnow() - self.rainChangeDate).total_seconds() < 1800.0:
 			self.logger.info('Not OK to open: it last rained at ' + str(self.rainChangeDate) + ", which is less than 1 hour ago")
 			retval = False
 
@@ -430,23 +505,24 @@ class site:
 		#S External temperature check, want to use Mearth, then HAT if Mearth not available, and then
 		#S Aurora, and finally MINERVA. Currently, we are assuming a value of 999 means disconnected
 		#S for any of the four sensors.
-		if self.weather['MearthCloud'] <> 999:
+
+		if self.weather['MearthCloud'] != 999:
 			key = 'MearthCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False
-		elif self.weather['HATCloud'] <> 999:
+		elif self.weather['HATCloud'] != 999:
 			key = 'HATCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False
-		elif self.weather['AuroraCloud'] <> 999:
+		elif self.weather['MINERVACloud'] != 999:
+			key = 'MINERVACloud'
+			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
+				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
+				retval = False
+		elif self.weather['AuroraCloud'] != 999:
 			key = 'AuroraCloud'
-			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
-				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
-				retval = False
-		elif self.weather['MINERVACloud'] <> 999:
-			key = 'HATCloud'
 			if self.weather[key] < weatherLimits[key][0] or self.weather[key] > weatherLimits[key][1]:
 				self.logger.info('Not OK to open: ' + key + '=' + str(self.weather[key]) + '; Limits are ' + str(weatherLimits[key][0]) + ',' + str(weatherLimits[key][1]))
 				retval = False
@@ -517,6 +593,9 @@ if __name__ == '__main__':
 
 	base_directory = '/home/minerva/minerva-control'
 	test_site = site('site_mtHopkins.ini',base_directory)
+	#test_site.getWeatherRidge()
+	test_site.getSkyLimit()
+
 	ipdb.set_trace()
 
 	start = 'n20160101'

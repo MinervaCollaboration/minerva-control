@@ -51,8 +51,12 @@ def rdlist():
 
     #import and decode data
 #    data = urllib.request.urlopen(url).read()         # use in Python 3
-    data = urllib.urlopen(url).read()                  # use in Python 2
-    data = data.decode('utf-8')
+#    data = urllib.urlopen(url).read()                  # use in Python 2
+#    data = data.decode('utf-8')
+
+# CD: Updated 2026-01-27 for new DT target list
+    data = open('dt_targets.csv','r').read()
+
     
     #split data by rows & separate into lists
     data=data.splitlines()
@@ -165,7 +169,7 @@ def choose_dt_target(timeof=None, remaining_time=86400.0, logger=None):     #tak
         vmag_list[i]=float(vmag_list[i])
 
     for i in np.arange(len(tc_list)):
-        tc_list[i]=(float(tc_list[i])+2457000)  # using TESS standard for dates, convert to JD
+        tc_list[i]=(float(tc_list[i]))
 
     for i in np.arange(len(period_list)):
         period_list[i]=float(period_list[i])
@@ -270,9 +274,11 @@ def choose_dt_target(timeof=None, remaining_time=86400.0, logger=None):     #tak
         target['vsini']=vsini_list[i]
         target['t_dur']=t_dur[i]   # keep this as exactly (egress - ingress) in seconds
 
-        if snr_list[i] < 7.5: continue # skip low SNR objects
+        if target['period'] == 0: continue 
+
+        if snr_list[i] < 5: continue # skip low SNR objects
         
-        if vsini_list[i] > 50: continue # skip rapid rotators
+#        if vsini_list[i] > 50: continue # skip rapid rotators
 
         #create fixed body for ephem calculations
         target['fixedbody'] = ephem.FixedBody(obs)

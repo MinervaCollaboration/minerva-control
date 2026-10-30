@@ -1,7 +1,8 @@
 #!/usr/bin/env python 2.7
 
 #Trying to re-write headers, etc with pyfits
-import pyfits
+#import pyfits
+from astropy.io import fits
 import numpy as np
 import os
 import datetime
@@ -10,22 +11,29 @@ import ipdb
 import glob
 import warnings
 
-def fix_fits(filename, newfilename=None, newpath=None):
+def fix_fits(filename, newfilename=None, newpath=None, logger=None):
 
     # Load in "raw" data
     t0 = datetime.datetime.utcnow()
-    py1 = pyfits.open(os.path.join(filename),ignore_missing_end=True,uint=True)
-    data = py1[0].data
-    hdr = py1[0].header
+
+    with fits.open(os.path.join(filename),ignore_missing_end=True,uint=True,memmap=False) as py1:
+        data = py1[0].data
+        hdr = py1[0].header
 
     # if PARAM0 keyword is present, this is the original header -- this image did not complete successfully
     if 'PARAM0' in hdr:
-        print 'Warning: ' + filename + ' has the original header; skipping'
+        if logger != None:
+            logger.info('Warning: ' + filename + ' has the original header; skipping')
+        else:  
+            print 'Warning: ' + filename + ' has the original header; skipping'
         return
 
     # this header has already been fixed!
     if hdr['SIMPLE']:
-        print filename + ' is already a legal FITS image'
+        if logger != None:
+            logger.info('Warning: ' + filename + ' has the original header; skipping')
+        else:
+            print filename + ' is already a legal FITS image'
         return
 
     # delete COMMENT
@@ -50,8 +58,11 @@ def fix_fits(filename, newfilename=None, newpath=None):
                                            int(bin(data_new[row,col,1])[2:]))
             data_16bit[row,col] = int(binstr,base=2)
 
+
+#    ipdb.set_trace()
+
     # make new hdu, hdulist, then write to file
-    hdu_new = pyfits.PrimaryHDU(data_16bit,uint=True)
+    hdu_new = fits.PrimaryHDU(data_16bit,uint=True)
 
     # transfer all the header keywords (hdr not legal either)
     for card in hdr.cards:
@@ -59,6 +70,8 @@ def fix_fits(filename, newfilename=None, newpath=None):
         if card.keyword not in hdu_new.header:
             hdu_new.header.append(card)
     hdu_new.header['BZERO'] = 0
+
+#    ipdb.set_trace()
 
     # the original DATE-OBS keyword, identified by its comment, is in local time; update to UTC
     if hdr.comments['DATE-OBS'] == 'DATE-OBS Format is YYYY-MM-DDThh:mm:ss.sss':
@@ -70,21 +83,31 @@ def fix_fits(filename, newfilename=None, newpath=None):
     if newfilename == None:
         newfilename = os.path.basename(filename)
 
-    if newpath <> None:
-        path = newpath
-        if not os.path.exits(path):
-            os.mkdir(path)
-    else: path = os.path.dirname(filename)
+    if newpath == None:
+        newpath = os.path.dirname(filename)
     
-    newfilename = os.path.join(path,newfilename)
+    else:
+        if not os.path.exists(newpath):
+            os.mkdir(newpath)
+    
+    newfilename = os.path.join(newpath,newfilename)
 
     # write the fixed file
-    hdulist_out = pyfits.HDUList([hdu_new])
+    hdulist_out = fits.HDUList([hdu_new])
 
     # suppress the overwriting warning
+### CD (2026-04-16): something is wrong with pyfits/astropy.io.fits trying to overwrite an existing fits file
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        hdulist_out.writeto(os.path.join(newfilename),clobber=True)
+        hdulist_out.writeto(newfilename, clobber=True)
+
+### CD: trying to instead manually remove the old file and then save without having to overwrite
+#    if newfilename == filename:
+#        os.remove(filename)
+
+#    hdulist_out.writeto(newfilename)
+    if logger != None: 
+        logger.info('Fixed fits file written to ' + newfilename)
 
 def fix_dir(directory,newpath=None):
     files = glob.glob(directory + '/*.fits')

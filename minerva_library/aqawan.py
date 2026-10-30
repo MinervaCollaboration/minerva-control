@@ -129,6 +129,7 @@ class aqawan:
 			# close the connection
 			tn.close()
 			self.logger.debug('command(' + message +') sent')
+			#self.logger.info('response(' + response +') recieved')
 			return response
 		
 	def heartbeat(self):

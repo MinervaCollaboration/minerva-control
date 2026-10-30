@@ -194,8 +194,9 @@ class pdu():
 
 
 if __name__ == '__main__':
-    pdu1 = pdu('apc_1.ini','/home/minerva/minerva-control')
-    pdu1.print_status_with_names()
+#    pdu1 = pdu('apc_1.ini','/home/minerva/minerva-control')
+    apc_bench = pdu('apc_bench.ini','/home/minerva/minerva-control')
+    apc_bench.print_status_with_names()
     ipdb.set_trace()
 	
 	

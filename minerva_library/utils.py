@@ -379,16 +379,16 @@ def truncate_observable_window(site, target, sunalt = -12.0, horizon=21.0, timeo
     # the end time should be the earliest of the requested end time, when the target sets, or when the sun rises
     endtime = min(target['endtime'], sunrise, settime)
 
-    if logger <> None:
-        logger.info('Time of calculation is ' + str(timeof))
-        logger.info('Target start time is ' + str(target['starttime']))
-        logger.info('Target rise time is ' + str(risetime))
-        logger.info('The new start time is ' + str(starttime))
-        logger.info('Sun set time is '  + str(sunset))
-        logger.info('Target end time is ' + str(target['endtime']))
-        logger.info('Target set time is '  + str(settime))
-        logger.info('Sun rise time is '  + str(sunrise))
-        logger.info('The new end time is ' + str(endtime))
+    if logger != None:
+        logger.debug('Time of calculation is ' + str(timeof))
+        logger.debug('Target start time is ' + str(target['starttime']))
+        logger.debug('Target rise time is ' + str(risetime))
+        logger.debug('The new start time is ' + str(starttime))
+        logger.debug('Sun set time is '  + str(sunset))
+        logger.debug('Target end time is ' + str(target['endtime']))
+        logger.debug('Target set time is '  + str(settime))
+        logger.debug('Sun rise time is '  + str(sunrise))
+        logger.debug('The new end time is ' + str(endtime))
 
     target['starttime'] = starttime
     target['endtime'] = endtime
@@ -544,7 +544,8 @@ def astrometry(imageName, rakey='RA', deckey='DEC',pixscalekey='PIXSCALE', pixsc
     return success
 
 # run sextractor on an image
-def sextract(datapath,imagefile,sexfile='autofocus.20210512.sex',paramfile=None,convfile=None,catfile=None):
+#def sextract(datapath,imagefile,sexfile='autofocus.20210512.sex',paramfile=None,convfile=None,catfile=None,checktype=None,checkfile=None):
+def sextract(datapath,imagefile,sexfile='autofocus.20220503.sex',paramfile=None,convfile=None,catfile=None,checktype=None,checkfile=None):
     #S Path on MinervaMAIN where all the .sex, .param, etc. files will be
     #S located
     sexpath = '/usr/share/sextractor/'
@@ -569,8 +570,11 @@ def sextract(datapath,imagefile,sexfile='autofocus.20210512.sex',paramfile=None,
     #S Datapath is the path where the image is (hopefully), but can be anywhere
     #S you want it to go.
     if catfile == None:
-        catfile = imagefile.split('.fits')[0] + '.cat'
-        sexcommand += ' -CATALOG_NAME ' + datapath+catfile
+        catfile = imagefile.split('.fits')[0] + '.cat' 
+    sexcommand += ' -CATALOG_NAME ' + datapath+catfile
+    
+    if checkfile != None:
+        sexcommand += ' -CHECKIMAGE_TYPE OBJECTS -CHECKIMAGE_NAME ' + datapath + checkfile 
 
     #S so we a have sexcommand, which has all of its components split by
     #S spaces ideally, which will allow for just a .split to put in a list
@@ -631,12 +635,15 @@ def readsexcat(catname):
 
     cata = np.loadtxt(catname)
     
+
+    flag_ind = np.where(np.array(header) == 'FLAGS')[0][0]
+    r_ind = np.where(np.array(header) == 'FLUX_RADIUS')[0][0]
     if np.ndim(cata) > 1:
-        flag_ind = np.where(np.array(header) == 'FLAGS')[0][0]
-        r_ind = np.where(np.array(header) == 'FLUX_RADIUS')[0][0]
-        cata = cata[np.where(cata[:, flag_ind] <= 4)]
-        cata = cata[np.where(cata[:, r_ind] > 1)]
-    
+        cata = cata[np.where(cata[:, flag_ind] < 4)] # Need to revisit this - CD, 20220331
+#        cata = cata[np.where(cata[:, r_ind] > 1)]
+    elif len(cata) > 0:
+        if cata[flag_ind] > 1:
+            cata = np.array([])
     cata = cata.T
 
     for i in range(len(header)):

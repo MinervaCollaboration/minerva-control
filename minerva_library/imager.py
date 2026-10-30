@@ -172,7 +172,7 @@ class imager:
 				return 'fail'
 
 			try:
-				self.logger.info("Sending timeout: " + str(timeout))
+				self.logger.debug("Sending timeout: " + str(timeout))
 				s.settimeout(timeout)
 				data = s.recv(1024)
 			except:
@@ -182,7 +182,7 @@ class imager:
 
 			try:
 				command = msg.split()[0]
-				self.logger.info("data returned: " + data)
+				self.logger.debug("data returned: " + data)
                                 if not self.thach:
                                         data = repr(data).strip("'")
 #				else:
@@ -204,6 +204,9 @@ class imager:
 
 		settleTime = 1200
                 oscillationTime = 120.0
+		# JDE 2025-04-27: bypass settle time
+		settleTime = 0.0
+                oscillationTime = 0.0
 
                 self.logger.info('Turning cooler on')
 		self.set_temperature()
@@ -487,6 +490,8 @@ class imager:
 	def getGuideStar(self):
 		time = datetime.datetime.utcnow()
 		xy = utils2.get_stars_cv(None,filename=self.datadir + '/' + self.night + '/' + self.guider_file_name)
+		# JDE 2023-02-06 -- Change centroid algorithm
+#		xy = utils2.get_stars_brightest(None,filename=self.datadir + '/' + self.night + '/' + self.guider_file_name)
 		if len(xy) != 0:
 			brightestndx = np.argmax(xy[:,2])
 			x = xy[brightestndx][0]
@@ -659,7 +664,7 @@ class imager:
 
         def start_server(self):
                 ret_val = self.send_to_computer('schtasks /Run /TN "telcom server"')
-		time.sleep(30)
+		time.sleep(45)
 		return ret_val
 
 	def send_to_win10(self,cmd):

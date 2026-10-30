@@ -115,6 +115,7 @@ class scheduler:
     def update_list(self,bstar=False,includeInactive=False, logger=None):
         #S need to update list potentially
         try:
+            #ipdb.set_trace()
             self.target_list = targetlist.mkdict(includeInactive=includeInactive,red=self.red,logger=logger) + targetlist.mkdict(bstar=True,includeInactive=includeInactive,logger=logger)
         except:
             if logger != None: logger.error("Error updating target list")
@@ -333,23 +334,35 @@ class scheduler:
         return obs_list
 
     # TODO: call by minerva.takeSpectrum
-    def record_observation(self,target,telescopes=None, timeof=None):
+    def record_observation(self,target,telescopes=None, timeof=None, logger=None):
+        if logger != None: logger.info("recording observation 0")
+
         if timeof == None: timeof = datetime.datetime.utcnow()
         obs_start = timeof
 
-        exptime = target['exptime'][0]#self.calc_exptime(target)
+        try: exptime = target['exptime'][0]#self.calc_exptime(target)
+        except: exptime = target['exptime']
+
         obs_end = timeof + datetime.timedelta(seconds=exptime)
         duration = (obs_end-obs_start).total_seconds() # JDE: how is this not just exptime?
+
+        if logger != None: logger.info("recording observation 1")
 
         self.obs.date=timeof
 
         # the observation 'quality', or whether it was a good observation or
         # not (1 is good, 0 is unusable)
+        if 'fixedbody' not in target.keys():
+            if logger != None: logger.info("No fixed body in target dictionary; not recording observation")
+            return
+
         obs_quality = 1
         target['fixedbody'].compute(self.obs)
         alt = target['fixedbody'].alt
         azm = target['fixedbody'].az
         with open(self.obspath+target['name']+'.txt','a') as target_file:
+            if logger != None: logger.info("recording observation 2")
+
             obs_string = obs_start.strftime(self.dt_fmt)+'\t'+\
                 obs_end.strftime(self.dt_fmt)+'\t'+\
                 '%8.2f'%duration+'\t'+\
@@ -357,11 +370,10 @@ class scheduler:
                 '%7.2f'%math.degrees(azm)+' \t '+\
                 '%i'%obs_quality+\
                 '\n'
-            print(target['name']+': '+obs_string)
+            if logger != None: logger.info(target['name']+': '+obs_string)
             target_file.write(obs_string)
         obs_list = [obs_start,obs_end,duration,alt,azm,obs_quality]
         target['last_obs'].append(obs_list)
-        pass
 
     def nextsunrise(self, currenttime, horizon=-12):
         self.obs.horizon=str(horizon)
@@ -415,6 +427,5 @@ class scheduler:
 #S -
 
 if __name__ == '__main__':
-    ipdb.set_trace()
-    e = scheduler('scheduler.ini')
+    sched = scheduler('scheduler.ini')
     ipdb.set_trace()

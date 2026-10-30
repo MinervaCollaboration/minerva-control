@@ -6,6 +6,11 @@ from collections import OrderedDict
 import ipdb
 import copy
 import datetime
+import pandas as pd
+import numpy as np
+
+### CD: 2026-01-28 Updated mkdict to put targets in order of priority 
+### CD: 2026-02-10 Removing attempt to download file from Google Sheets because we know it doesn't work
 
 def downloadList(bstar=False, red=False):
     filename = 'MINERVA target list'
@@ -45,85 +50,107 @@ def downloadList(bstar=False, red=False):
 
 def rdlist(bstar=False, update=True, red=False, logger=None):
 
-    if update:
-        try:
-            downloadList(bstar=bstar, red=red)
-        except:
-            if logger != None: logger.error("unable to download target file, using old file")
+#    if update:
+#        try:
+#            downloadList(bstar=bstar, red=red)
+#        except:
+#            if logger != None: logger.error("unable to download target file, using old file")
 
     if bstar:
-        csvname = 'bstar.csv'
+        csvname = '/home/minerva/minerva-control/minerva_library/bstar.csv'
     elif red:
-        csvname = 'redtargets.csv'
+        csvname = '/home/minerva/minerva-control/minerva_library/redtargets.csv'
     else:
-        csvname = 'targets.csv'
+        csvname = '/home/minerva/minerva-control/minerva_library/targets.csv'
 
-    # parse the CSV file                                        
-    with open(csvname,'rb') as f:
-        reader = unicodecsv.reader(f)
-        headers = reader.next()
-        targetlist = {}
-        for h in headers:
-            targetlist[h.split('(')[0].strip()] = []
-        for row in reader:
-            for h,v in zip(headers,row):
-                targetlist[h.split('(')[0].strip()].append(v)
-        return targetlist
+
+    targetlist = pd.read_csv(csvname)
+
+    cols = targetlist.columns.tolist()
+    new_cols = []
+    for c in cols:
+        new_cols.append(c.split('(')[0].strip())
+    targetlist.columns = new_cols
+        
+    # # parse the CSV file                                        
+    # with open(csvname,'rb') as f:
+    #     reader = csv.reader(f)
+    #     headers = next(reader)
+    #     targetlist = {}
+    #     for h in headers:
+    #         targetlist[h.split('(')[0].strip()] = []
+    #     for row in reader:
+    #         for h,v in zip(headers,row):
+    #             targetlist[h.split('(')[0].strip()].append(v)
+
+
+    return targetlist
 
 
 # make a list of target dictionaries for each (active) target based on the target spreadsheet
 def mkdict(name=None, bstar=False, includeInactive=False,red=False, logger=None):
 
-    targetlist = rdlist(bstar=bstar,red=red, logger=logger)
+    # if bstar:
+    #     csvname = 'bstar.csv'
+    # elif red:
+    #     csvname = 'redtargets.csv'
+    # else:
+    #     csvname = 'targets.csv'
+
+
+    targetlist = rdlist(bstar=bstar, red=red, logger=logger)
+
+    priority_order = np.argsort(-1*targetlist['priority'].values)
 
     targets = []
-    for i in range(len(targetlist['name'])):
+    for i in priority_order:
         target = OrderedDict()
-        target['name'] = targetlist['name'][i]
+        target['name'] = targetlist['name'].values[i]
         try:
-            target['ra'] = float(targetlist['ra'][i])
+            target['ra'] = float(targetlist['ra'].values[i])
         except:
-            print targetlist['ra'][i]
+            print targetlist['ra'].values[i]
             ipdb.set_trace()
 
-        target['dec'] = float(targetlist['dec'][i])
-        target['starttime'] = datetime.datetime(2015,01,01,00,00,00)
-        target['endtime'] = datetime.datetime(2115,01,01,00,00,00)
+        target['dec'] = float(targetlist['dec'].values[i])
+        target['starttime'] = datetime.datetime(2015, 1, 1,0,0,0)
+        target['endtime'] = datetime.datetime(2115, 1, 1,0,0, 0)
         target['spectroscopy'] = True
         target['DT'] = False
         target['filter'] = ["rp"]
         target['num'] = [1]
-        target['exptime'] = [float(targetlist['exptime'][i])]
-        target['priority'] = float(targetlist['priority'][i])
-        try: target['seplimit'] = float(targetlist['seplimit'][i])
+        target['exptime'] = [float(targetlist['exptime'].values[i])]
+        target['priority'] = float(targetlist['priority'].values[i])
+        try: target['seplimit'] = float(targetlist['seplimit'].values[i])
         except: target['seplimit'] = 3600.0*3.0 # 3 hours
-        target['fauexptime'] = float(targetlist['fauexptime'][i])
+        target['fauexptime'] = float(targetlist['fauexptime'].values[i])
         target['defocus'] = 0.0
         target['selfguide'] = True
         target['guide'] = False
         target['cycleFilter'] = True
         target['positionAngle'] = 0.0
-        target['acquisition_offset_north'] = float(targetlist['acquisition_offset_north'][i])
-        target['acquisition_offset_east'] = float(targetlist['acquisition_offset_east'][i])
-        target['pmra'] = float(targetlist['pmra'][i])
-        target['pmdec'] = float(targetlist['pmdec'][i])
-        target['parallax'] = float(targetlist['parallax'][i])
-        target['rv'] = float(targetlist['rv'][i])
+        target['acquisition_offset_north'] = float(targetlist['acquisition_offset_north'].values[i])
+        target['acquisition_offset_east'] = float(targetlist['acquisition_offset_east'].values[i])
+        target['pmra'] = float(targetlist['pmra'].values[i])
+        target['pmdec'] = float(targetlist['pmdec'].values[i])
+        target['parallax'] = float(targetlist['parallax'].values[i])
+        target['rv'] = float(targetlist['rv'].values[i])
         target['i2'] = True
-        target['vmag'] = float(targetlist['vmag'][i])
-        target['comment'] = targetlist['comment'][i]
+        target['vmag'] = float(targetlist['vmag'].values[i])
+        target['comment'] = targetlist['comment'].values[i]
         target['observed'] = 0
         target['bstar'] = bstar
-        try: target['maxobs'] = float(targetlist['maxobs'][i])
+        try: target['maxobs'] = float(targetlist['maxobs'].values[i])
         except: target['maxobs'] = 2
-
+    
 #        target['last_observed'] = 0
-        
-        if name <> None:
-            if targetlist['name'][i] == name:
+
+        if name is not None:
+            if targetlist['name'].values[i] == name:
                 return target
-        elif targetlist['active'][i] ==  '1' or includeInactive:
+        elif targetlist['active'].values[i] ==  1 or includeInactive:
             targets.append(target)
+        
 
     if len(targets) == 0: return -1
     return targets
@@ -142,7 +169,8 @@ if __name__ == '__main__':
     red = False
 #    print target2json('HD191408A')
 
-    targetlist = rdlist(bstar=bstar, red=red)
-    print targetlist['name']
+    targetlist = mkdict(name=None, bstar=bstar, includeInactive=False, red=red)
+    print targetlist
     ipdb.set_trace()
+
     
