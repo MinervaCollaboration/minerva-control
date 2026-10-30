@@ -1,0 +1,71 @@
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?cmd=getsystem
+--- initialize
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?cmd=getsystem
+--- low-level mount
+HTTP http://HOST:PORT/?device=mount&cmd=connect
+HTTP http://HOST:PORT/?device=mount&cmd=enable
+HTTP http://HOST:PORT/?device=mount&cmd=findhome
+HTTP http://HOST:PORT/?device=mount&dec2000=20.25&cmd=move&ra2000=10.5
+HTTP http://HOST:PORT/?device=mount&cmd=move&dec=20.25&ra=10.5
+HTTP http://HOST:PORT/?device=mount&alt=45.0&cmd=move&azm=180.0
+HTTP http://HOST:PORT/?device=mount&cmd=move&incrementdec=-2.0&incrementra=1.5
+HTTP http://HOST:PORT/?device=mount&incrementalt=3.0&incrementazm=-4.0&cmd=move
+HTTP http://HOST:PORT/?device=mount&cmd=trackingon
+HTTP http://HOST:PORT/?device=mount&cmd=trackingoff
+HTTP http://HOST:PORT/?device=mount&decrate=-0.2&cmd=trackingrates&rarate=0.1
+HTTP http://HOST:PORT/?device=mount&cmd=stop
+HTTP http://HOST:PORT/?device=mount&cmd=setmodel&filename=T9.Port1.PXP
+HTTP http://HOST:PORT/?device=mount&dec2000=20.25&cmd=addtomodel&ra2000=10.5
+HTTP http://HOST:PORT/?device=mount&cmd=savemodel&filename=T9.Port1.PXP
+HTTP http://HOST:PORT/?device=mount&dec2000=20.25&cmd=sync&ra2000=10.5
+HTTP http://HOST:PORT/?device=mount&cmd=disable
+HTTP http://HOST:PORT/?device=mount&cmd=disconnect
+--- focuser/rotator
+HTTP http://HOST:PORT/?device=focuser1&cmd=connect
+HTTP http://HOST:PORT/?device=focuser1&position=20000&cmd=move
+HTTP http://HOST:PORT/?device=focuser2&cmd=move&increment=10
+HTTP http://HOST:PORT/?device=focuser2&cmd=stop
+HTTP http://HOST:PORT/?device=focuser1&cmd=findhome
+HTTP http://HOST:PORT/?device=focuser1&position=25000&cmd=move
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?device=rotator1&position=100.0&cmd=move
+HTTP http://HOST:PORT/?device=rotator2&cmd=move&increment=1.5
+HTTP http://HOST:PORT/?device=rotator1&cmd=stop
+HTTP http://HOST:PORT/?device=rotator2&cmd=derotatestart
+HTTP http://HOST:PORT/?device=rotator1&cmd=derotatestop
+HTTP http://HOST:PORT/?device=rotator2&cmd=findhome
+HTTP http://HOST:PORT/?device=focuser&cmd=startautofocus
+--- m3
+HTTP http://HOST:PORT/?device=m3&cmd=select&port=1
+HTTP http://HOST:PORT/?device=m3&cmd=stop
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?device=mount&cmd=setmodel&filename=T9.Port1.PXP
+HTTP http://HOST:PORT/?device=mount&cmd=trackingon
+HTTP http://HOST:PORT/?device=m3&cmd=select&port=1
+--- status
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?cmd=getsystem
+--- slew + inPosition
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?device=rotator2&cmd=derotatestop
+--- shutdown
+HTTP http://HOST:PORT/?device=focuser1&cmd=stop
+HTTP http://HOST:PORT/?device=rotator1&cmd=derotatestop
+HTTP http://HOST:PORT/?device=focuser1&cmd=disconnect
+HTTP http://HOST:PORT/?device=mount&cmd=trackingoff
+HTTP http://HOST:PORT/?device=mount&cmd=disconnect
+HTTP http://HOST:PORT/?device=mount&cmd=disable
+--- process control
+SYSTEM sshpass -p 'not-a-real-password-123' ssh observer@127.0.0.1 'taskkill /IM PWI.exe /f'
+SYSTEM sshpass -p 'not-a-real-password-123' ssh observer@127.0.0.1 'taskkill /IM ComACRServer.exe /f'
+SYSTEM sshpass -p 'not-a-real-password-123' ssh observer@127.0.0.1 'schtasks /Run /TN "Start PWI"'
+HTTP http://HOST:PORT/?cmd=getsystem
+HTTP http://HOST:PORT/?device=mount&cmd=setmodel&filename=T9.Port2.PXP
+SYSTEM sshpass -p 'not-a-real-password-123' ssh observer@127.0.0.1 'python C:/minerva-control/minerva_library/reboot.py'
