@@ -170,7 +170,8 @@ def doSpectra(minerva, target, tele_list, simulate=False):
 
             # take the backlit images
             minerva.logger.info("Locating Fiber")
-            backlight(minerva)
+            # only this target's telescopes: others may be doing photometry
+            backlight(minerva, tele_list=tele_list)
 
             # find the fiber position from the backlit images
             for telid in tele_list:
@@ -291,11 +292,12 @@ def doSpectra(minerva, target, tele_list, simulate=False):
                       "Love,\nMINERVA",level='serious')
             # should kill the errant thread, otherwise all hell breaks loose                                                                                                        
     # let's take another backlit image to see how stable it was
-    backlight(minerva)
-    
-    # stop tracking for all scopes (so they don't track out of bounds)
-    for telescope in minerva.telescopes:
-        telescope.mountTrackingOff()
+    backlight(minerva, tele_list=tele_list)
+
+    # stop tracking for this target's scopes (so they don't track out of
+    # bounds); the others may be doing photometry
+    for telid in tele_list:
+        utils.getTelescope(minerva,telid).mountTrackingOff()
 
     return
 
