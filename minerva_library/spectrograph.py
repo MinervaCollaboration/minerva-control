@@ -622,7 +622,7 @@ class spectrograph:
                                 self.logger.error('Failed to save image: ' + filename)
 		else:
 
-			if self.expose_with_timeout(exptime=exptime, expmeter=expmeter):
+			if self.expose_with_timeout(exptime=exptime, exptype=exptype, expmeter=expmeter):
 				self.logger.info('Finished taking image: ' + self.file_name)
 				self.nfailed = 0 # success; reset the failed counter
 				return
