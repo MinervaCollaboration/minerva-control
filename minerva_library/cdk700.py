@@ -43,6 +43,8 @@ except: pass
 from configobj import ConfigObj
 #import pwihelpers as pwi
 from xml.etree import ElementTree
+import pwi4
+from cdk700_pwi4 import PWI4Mixin
 sys.dont_write_bytecode = True
 
 #HELPER CLASSES
@@ -81,7 +83,9 @@ def elementTreeToObject(elementTreeNode):
 
 
 
-class CDK700:
+# PWI4Mixin (cdk700_pwi4.py) implements the PWI4 path; PWI_VERSION in the
+# telescope config selects it.  PWI2 telescopes run the code in this file.
+class CDK700(PWI4Mixin):
 	def __init__(self, config, base='', red=False, south=False, thach=False, directory=None, tunnel=False):
 
 		#S Set config file
@@ -139,6 +143,7 @@ class CDK700:
 		self.abort = False
 
 	def guessFocus(self, m3port):
+		if self.pwi_version == 4: return self._pwi4_guessFocus(m3port)
 		status = self.getStatus()
 
 		# best guess at focus
@@ -161,6 +166,7 @@ class CDK700:
 	#much worse to be off when it should be on than vice versa
 	def isInitialized(self,tracking=True, derotate=True):
 
+		if self.pwi_version == 4: return self._pwi4_isInitialized(tracking, derotate)
 		# check to see if it's properly initialized
 		telescopeStatus = self.getStatus()
 
@@ -214,6 +220,7 @@ class CDK700:
 	# it's much worse to have it off when it should be on than vice versa
 	def initialize(self,tracking=True, derotate=True, extra_sleep=0.0, load_pointing_model=False):
 
+		if self.pwi_version == 4: return self._pwi4_initialize(tracking, derotate, extra_sleep, load_pointing_model)
 #		while self.threadActive:
 #			time.sleep(0.1)
 #		self.threadActive = True
@@ -323,6 +330,7 @@ class CDK700:
 			self.dT0 = config['dT0']
 			self.C2 = config['C2']
 			self.G0 = config['G0']
+			self._pwi4_load_config(config)
 		except:
 			print("ERROR accessing configuration file: " + self.config_file)
 			sys.exit()
@@ -366,6 +374,9 @@ class CDK700:
 		(under normal circumstances) return the status of the telescope as an
 		XML string.
 		"""
+		if self.pwi_version == 4:
+			self.logger.error('PWI2 request ' + str(kwargs) + ' refused: this telescope runs PWI4')
+			return False
 		url = self.makeUrl(**kwargs)
 		try: ret = urllib.urlopen(url).read()
 		except: ret = False
@@ -400,6 +411,7 @@ class CDK700:
 
 	def status(self):
 
+		if self.pwi_version == 4: return self._pwi4_status()
 		import xmltodict
 		status = xmltodict.parse(self.getStatusXml())['system']
 
@@ -413,6 +425,7 @@ class CDK700:
 		Return a status object representing the tree structure of the XML text.
 		Example: getStatus().mount.tracking --> "False"
 		"""
+		if self.pwi_version == 4: return self._pwi4_getStatus()
 		xmlstatus = self.getStatusXml()
 		if xmlstatus == False:
 			status = False
@@ -461,6 +474,7 @@ class CDK700:
 		"""
 		Connect to the focuser on the specified Nasmyth port (1 or 2).
 		"""
+		if self.pwi_version == 4: return self._pwi4_focuserConnect(m3port)
 
 		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="connect")
 
@@ -468,6 +482,7 @@ class CDK700:
 		"""
 		Disconnect from the focuser on the specified Nasmyth port (1 or 2).
 		"""
+		if self.pwi_version == 4: return self._pwi4_focuserDisconnect(m3port)
 
 		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="disconnect")
 
@@ -475,6 +490,7 @@ class CDK700:
 		"""
 		Move the focuser to the specified position in microns
 		"""
+		if self.pwi_version == 4: return self._pwi4_focuserMove(position, m3port)
 		# make sure it's a legal move first
 		if position < float(self.minfocus[m3port]) or position > float(self.maxfocus[m3port]):
 			self.logger.warning('Requested focus on port ' + m3port + ' (' + str(position) + ') out of bounds')
@@ -484,6 +500,7 @@ class CDK700:
 
 	def focuserMoveAndWait(self,position,m3port,timeout=300.0):
 
+		if self.pwi_version == 4: return self._pwi4_focuserMoveAndWait(position, m3port, timeout)
 #		# prevent thread clashes
 #		while self.focusMoving:
 #			time.slee(0.01)
@@ -527,6 +544,7 @@ class CDK700:
 		"""
 		Offset the focuser by the specified amount, in microns
 		"""
+		if self.pwi_version == 4: return self._pwi4_focuserIncrement(offset, m3port)
 
 		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="move", increment=offset)
 
@@ -534,6 +552,7 @@ class CDK700:
 		"""
 		Halt any motion on the focuser
 		"""
+		if self.pwi_version == 4: return self._pwi4_focuserStop(m3port)
 
 		return self.pwiRequestAndParse(device="focuser"+str(m3port), cmd="stop")
 
@@ -541,6 +560,7 @@ class CDK700:
 		"""
 		Begin an AutoFocus sequence for the currently active focuser
 		"""
+		if self.pwi_version == 4: return self._pwi4_startAutoFocus()
 		return self.pwiRequestAndParse(device="focuser", cmd="startautofocus")
 
 	def homeAllMechanisms(self):
@@ -588,11 +608,13 @@ class CDK700:
 
 	# home the focuser
 	def focuserHome(self, m3port):
+		if self.pwi_version == 4: return self._pwi4_focuserHome(m3port)
 		return self.pwiRequestAndParse(device="focuser" + str(m3port), cmd="findhome")
 
 	# home the focuser and wait to completion
 	def focuserHomeAndWait(self, m3port, timeout=300.0):
 
+		if self.pwi_version == 4: return self._pwi4_focuserHomeAndWait(m3port, timeout)
 		if m3port == 1: lock = self.focuser1_lock
 		else: lock = self.focuser2_lock
 		lock.acquire()
@@ -642,6 +664,7 @@ class CDK700:
 	### ROTATOR ###
 	def rotatorMove(self, position, m3port, wait=False, timeout=400.0):
 
+		if self.pwi_version == 4: return self._pwi4_rotatorMove(position, m3port, wait, timeout)
 		if m3port == 1: lock = self.rotator1_lock
 		else: lock = self.rotator2_lock
 		lock.acquire()
@@ -676,15 +699,19 @@ class CDK700:
 		return True
 
 	def rotatorIncrement(self, offset, m3port):
+		if self.pwi_version == 4: return self._pwi4_rotatorIncrement(offset, m3port)
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="move", increment=offset)
 
 	def rotatorStop(self, m3port):
+		if self.pwi_version == 4: return self._pwi4_rotatorStop(m3port)
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="stop")
 
 	def rotatorStartDerotating(self, m3port):
+		if self.pwi_version == 4: return self._pwi4_rotatorStartDerotating(m3port)
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="derotatestart")
 
 	def rotatorStopDerotating(self, m3port):
+		if self.pwi_version == 4: return self._pwi4_rotatorStopDerotating(m3port)
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="derotatestop")
 
 	def rotatorHome180(self, m3port):
@@ -699,10 +726,12 @@ class CDK700:
                 self.rotatorMove(rotpos,m3port,wait=wait)
 
 	def rotatorHome(self, m3port):
+		if self.pwi_version == 4: return self._pwi4_rotatorHome(m3port)
 		return self.pwiRequestAndParse(device="rotator"+str(m3port), cmd="findhome")
 
 	def rotatorHomeAndWait(self, m3port, timeout=400.0):
 
+		if self.pwi_version == 4: return self._pwi4_rotatorHomeAndWait(m3port, timeout)
 #		while self.rotatorMoving:
 #			time.sleep(0.1)
 #		self.rotatorMoving = True
@@ -820,6 +849,7 @@ class CDK700:
 
 	### MOUNT ###
 	def mountConnect(self, extra_sleep=0.0):
+		if self.pwi_version == 4: return self._pwi4_mountConnect(extra_sleep)
 		status = self.pwiRequestAndParse(device="mount", cmd="connect")
 		if status == False: return False
 		if status.mount.connected == 'False':
@@ -832,9 +862,11 @@ class CDK700:
 		return True
 
 	def mountDisconnect(self):
+		if self.pwi_version == 4: return self._pwi4_mountDisconnect()
 		return self.pwiRequestAndParse(device="mount", cmd="disconnect")
 
 	def mountEnableMotors(self,extra_sleep=0.0):
+		if self.pwi_version == 4: return self._pwi4_mountEnableMotors(extra_sleep)
 		status = self.pwiRequestAndParse(device="mount", cmd="enable")
 		if status.mount.azm_enabled == 'False' or status.mount.alt_enabled == 'False':
 			# after a power cycle, this takes longer than PWI allows -- try again
@@ -847,12 +879,15 @@ class CDK700:
 		return True
 
 	def mountHome(self):
+		if self.pwi_version == 4: return self._pwi4_mountHome()
 		return self.pwiRequestAndParse(device="mount", cmd="findhome")
 
 	def mountDisableMotors(self):
+		if self.pwi_version == 4: return self._pwi4_mountDisableMotors()
 		return self.pwiRequestAndParse(device="mount", cmd="disable")
 
 	def mountOffsetRaDec(self, deltaRaArcseconds, deltaDecArcseconds):
+		if self.pwi_version == 4: return self._pwi4_mountOffsetRaDec(deltaRaArcseconds, deltaDecArcseconds)
 		return self.pwiRequestAndParse(device="mount", cmd="move", incrementra=deltaRaArcseconds, incrementdec=deltaDecArcseconds)
 
 	def increment_alt_az_balanced(self,alt=0,azm=0):
@@ -863,10 +898,12 @@ class CDK700:
 		return self.mountOffsetAltAz(alttosend,azmtosend)
 
 	def mountOffsetAltAz(self, deltaAltArcseconds, deltaAzArcseconds):
+		if self.pwi_version == 4: return self._pwi4_mountOffsetAltAz(deltaAltArcseconds, deltaAzArcseconds)
 		return self.pwiRequestAndParse(device="mount", cmd="move", incrementazm=deltaAzArcseconds, incrementalt=deltaAltArcseconds)
 
 	def mountOffsetAltAzFixed(self,deltaAltArcseconds, deltaAzArcseconds):
 
+		if self.pwi_version == 4: return self._pwi4_mountOffsetAltAzFixed(deltaAltArcseconds, deltaAzArcseconds)
 		t0 = datetime.datetime.utcnow()
 
 		# take 5 seconds to slew the Azimuth axis
@@ -898,6 +935,7 @@ class CDK700:
 		raAppHours may be a number in decimal hours, or a string in "HH MM SS" format
 		decAppDegs may be a number in decimal degrees, or a string in "DD MM SS" format
 		"""
+		if self.pwi_version == 4: return self._pwi4_mountGotoRaDecApparent(raAppHours, decAppDegs)
 
 		return self.pwiRequestAndParse(device="mount", cmd="move", ra=raAppHours, dec=decAppDegs)
 
@@ -907,6 +945,7 @@ class CDK700:
 		ra2000Hours may be a number in decimal hours, or a string in "HH MM SS" format
 		dec2000Degs may be a number in decimal degrees, or a string in "DD MM SS" format
 		"""
+		if self.pwi_version == 4: return self._pwi4_mountGotoRaDecJ2000(ra2000Hours, dec2000Degs, timeout)
 
 		# never send a move while it's already moving
 #		elapsedTime = 0.0
@@ -925,15 +964,19 @@ class CDK700:
 		return self.pwiRequestAndParse(device="mount", cmd="move", ra2000=ra2000Hours, dec2000=dec2000Degs)
 
 	def mountGotoAltAz(self, altDegs, azmDegs):
+		if self.pwi_version == 4: return self._pwi4_mountGotoAltAz(altDegs, azmDegs)
 		return self.pwiRequestAndParse(device="mount", cmd="move", alt=altDegs, azm=azmDegs)
 
 	def mountStop(self):
+		if self.pwi_version == 4: return self._pwi4_mountStop()
 		return self.pwiRequestAndParse(device="mount", cmd="stop")
 
 	def mountTrackingOn(self):
+		if self.pwi_version == 4: return self._pwi4_mountTrackingOn()
 		return self.pwiRequestAndParse(device="mount", cmd="trackingon")
 
 	def mountTrackingOff(self):
+		if self.pwi_version == 4: return self._pwi4_mountTrackingOff()
 		return self.pwiRequestAndParse(device="mount", cmd="trackingoff")
 
 	def mountSetTracking(self, trackingOn):
@@ -947,6 +990,7 @@ class CDK700:
 		Set the tracking rates of the mount, represented as offsets from normal
 		sidereal tracking in arcseconds per second in RA and Dec.
 		"""
+		if self.pwi_version == 4: return self._pwi4_mountSetTrackingRateOffsets(raArcsecPerSec, decArcsecPerSec)
 		return self.pwiRequestAndParse(device="mount", cmd="trackingrates", rarate=raArcsecPerSec, decrate=decArcsecPerSec)
 
 	# this is untested!!!
@@ -959,26 +1003,33 @@ class CDK700:
 #		return None
 
 	def mountSetPointingModel(self, filename):
+		if self.pwi_version == 4: return self._pwi4_mountSetPointingModel(filename)
 		return self.pwiRequestAndParse(device="mount", cmd="setmodel", filename=filename)
 
 	def mountAddToModel(self,ra,dec):
+		if self.pwi_version == 4: return self._pwi4_mountAddToModel(ra, dec)
 		return self.pwiRequestAndParse(device="mount",cmd="addtomodel",ra2000=ra,dec2000=dec)
 
 	def mountSaveModel(self,filename):
+		if self.pwi_version == 4: return self._pwi4_mountSaveModel(filename)
 		return self.pwiRequestAndParse(device="mount",cmd="savemodel",filename=filename)
 
 	def mountSync(self,ra,dec):
+		if self.pwi_version == 4: return self._pwi4_mountSync(ra, dec)
 		return self.pwiRequestAndParse(device="mount",cmd="sync",ra2000=ra,dec2000=dec)
 
 	### M3 ###
 	def m3SelectPort(self, m3port):
+		if self.pwi_version == 4: return self._pwi4_m3SelectPort(m3port)
 		return self.pwiRequestAndParse(device="m3", cmd="select", port=m3port)
 
 	def m3Stop(self):
+		if self.pwi_version == 4: return self._pwi4_m3Stop()
 		return self.pwiRequestAndParse(device="m3", cmd="stop")
 
 	def recover(self, tracking=True, derotate=True):
 
+		if self.pwi_version == 4: return self._pwi4_recover(tracking, derotate)
 		#S need to make sure all these functions don't call recover
 		#S shutdown looks clear, all basePWI functions
 		self.nfailed += 1
@@ -1585,6 +1636,7 @@ class CDK700:
 
 	def inPosition(self,m3port=None, alt=None, az=None, ra=None, dec=None, pointingTolerance=60.0, tracking=True, derotate=True):
 
+		if self.pwi_version == 4: return self._pwi4_inPosition(m3port, alt, az, ra, dec, pointingTolerance, tracking, derotate)
 		# Wait for telescope to complete motion
 		start = datetime.datetime.utcnow()
 		timeout = 30.0
@@ -1910,6 +1962,7 @@ class CDK700:
 	# returns true when moving in RA/Dec
 	# NOTE: when not tracking, it's "moving"
 	def isMoving(self, timeout=15.0):
+		if self.pwi_version == 4: return self._pwi4_isMoving(timeout)
 		telescopeStatus = self.getStatus()
 		timeElapsed = 0.0
 		t0 = datetime.datetime.utcnow()
@@ -1942,6 +1995,7 @@ class CDK700:
 
 	def m3port_switch(self,m3port, force=False):
 
+		if self.pwi_version == 4: return self._pwi4_m3port_switch(m3port, force)
 		#S want to make sure we are at the right port before mount, focuser, rotator slew.
 		#S If an allowable port is specified
 		telescopeStatus = self.getStatus()
@@ -2084,6 +2138,7 @@ class CDK700:
 
 	def shutdown(self,m3port=None):
 
+		if self.pwi_version == 4: return self._pwi4_shutdown(m3port)
 		if not m3port==None:
 			self.logger.info('Shutting down focusing rotator on port ' + m3port)
 			self.focuserStop(m3port)
@@ -2116,6 +2171,7 @@ class CDK700:
 
 	def home(self, timeout=600):#420.0):
 
+		if self.pwi_version == 4: return self._pwi4_home(timeout)
 		self.logger.info('Homing Telescope')
 
 		# make sure it's not homing in another thread first (JDE 2017-06-09)
@@ -2162,6 +2218,7 @@ class CDK700:
 			return True
 
 	def startPWI(self,email=True,extra_sleep=0.0):
+		if self.pwi_version == 4: return self._pwi4_startPWI(email, extra_sleep)
 		self.send_to_computer('schtasks /Run /TN "Start PWI"')
 		time.sleep(10.0+extra_sleep)
 		self.logger.info('changing model file')
@@ -2173,11 +2230,13 @@ class CDK700:
 
 
 	def restartPWI(self,email=True,extra_sleep=0.0):
+		if self.pwi_version == 4: return self._pwi4_restartPWI(email, extra_sleep)
 		self.killPWI()
 		time.sleep(5.0+extra_sleep)
 		return self.startPWI(email=email)
 
         def killPWI(self):
+		if self.pwi_version == 4: return self._pwi4_killPWI()
 		self.kill_remote_task('PWI.exe')
 		return self.kill_remote_task('ComACRServer.exe')
 
@@ -2205,6 +2264,7 @@ class CDK700:
 
         def send_to_computer(self, cmd):
 
+		if self.pwi_version == 4: return self._pwi4_send_to_computer(cmd)
 		if self.win10:
 			return self.send_to_win10(cmd)
 
